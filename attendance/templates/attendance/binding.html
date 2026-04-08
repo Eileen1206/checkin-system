@@ -1,0 +1,76 @@
+{% extends "attendance/base.html" %}
+
+{% block title %}員工綁定管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>員工 LINE 綁定管理</h2>
+    <a href="{% url 'dashboard:index' %}" class="btn btn-outline-secondary">← 回儀表板</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <strong>{{ message }}</strong>
+        <br><small class="text-muted">請將此綁定碼提供給員工，請他們傳送給 LINE Bot。有效期限：24 小時。</small>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>工號</th>
+            <th>姓名</th>
+            <th>部門</th>
+            <th>LINE 綁定狀態</th>
+            <th>目前有效綁定碼</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in employee_data %}
+          <tr>
+            <td>{{ item.employee.employee_id }}</td>
+            <td>{{ item.employee.user.get_full_name|default:item.employee.user.username }}</td>
+            <td>{{ item.employee.department }}</td>
+            <td>
+              {% if item.is_bound %}
+                <span class="badge bg-success">已綁定</span>
+              {% else %}
+                <span class="badge bg-secondary">未綁定</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if item.latest_token %}
+                <code class="text-primary">{{ item.latest_token.token }}</code>
+                <br>
+                <small class="text-muted">到期：{{ item.latest_token.expires_at|date:"m/d H:i" }}</small>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" action="{% url 'dashboard:generate_token' item.employee.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                  產生新綁定碼
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-4">尚無員工資料</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,4 @@
+Django>=6.0,<7.0
+django-environ>=0.13
+line-bot-sdk>=3.22
+openpyxl>=3.1

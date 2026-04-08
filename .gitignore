@@ -1,1 +1,21 @@
 .claude/settings.local.json
+
+# 環境變數（含機敏資訊）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Django
+db.sqlite3
+*.log
+/static/collected/
+
+# Virtual environment
+venv/
+.venv/
+env/
