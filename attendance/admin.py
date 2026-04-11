@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     Employee, OfficeLocation, AttendanceRecord, BindingToken,
     MonthlyAllowance, ReminderSetting, AuditLog,
-    DeliveryTask, TaskCheckIn,
+    DeliveryTask, TaskCheckIn, Customer,
 )
 
 
@@ -69,3 +69,9 @@ class TaskCheckInAdmin(admin.ModelAdmin):
     list_display = ['task', 'check_type', 'timestamp', 'distance_meters', 'is_valid']
     list_filter = ['check_type', 'is_valid']
     readonly_fields = ['timestamp']
+
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ['customer_id', 'name', 'address', 'phone', 'is_active']
+    search_fields = ['customer_id', 'name']
+    list_filter = ['is_active']

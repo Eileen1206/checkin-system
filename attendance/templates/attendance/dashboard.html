@@ -53,25 +53,27 @@
                 <th>姓名</th>
                 <th>部門</th>
                 <th>狀態</th>
+                <th>今日工時</th>
             </tr>
         </thead>
         <tbody>
-            {% for emp, status in status_map.items %}
+            {% for item in employee_list %}
             <tr>
-                <td>{{ emp.employee_id }}</td>
-                <td>{{ emp.user.get_full_name|default:emp.user.username }}</td>
-                <td>{{ emp.department }}</td>
+                <td>{{ item.employee.employee_id }}</td>
+                <td>{{ item.employee.user.get_full_name|default:item.employee.user.username }}</td>
+                <td>{{ item.employee.department }}</td>
                 <td>
-                    {% if status == 'working' %}
+                    {% if item.status == 'working' %}
                         <span class="badge bg-success">● 上班中</span>
-                    {% elif status == 'break' %}
+                    {% elif item.tatus == 'break' %}
                         <span class="badge bg-warning text-dark">◐ 午休中</span>
-                    {% elif status == 'left' %}
+                    {% elif item.status == 'left' %}
                         <span class="badge bg-secondary">○ 已下班</span>
                     {% else %}
                         <span class="badge bg-danger">✕ 未打卡</span>
                     {% endif %}
                 </td>
+                <td>{{ item.hours }}小時</td>
             </tr>
             {% empty %}
                 <tr>

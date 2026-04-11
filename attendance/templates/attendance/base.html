@@ -16,6 +16,7 @@
         <div class="d-flex align-items-center gap-3">
             <a href="{% url 'dashboard:index' %}" class="text-white text-decoration-none">儀表板</a>
             <a href="{% url 'dashboard:binding_list' %}" class="text-white text-decoration-none">LINE 綁定</a>
+            <a href="{% url 'dashboard:import_customers' %}" class="text-white text-decoration-none">匯入客戶</a>
             <span class="text-white">
                 {{ request.user.get_full_name|default:request.user.username }}
                 &nbsp;|&nbsp;

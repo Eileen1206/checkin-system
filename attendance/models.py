@@ -184,6 +184,13 @@ class DeliveryTask(models.Model):
     arrived_at = models.DateTimeField('到達時間', null=True, blank=True)
     completed_at = models.DateTimeField('完成時間', null=True, blank=True)
     note = models.TextField('備註', blank=True)
+    customer = models.ForeignKey(
+    'Customer', 
+    on_delete=models.SET_NULL, 
+    null=True, blank=True,
+    verbose_name='客戶'
+    )
+
 
     class Meta:
         verbose_name = '送貨任務'
@@ -192,6 +199,8 @@ class DeliveryTask(models.Model):
 
     def __str__(self):
         return f"{self.employee} - {self.date} 第{self.order}站：{self.customer_name}"
+    
+    
 
 
 class TaskCheckIn(models.Model):
@@ -214,3 +223,14 @@ class TaskCheckIn(models.Model):
 
     def __str__(self):
         return f"{self.task} - {self.get_check_type_display()} @ {self.timestamp:%H:%M}"
+    
+class Customer(models.Model):
+    customer_id = models.CharField('客戶編號', max_length=20, unique=True)
+    name        = models.CharField('客戶名稱', max_length=100)
+    address     = models.CharField('地址', max_length=200)
+    phone       = models.CharField('電話', max_length=20, blank=True)
+    lat         = models.DecimalField('緯度', max_digits=9, decimal_places=6, null=True, blank=True)
+    lng         = models.DecimalField('經度', max_digits=9, decimal_places=6, null=True, blank=True)
+    is_active   = models.BooleanField('啟用', default=True)
+    updated_at  = models.DateTimeField('更新時間', auto_now=True)
+

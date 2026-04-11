@@ -34,12 +34,12 @@ def get_today_status():
 
     return status_map
 
-def get_work_hours(employee):
-    today = timezone.localdate()
-
+def get_work_hours(employee,date=None):
+    
+    date = date or timezone.localdate()
     clock_in = AttendanceRecord.objects.filter(
         employee = employee,
-        timestamp__date = today,
+        timestamp__date = date,
         record_type = 'clock_in'
     ).first()
 
@@ -48,7 +48,7 @@ def get_work_hours(employee):
     
     clock_out = AttendanceRecord.objects.filter(
         employee = employee,
-        timestamp__date = today,
+        timestamp__date = date,
         record_type = 'clock_out'
     ).first()
 
@@ -61,6 +61,13 @@ def get_work_hours(employee):
 def index(request):
     today = timezone.localdate()
     status_map = get_today_status()
+    employee_list = []
+    for employee in status_map:
+        employee_list.append({
+            'employee': employee,
+            'status': status_map[employee],
+            'hours': get_work_hours(employee)
+        })
 
     counts = {
         'working': sum(1 for s in status_map.values() if s == 'working'),
@@ -69,10 +76,13 @@ def index(request):
         'absent':  sum(1 for s in status_map.values() if s == 'absent'),
     }
 
+  
+
     return render(request, 'attendance/dashboard.html', {
-        'status_map': status_map,
+        'employee_list': employee_list,
         'counts': counts,
         'today': today,
+        
     })
 
 
@@ -117,3 +127,33 @@ def generate_token(request, employee_id):
 
     messages.success(request, f'已為【{employee}】產生綁定碼：{token.token}')
     return redirect('dashboard:binding_list')
+
+
+@login_required
+def import_customers(request):
+    """匯入客戶 CSV"""
+    from .models import Customer
+    import csv
+    import io
+
+    if request.method == 'GET':
+        return render(request, 'attendance/import_customers.html')
+
+
+    if request.method == 'POST':
+        csv_file = request.FILES['csv_file']
+        file = io.TextIOWrapper(csv_file, encoding = 'utf-8-sig')
+        reader = csv.DictReader(file, delimiter=',')
+        
+
+        for row in reader:
+            Customer.objects.update_or_create(
+                customer_id = row['客戶編號'],
+                defaults={
+                    'name': row['客戶名稱'],
+                    'address': row['地址'],
+                    'phone': row['電話號碼']
+                }
+            )
+
+        return redirect('dashboard:index')

@@ -1,0 +1,30 @@
+{% extends "attendance/base.html" %}
+
+{% block title %}匯入客戶資料{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 600px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>匯入客戶 CSV</h2>
+        <a href="{% url 'dashboard:index' %}" class="btn btn-outline-secondary">← 回儀表板</a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                請上傳從系統匯出的 CSV 檔案，格式需包含以下欄位：<br>
+                <code>客戶編號　客戶名稱　地址　電話號碼</code>
+            </p>
+
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label fw-bold">選擇 CSV 檔案</label>
+                    <input type="file" name="csv_file" accept=".csv,.txt" class="form-control">
+                </div>
+                <button type="submit" class="btn btn-primary w-100">匯入</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

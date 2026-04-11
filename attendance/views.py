@@ -121,15 +121,41 @@ def handle_postback(event):
         employee = Employee.objects.get(line_user_id=line_user_id)
     except Employee.DoesNotExist:
         return
+    
+    if action in ('break_start', 'clock_out'):
+        result = handle_punch(employee, action=action)
+        messages = TextMessage(text=result['message'])
+    elif action == 'punch':
+        result = handle_punch(employee)
+        
+        if result['status'] == 'ask':
+            messages = TextMessage(
+                    text='請選擇打卡類型：',
+                    quick_reply=QuickReply(items=[
+                        QuickReplyItem(action=PostbackAction(
+                            label='🍱 午休', data='action=break_start'
+                        )),
+                        QuickReplyItem(action=PostbackAction(
+                            label='👋 下班', data='action=clock_out'
+                        )),
+                    ])
+                )
+        else:
+            messages = TextMessage(text=result['message'])
+    elif action == 'query':
+        messages = TextMessage(text=get_today_summary(employee))
+    elif action == 'monthly':
+        messages = TextMessage(text=get_monthly_summary(employee))
 
-    result = handle_punch(employee, action=action)
+
+    
 
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=result['message'])]
+                messages=[messages]
             )
         )
 
@@ -143,6 +169,10 @@ def _process_message(text, line_user_id):
         employee = Employee.objects.get(line_user_id=line_user_id)
         if text == '打卡':
             return None  # 交給 handle_text_message 用 Quick Reply 處理
+        elif text == '查詢':
+            return get_today_summary(employee)
+        elif text == '本月出勤':
+            return get_monthly_summary(employee)
         name = employee.user.get_full_name() or employee.user.username
         return f'你好，{name}！\n傳送「打卡」即可打卡。'
     except Employee.DoesNotExist:
@@ -175,3 +205,61 @@ def _process_message(text, line_user_id):
 
     except BindingToken.DoesNotExist:
         return '找不到此綁定碼，請確認是否正確，或聯絡管理員。'
+    
+def get_today_summary(employee):
+    from attendance.models import AttendanceRecord
+    from django.utils import timezone
+    from attendance.dashboard_views import get_work_hours
+
+    today = timezone.localdate()
+    records = AttendanceRecord.objects.filter(
+        employee = employee,
+        timestamp__date = today,
+    ).order_by('timestamp')
+
+    if not records:
+        return '今天尚無打卡紀錄'
+    
+    #打卡對應中文
+    type_label = {
+        'clock_in': '上班打卡',
+        'break_start': '午休開始',
+        'break_end': '午休結束',
+        'clock_out': '下班打卡',
+    }
+
+    lines = ['今日打卡紀錄','──────────────']
+    for record in records:
+        time_str = timezone.localtime(record.timestamp).strftime('%H:%M')
+        label = type_label[record.record_type]
+        lines.append(f'{label} {time_str}')
+
+    lines.append('──────────────')
+    lines.append(f'今日工時：{get_work_hours(employee)}小時')
+
+    return '\n'.join(lines)
+
+def get_monthly_summary(employee):
+    from attendance.models import AttendanceRecord
+    from django.utils import timezone
+    from attendance.dashboard_views import get_work_hours
+    import calendar
+    import datetime
+
+    now = timezone.localtime()
+    year = now.year
+    month = now.month
+    _, total_days = calendar.monthrange(year, month)
+
+    hours = 0
+    for date in range(1, total_days+1):
+        date = datetime.date(year, month, date)
+        hours += get_work_hours(employee, date) 
+        
+
+    lines = ['本月出勤紀錄']
+    lines.append(f'本月總工時：{hours}小時')
+
+    return '\n'.join(lines)
+
+    
