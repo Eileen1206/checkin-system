@@ -197,7 +197,7 @@ class Customer(models.Model):
     customer_id = models.CharField('客戶編號', max_length=20, unique=True)
     name        = models.CharField('客戶名稱', max_length=100)
     address     = models.CharField('地址', max_length=200)
-    phone       = models.CharField('電話', max_length=20, blank=True)
+    phone       = models.CharField('電話', max_length=50, blank=True)
     lat         = models.DecimalField('緯度', max_digits=9, decimal_places=6, null=True, blank=True)
     lng         = models.DecimalField('經度', max_digits=9, decimal_places=6, null=True, blank=True)
     is_active   = models.BooleanField('啟用', default=True)
