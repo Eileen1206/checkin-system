@@ -1,1 +1,1 @@
-web: python manage.py migrate && python manage.py collectstatic --noinput && (python manage.py createsuperuser --noinput || true) && python manage.py loaddata data_backup.json && gunicorn checkin_system.wsgi --log-file -
+web: python manage.py migrate && python manage.py collectstatic --noinput && python manage.py shell -c "from django.contrib.auth.models import User; exit(0 if User.objects.exists() else 1)" || python manage.py loaddata data_backup.json && gunicorn checkin_system.wsgi --log-file -

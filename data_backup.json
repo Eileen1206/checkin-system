@@ -1,5 +1,79 @@
 [
 {
+  "model": "auth.user",
+  "pk": 1,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$9e7VEktEgTm2IxRyxHaVIr$uvCCtaZJjNWpl6gFjlNNvLFKnl6ku9AM2HuAq8KeK+g=",
+    "last_login": "2026-04-19T13:42:59.012Z",
+    "is_superuser": true,
+    "username": "admin",
+    "first_name": "",
+    "last_name": "",
+    "email": "",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-04-11T20:53:11.541Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "auth.user",
+  "pk": 2,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$GZZnwhc4jsxngXOLCvPWQf$rlMTBg/xnPxI31LWUCgYmRUMIr4wZCdXHV94brkzrBc=",
+    "last_login": "2026-04-18T13:51:41.490Z",
+    "is_superuser": false,
+    "username": "Eileen",
+    "first_name": "陳",
+    "last_name": "姵蓁",
+    "email": "",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-04-11T20:56:00Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "auth.user",
+  "pk": 3,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$pcd6nQRl9ZRuMtd5sCstln$Pi5z6crswhVSHgIi5B82O2dbQrXnOBdihjoj7PTZEoc=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "jim",
+    "first_name": "陳",
+    "last_name": "志明",
+    "email": "",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-04-14T16:11:00Z",
+    "groups": [
+      2
+    ],
+    "user_permissions": []
+  }
+},
+{
+  "model": "auth.user",
+  "pk": 4,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$hfwt9wwJBknEepK0UNi3bE$tnisnCB2xzmDn7chSWsW9ZsQSfZFjbJP0tishBaVez4=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "jun",
+    "first_name": "陳",
+    "last_name": "志豪",
+    "email": "",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-04-18T14:01:00.984Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
   "model": "attendance.employee",
   "pk": 1,
   "fields": {
