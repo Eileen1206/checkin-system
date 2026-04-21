@@ -3,3 +3,6 @@ django-environ>=0.13
 line-bot-sdk>=3.22
 openpyxl>=3.1
 openrouteservice>=2.3
+gunicorn>=21.2
+whitenoise>=6.6
+psycopg2-binary>=2.9
