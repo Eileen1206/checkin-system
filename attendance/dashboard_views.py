@@ -362,6 +362,33 @@ def customer_list(request):
 
 
 @login_required
+def geocode_customers(request):
+    """批次將無座標的客戶地址轉換為 GPS 座標（每次最多 30 筆避免逾時）"""
+    if request.method != 'POST':
+        return redirect('dashboard:customer_list')
+
+    from attendance.management.commands.geocode_customers import nominatim_geocode
+    import time
+
+    customers = Customer.objects.filter(
+        is_active=True, lat__isnull=True
+    ).exclude(address='')[:30]
+
+    success = 0
+    for c in customers:
+        result = nominatim_geocode(c.address)
+        if result:
+            c.lat, c.lng = result
+            c.save(update_fields=['lat', 'lng'])
+            success += 1
+        time.sleep(1)
+
+    from django.contrib import messages
+    messages.success(request, f'定位完成：成功 {success} 筆，可再次點擊繼續定位剩餘客戶。')
+    return redirect('dashboard:customer_list')
+
+
+@login_required
 def customer_edit(request, pk):
     """編輯單一客戶資料"""
     customer = get_object_or_404(Customer, pk=pk)

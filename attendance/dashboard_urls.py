@@ -11,6 +11,7 @@ urlpatterns = [
     path('delivery/plan/', dashboard_views.delivery_plan, name='delivery_plan'),
     path('delivery/search-customer/', dashboard_views.search_customer, name='search_customer'),
     path('customers/', dashboard_views.customer_list, name='customer_list'),
+    path('customers/geocode/', dashboard_views.geocode_customers, name='geocode_customers'),
     path('customers/<int:pk>/edit/', dashboard_views.customer_edit, name='customer_edit'),
     path('delivery/reorder/', dashboard_views.delivery_reorder, name='delivery_reorder'),
     path('delivery/push/', dashboard_views.delivery_push, name='delivery_push'),

@@ -19,7 +19,6 @@
     </script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .dropdown:hover .dropdown-menu { display: block; }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
@@ -96,5 +95,23 @@
     </main>
 
     {% block extra_scripts %}{% endblock %}
+    <script>
+        // 點擊切換下拉選單，點其他地方關閉
+        document.querySelectorAll('.dropdown button').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const menu = this.nextElementSibling;
+                const isOpen = !menu.classList.contains('hidden');
+                // 先關閉所有選單
+                document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+                // 再切換目前這個
+                if (!isOpen) menu.classList.remove('hidden');
+            });
+        });
+        // 點其他地方關閉所有選單
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+        });
+    </script>
 </body>
 </html>
