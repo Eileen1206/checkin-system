@@ -1,0 +1,90 @@
+{% extends "attendance/base.html" %}
+{% block title %}今日送貨狀況{% endblock %}
+{% block content %}
+
+<!-- 標題 + 日期查詢 -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">送貨狀況</h1>
+  <form method="get" class="flex gap-2 items-center flex-wrap">
+    <input type="date" name="date" value="{{ date }}"
+      class="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+    <select name="employee_id"
+      class="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
+      <option value="">全部員工</option>
+      {% for emp in delivery_employees %}
+      <option value="{{ emp.pk }}" {% if selected_employee_id == emp.pk|stringformat:"s" %}selected{% endif %}>
+        {{ emp.user.get_full_name|default:emp.user.username }}
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">查詢</button>
+  </form>
+</div>
+
+<!-- 待出發 -->
+<h2 class="text-sm font-semibold text-gray-700 mb-2">📦 待出發</h2>
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+      <tr>
+        <th class="text-left px-5 py-3 font-medium">員工</th>
+        <th class="text-left px-5 py-3 font-medium">順序</th>
+        <th class="text-left px-5 py-3 font-medium">客戶</th>
+        <th class="text-left px-5 py-3 font-medium">地址</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for task in tasks %}
+        {% if task.status == 'pending' %}
+        <tr class="hover:bg-amber-50/30">
+          <td class="px-5 py-3 text-gray-700">{{ task.employee.user.get_full_name|default:task.employee.user.username }}</td>
+          <td class="px-5 py-3 text-gray-500">第 {{ task.order }} 站</td>
+          <td class="px-5 py-3 font-medium text-gray-800">
+            {% if task.is_urgent %}<span class="text-amber-500">⚡</span>{% endif %}{{ task.customer_name }}
+          </td>
+          <td class="px-5 py-3 text-gray-500">{{ task.address }}</td>
+        </tr>
+        {% endif %}
+      {% empty %}
+      <tr>
+        <td colspan="4" class="px-5 py-10 text-center text-gray-400">今日尚無送貨任務</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 已完成 -->
+<h2 class="text-sm font-semibold text-gray-700 mb-2">✅ 已完成</h2>
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+      <tr>
+        <th class="text-left px-5 py-3 font-medium">員工</th>
+        <th class="text-left px-5 py-3 font-medium">客戶</th>
+        <th class="text-left px-5 py-3 font-medium">地址</th>
+        <th class="text-left px-5 py-3 font-medium">完成時間</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for task in tasks %}
+        {% if task.status == 'completed' %}
+        <tr class="hover:bg-amber-50/30">
+          <td class="px-5 py-3 text-gray-700">{{ task.employee.user.get_full_name|default:task.employee.user.username }}</td>
+          <td class="px-5 py-3 font-medium text-gray-800">
+            {% if task.is_urgent %}<span class="text-amber-500">⚡</span>{% endif %}{{ task.customer_name }}
+          </td>
+          <td class="px-5 py-3 text-gray-500">{{ task.address }}</td>
+          <td class="px-5 py-3 text-gray-500">{{ task.completed_at|date:"H:i" }}</td>
+        </tr>
+        {% endif %}
+      {% empty %}
+      <tr>
+        <td colspan="4" class="px-5 py-10 text-center text-gray-400">今日尚無送貨任務</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

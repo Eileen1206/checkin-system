@@ -1,0 +1,87 @@
+{% extends "attendance/base.html" %}
+{% block title %}薪水計算{% endblock %}
+{% block content %}
+
+<!-- 標題 + 查詢表單 -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">薪水計算</h1>
+  <form method="get" class="flex gap-2 items-center">
+    <select name="year" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
+      {% for y in years %}
+        <option value="{{ y }}"{% if y == year %} selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+    <select name="month" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
+      {% for m in months %}
+        <option value="{{ m }}"{% if m == month %} selected{% endif %}>{{ m }}月</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 whitespace-nowrap">查詢</button>
+    <a href="{% url 'dashboard:export_salary_excel' %}?year={{ year }}&month={{ month }}"
+   class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50 whitespace-nowrap">
+   匯出 Excel
+</a>
+  </form>
+</div>
+
+<!-- 薪資表格 -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+      <tr>
+        <th class="text-left px-5 py-3 font-medium">員工</th>
+        <th class="text-left px-5 py-3 font-medium">底薪</th>
+        <th class="text-left px-5 py-3 font-medium">保養費</th>
+        <th class="text-left px-5 py-3 font-medium">勞務加給</th>
+        <th class="text-left px-5 py-3 font-medium">扣除（勞健保）</th>
+        <th class="text-left px-5 py-3 font-medium">實領</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for result in results %}
+      <tr class="hover:bg-amber-50/30">
+        <td class="px-5 py-3 font-medium text-gray-800">{{ result.employee.user.get_full_name|default:result.employee.user.username }}</td>
+        <td class="px-5 py-3 text-gray-600">{{ result.base|floatformat:0 }} 元</td>
+        <td class="px-5 py-3 text-gray-600">{{ result.maintenance|floatformat:0 }} 元</td>
+        <td class="px-5 py-3 text-gray-600">
+          {{ result.allowance|floatformat:0 }} 元
+          <button onclick="toggleAllowance({{ result.employee.pk }})" 
+              class="ml-2 text-xs text-blue-500 hover:underline">+ 加給</button>
+          <!-- 小表單（預設隱藏）-->
+            <div id="allowance_{{ result.employee.pk }}" class="hidden mt-2">
+                <form method="post" action="{% url 'dashboard:add_allowance' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="employee_id" value="{{ result.employee.pk }}">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <input type="hidden" name="month" value="{{ month }}">
+                    <input type="number" name="amount" placeholder="金額" required
+                        class="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+                    <input type="text" name="note" placeholder="備註（如電話費）"
+                        class="w-40 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+                    <button type="submit"
+                        class="px-3 py-1 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-700">送出</button>
+                </form>
+            </div>
+      </td>
+        <td class="px-5 py-3 text-red-500">{{ result.deduction|floatformat:0 }} 元</td>
+        <td class="px-5 py-3 font-semibold text-gray-800" title="{{ result.detail }}">{{ result.total|floatformat:0 }} 元</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="6" class="px-5 py-10 text-center text-gray-400">尚無薪資紀錄</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function toggleAllowance(pk) {
+    const el = document.getElementById('allowance_' + pk);
+    el.classList.toggle('hidden');
+}
+</script>
+
+
+
+{% endblock %}

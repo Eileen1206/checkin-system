@@ -1,0 +1,431 @@
+{% extends "attendance/base.html" %}
+{% block title %}送貨路線規劃{% endblock %}
+
+{% block extra_head %}
+{% if success %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{% if success %}
+<!-- ── 路線結果頁 ── -->
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">🚚 送貨路線規劃</h1>
+  <a href="{% url 'dashboard:delivery_plan' %}" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">重新規劃</a>
+</div>
+
+<!-- 提示列 -->
+<div class="flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-5">
+  <span>✅</span>
+  <span>路線已建立！可<strong>拖曳列表</strong>調整站點順序，調整後按「儲存順序」。確認無誤後推播給員工。</span>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+  <!-- 左欄：路線表 -->
+  <div class="lg:col-span-2 flex flex-col gap-4">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <span class="font-semibold text-gray-700">📋 {{ employee }} 今日路線</span>
+        <span class="text-xs text-gray-400">☰ 可拖曳調整</span>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+          <tr>
+            <th class="px-4 py-2 w-6"></th>
+            <th class="px-4 py-2 text-left">順序</th>
+            <th class="px-4 py-2 text-left">客戶</th>
+            <th class="px-4 py-2 text-center">急單</th>
+          </tr>
+        </thead>
+        <tbody id="sortableBody" class="divide-y divide-gray-50">
+          {% for task in tasks %}
+          <tr data-id="{{ task.pk }}"
+              data-lat="{{ task.customer.lat|default:'' }}"
+              data-lng="{{ task.customer.lng|default:'' }}"
+              data-name="{{ task.customer_name }}"
+              data-urgent="{{ task.is_urgent|yesno:'1,0' }}"
+              class="hover:bg-cream cursor-grab active:cursor-grabbing transition-colors">
+            <td class="px-4 py-3 text-gray-300 select-none">☰</td>
+            <td class="px-4 py-3 text-gray-500 text-xs seq-num">第 {{ forloop.counter }} 站</td>
+            <td class="px-4 py-3">
+              <div class="font-medium text-gray-800">{{ task.customer_name }}</div>
+              <div class="text-xs text-gray-400 mt-0.5">{{ task.address }}</div>
+            </td>
+            <td class="px-4 py-3 text-center">
+              {% if task.is_urgent %}
+                <span class="text-amber-500 text-base">⚡</span>
+              {% else %}
+                <span class="text-gray-200">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 操作按鈕 -->
+    <div class="flex flex-col gap-2">
+      <button onclick="saveOrder()"
+        class="px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 transition-colors flex items-center justify-center gap-2">
+        💾 儲存順序
+      </button>
+      <form method="post" action="{% url 'dashboard:delivery_push' %}">
+        {% csrf_token %}
+        <input type="hidden" name="employee_id" value="{{ employee.pk }}">
+        <input type="hidden" name="date" value="{{ tasks.0.date|date:'Y-m-d' }}">
+        <button type="submit"
+          class="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+          📲 推播路線給員工
+        </button>
+      </form>
+    </div>
+
+    <div id="saveMsg" class="hidden px-4 py-2.5 rounded-xl text-sm text-center"></div>
+  </div>
+
+  <!-- 右欄：地圖 -->
+  <div class="lg:col-span-3">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100">
+        <span class="font-semibold text-gray-700">🗺️ 路線地圖</span>
+        {% if not office_lat %}
+        <span class="ml-2 text-xs text-amber-500">⚠️ 尚未設定公司座標（A000）</span>
+        {% endif %}
+      </div>
+      <div id="map" class="w-full" style="height: 460px;"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+const officeLat = {{ office_lat|default:'null' }};
+const officeLng = {{ office_lng|default:'null' }};
+
+const map = L.map('map');
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CARTO'
+}).addTo(map);
+
+let routeLayer = null;
+
+function buildWaypoints() {
+  const points = [];
+  if (officeLat && officeLng) {
+    points.push({lat: officeLat, lng: officeLng, label: '🏢 公司（出發點）', isCompany: true});
+  }
+  document.querySelectorAll('#sortableBody tr').forEach(tr => {
+    const lat = parseFloat(tr.dataset.lat);
+    const lng = parseFloat(tr.dataset.lng);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      points.push({ lat, lng, label: tr.dataset.name, urgent: tr.dataset.urgent === '1' });
+    }
+  });
+  return points;
+}
+
+function drawRoute() {
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  map.eachLayer(l => { if (l instanceof L.Marker) map.removeLayer(l); });
+  const points = buildWaypoints();
+  if (points.length === 0) return;
+  const latlngs = points.map(p => [p.lat, p.lng]);
+  routeLayer = L.polyline(latlngs, {color: '#3b82f6', weight: 3, dashArray: '6,4'}).addTo(map);
+  points.forEach((p, i) => {
+    const color = p.isCompany ? '#10b981' : (p.urgent ? '#f59e0b' : '#3b82f6');
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${color};color:#fff;border-radius:50%;width:28px;height:28px;
+             display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;
+             box-shadow:0 2px 4px rgba(0,0,0,.25)">${p.isCompany ? '⬤' : i}</div>`,
+      iconSize: [28, 28], iconAnchor: [14, 14],
+    });
+    L.marker([p.lat, p.lng], {icon}).addTo(map).bindPopup(p.label);
+  });
+  map.fitBounds(routeLayer.getBounds(), {padding: [30, 30]});
+}
+
+Sortable.create(document.getElementById('sortableBody'), {
+  animation: 150,
+  onEnd: () => {
+    document.querySelectorAll('#sortableBody tr').forEach((tr, i) => {
+      tr.querySelector('.seq-num').textContent = `第 ${i + 1} 站`;
+    });
+    drawRoute();
+  }
+});
+
+function saveOrder() {
+  const taskIds = [...document.querySelectorAll('#sortableBody tr')].map(tr => tr.dataset.id);
+  fetch('{% url "dashboard:delivery_reorder" %}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+    body: JSON.stringify({task_ids: taskIds}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    const msg = document.getElementById('saveMsg');
+    msg.classList.remove('hidden');
+    if (data.ok) {
+      msg.className = 'px-4 py-2.5 rounded-xl text-sm text-center bg-emerald-50 text-emerald-700 border border-emerald-200';
+      msg.textContent = '✓ 順序已儲存';
+    } else {
+      msg.className = 'px-4 py-2.5 rounded-xl text-sm text-center bg-red-50 text-red-600 border border-red-200';
+      msg.textContent = '儲存失敗，請重試';
+    }
+    setTimeout(() => msg.classList.add('hidden'), 3000);
+  });
+}
+
+drawRoute();
+</script>
+
+{% else %}
+<!-- ── 規劃表單頁 ── -->
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">🚚 送貨路線規劃</h1>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+  <!-- 左欄：使用說明 -->
+  <div class="lg:col-span-2 flex flex-col gap-4">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <h2 class="font-semibold text-gray-700 mb-4">📖 使用說明</h2>
+      <div class="space-y-4">
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
+          <div>
+            <div class="text-sm font-medium text-gray-700">搜尋並加入客戶</div>
+            <div class="text-xs text-gray-400 mt-0.5">輸入客戶編號或名稱，最多可加入 5 站</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
+          <div>
+            <div class="text-sm font-medium text-gray-700">標記急單</div>
+            <div class="text-xs text-gray-400 mt-0.5">勾選「⚡ 急單」的客戶會自動排到最前面優先送</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
+          <div>
+            <div class="text-sm font-medium text-gray-700">選擇日期和送貨員</div>
+            <div class="text-xs text-gray-400 mt-0.5">預設為今天，可指定未來日期</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">4</span>
+          <div>
+            <div class="text-sm font-medium text-gray-700">計算最短路線</div>
+            <div class="text-xs text-gray-400 mt-0.5">系統以公司為出發點，自動規劃最佳行駛順序</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+      ⚠️ 規劃前請確認客戶資料已設定 GPS 座標，否則無法計算距離。
+    </div>
+
+    <!-- 待推播路線 -->
+    {% if pending_by_employee %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <h2 class="font-semibold text-gray-700 mb-3">📋 今日待推播路線</h2>
+      <div class="space-y-3">
+        {% for emp, tasks in pending_by_employee.items %}
+        <div class="border border-gray-100 rounded-xl p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-gray-700">{{ emp.user.get_full_name|default:emp.user.username }}</span>
+            <span class="text-xs text-gray-400">{{ tasks|length }} 站</span>
+          </div>
+          <div class="space-y-1 mb-3">
+            {% for task in tasks %}
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <span class="w-4 h-4 bg-gray-100 rounded-full flex items-center justify-center font-bold">{{ forloop.counter }}</span>
+              <span>{{ task.customer_name }}</span>
+              {% if task.is_urgent %}<span class="text-amber-500">⚡</span>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          <form method="post" action="{% url 'dashboard:delivery_push' %}">
+            {% csrf_token %}
+            <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+            <input type="hidden" name="date" value="{{ today }}">
+            <button type="submit"
+              class="w-full px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors">
+              📲 推播給 {{ emp.user.get_full_name|default:emp.user.username }}
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- 送貨紀錄連結 -->
+    <a href="{% url 'dashboard:delivery_today' %}"
+      class="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-100 shadow-sm text-sm text-gray-600 hover:bg-cream transition-colors">
+      <span>📦 查看今日送貨狀況</span>
+      <span class="text-gray-400">→</span>
+    </a>
+  </div>
+
+  <!-- 右欄：操作表單 -->
+  <div class="lg:col-span-3">
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
+
+    <!-- 搜尋客戶 -->
+    <div class="mb-5">
+      <label class="block text-sm font-semibold text-gray-700 mb-1.5">搜尋客戶</label>
+      <div class="relative">
+        <input type="text" id="searchInput"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+          placeholder="輸入客戶編號或名稱...">
+        <div id="searchResults"
+          class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"></div>
+      </div>
+      <p class="text-xs text-gray-400 mt-1">最多可加入 5 站</p>
+    </div>
+
+    <!-- 已選客戶 -->
+    <div class="mb-5">
+      <label class="block text-sm font-semibold text-gray-700 mb-1.5">已選站點</label>
+      <div id="selectedList" class="space-y-2 min-h-[48px]">
+        <p class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-xl" id="emptyHint">尚未選擇任何客戶</p>
+      </div>
+    </div>
+
+    <form method="post" id="planForm">
+      {% csrf_token %}
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">送貨日期</label>
+          <input type="date" name="date" value="{{ today|date:'Y-m-d' }}" min="{{ today|date:'Y-m-d' }}"
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">指派送貨員</label>
+          <select name="employee_id" required
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
+            <option value="">請選擇送貨員</option>
+            {% for emp in employees %}
+            <option value="{{ emp.pk }}">{{ emp.user.get_full_name|default:emp.user.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div id="hiddenInputs"></div>
+      <button type="submit"
+        class="w-full px-4 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors">
+        計算最短路線並建立任務 →
+      </button>
+    </form>
+  </div><!-- end 右欄卡片 -->
+  </div><!-- end 右欄 -->
+</div><!-- end grid -->
+
+<script>
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+const selectedList = document.getElementById('selectedList');
+const hiddenInputs = document.getElementById('hiddenInputs');
+let selected = [];
+
+searchInput.addEventListener('input', async function() {
+  const q = this.value.trim();
+  if (!q) { searchResults.classList.add('hidden'); return; }
+  const res = await fetch(`{% url 'dashboard:search_customer' %}?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  searchResults.innerHTML = '';
+  if (data.results.length === 0) { searchResults.classList.add('hidden'); return; }
+  data.results.forEach(c => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'w-full text-left px-4 py-2.5 text-sm hover:bg-cream border-b border-gray-50 last:border-0 transition-colors';
+    item.innerHTML = `<span class="font-medium text-gray-700">${c.customer_id} ${c.name}</span><span class="text-gray-400 ml-2">${c.address}</span>`;
+    item.onclick = () => addCustomer(c);
+    searchResults.appendChild(item);
+  });
+  searchResults.classList.remove('hidden');
+});
+
+document.addEventListener('click', (e) => {
+  if (!searchInput.contains(e.target)) searchResults.classList.add('hidden');
+});
+
+function addCustomer(c) {
+  if (selected.length >= 5) { alert('最多只能加 5 站！'); return; }
+  if (selected.find(s => s.id === c.id)) { alert('已加入此客戶！'); return; }
+  selected.push(c);
+  searchInput.value = '';
+  searchResults.classList.add('hidden');
+  renderSelected();
+}
+
+function removeCustomer(id) {
+  selected = selected.filter(s => s.id !== id);
+  renderSelected();
+}
+
+function renderSelected() {
+  selectedList.innerHTML = '';
+  hiddenInputs.innerHTML = '';
+
+  if (selected.length === 0) {
+    selectedList.innerHTML = '<p class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-xl">尚未選擇任何客戶</p>';
+    return;
+  }
+
+  selected.forEach((c, idx) => {
+    const div = document.createElement('div');
+    div.className = 'flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl border border-gray-100';
+    div.innerHTML = `
+      <div class="flex items-center gap-3">
+        <span class="w-6 h-6 bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-xs font-bold">${idx + 1}</span>
+        <div>
+          <div class="text-sm font-medium text-gray-800">${c.name}</div>
+          <div class="text-xs text-gray-400">${c.address}</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+          <input class="urgent-check rounded" type="checkbox" id="urgent_${c.id}" value="${c.id}">
+          <span>⚡ 急單</span>
+        </label>
+        <button type="button" onclick="removeCustomer(${c.id})"
+          class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">×</button>
+      </div>
+    `;
+    selectedList.appendChild(div);
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'customer_ids';
+    input.value = c.id;
+    hiddenInputs.appendChild(input);
+  });
+
+  document.querySelectorAll('.urgent-check').forEach(cb => {
+    cb.addEventListener('change', updateUrgent);
+  });
+}
+
+function updateUrgent() {
+  document.querySelectorAll('input[name="urgent_ids"]').forEach(el => el.remove());
+  document.querySelectorAll('.urgent-check:checked').forEach(cb => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'urgent_ids';
+    input.value = cb.value;
+    hiddenInputs.appendChild(input);
+  });
+}
+</script>
+{% endif %}
+{% endblock %}

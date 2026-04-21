@@ -1,0 +1,80 @@
+{% extends "attendance/base.html" %}
+{% block title %}編輯客戶 - {{ customer.name }}{% endblock %}
+{% block content %}
+
+<div class="max-w-xl">
+
+  <!-- 標題 -->
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">編輯客戶</h1>
+    <a href="{% url 'dashboard:customer_list' %}" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">← 返回列表</a>
+  </div>
+
+  <!-- 訊息提示 -->
+  {% if messages %}
+    {% for msg in messages %}
+    <div class="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- 表單 -->
+  <form method="post">
+    {% csrf_token %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">客戶編號</label>
+        <input type="text" name="customer_id" value="{{ customer.customer_id }}" required
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">客戶名稱</label>
+        <input type="text" name="name" value="{{ customer.name }}" required
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">地址</label>
+        <input type="text" name="address" value="{{ customer.address }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">電話</label>
+        <input type="text" name="phone" value="{{ customer.phone }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+
+      <hr class="border-gray-100">
+      <p class="text-xs text-gray-400">GPS 座標（填入後送貨路線才能優化）</p>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">緯度 (lat)</label>
+          <input type="number" step="any" name="lat" value="{{ customer.lat|default:'' }}" placeholder="例：23.1234"
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">經度 (lng)</label>
+          <input type="number" step="any" name="lng" value="{{ customer.lng|default:'' }}" placeholder="例：120.5678"
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="is_active" id="is_active" {% if customer.is_active %}checked{% endif %}
+          class="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300">
+        <label for="is_active" class="text-sm text-gray-600">啟用中（取消勾選代表停業）</label>
+      </div>
+
+    </div>
+
+    <div class="flex gap-2 mt-4">
+      <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">儲存</button>
+      <a href="{% url 'dashboard:customer_list' %}" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">取消</a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

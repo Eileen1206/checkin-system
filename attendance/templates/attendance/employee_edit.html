@@ -1,0 +1,103 @@
+{% extends "attendance/base.html" %}
+{% block title %}編輯員工{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">編輯員工</h1>
+  <a href="{% url 'dashboard:employee_list' %}" class="text-sm text-gray-500 hover:underline">← 返回列表</a>
+</div>
+
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-2xl">
+  <form method="post">
+    {% csrf_token %}
+
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">帳號資訊</p>
+    <div class="grid grid-cols-2 gap-4 mb-6">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">帳號</label>
+        <input type="text" value="{{ emp.user.username }}" disabled
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">姓</label>
+        <input type="text" name="last_name" value="{{ emp.user.last_name }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">名</label>
+        <input type="text" name="first_name" value="{{ emp.user.first_name }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+    </div>
+
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">員工資料</p>
+    <div class="grid grid-cols-2 gap-4 mb-6">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">工號</label>
+        <input type="text" value="{{ emp.employee_id }}" disabled
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">部門</label>
+        <input type="text" name="department" value="{{ emp.department }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">薪資類型</label>
+        <select name="employment_type" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
+          <option value="monthly" {% if emp.employment_type == 'monthly' %}selected{% endif %}>月薪制</option>
+          <option value="hourly" {% if emp.employment_type == 'hourly' %}selected{% endif %}>時薪制</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">月薪</label>
+        <input type="number" name="monthly_salary" value="{{ emp.monthly_salary|default:'' }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">時薪</label>
+        <input type="number" name="hourly_rate" value="{{ emp.hourly_rate|default:'' }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">上班時間</label>
+        <input type="time" name="work_start_time" value="{{ emp.work_start_time|default:'' }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">下班時間</label>
+        <input type="time" name="work_end_time" value="{{ emp.work_end_time|default:'' }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">每日油費補貼</label>
+        <input type="number" name="fuel_daily_allowance" value="{{ emp.fuel_daily_allowance }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">勞保自負月額</label>
+        <input type="number" name="labor_insurance_amount" value="{{ emp.labor_insurance_amount|default:'' }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">健保自負月額</label>
+        <input type="number" name="health_insurance_amount" value="{{ emp.health_insurance_amount|default:'' }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+    </div>
+
+    <div class="mb-6">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" name="is_delivery" class="w-4 h-4 rounded"
+          {% if emp.is_delivery %}checked{% endif %}>
+        <span class="text-sm font-medium text-gray-700">是送貨員</span>
+      </label>
+    </div>
+
+    <button type="submit" class="px-6 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">
+      儲存變更
+    </button>
+  </form>
+</div>
+
+{% endblock %}

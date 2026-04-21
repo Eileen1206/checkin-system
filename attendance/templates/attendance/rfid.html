@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打卡系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 min-h-screen flex items-center justify-center">
+
+<div class="text-center">
+
+    <!-- 待機畫面 -->
+    <div id="standby">
+        <div class="text-8xl mb-6">🏢</div>
+        <h1 class="text-3xl font-bold text-white mb-2">政旭汽車材料行</h1>
+        <p class="text-gray-400 text-lg mb-8">請感應卡片打卡</p>
+        <div id="clock" class="text-5xl font-mono text-gray-300"></div>
+    </div>
+
+    <!-- 結果顯示 -->
+    <div id="result" class="hidden">
+        <div id="result-icon" class="text-8xl mb-6"></div>
+        <p id="result-message" class="text-3xl font-bold text-white"></p>
+    </div>
+
+</div>
+
+<input id="rfid-input" class="opacity-0 absolute" autofocus />
+
+<script>
+    // 時鐘
+    function updateClock() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // 監聽 RFID 輸入
+    let buffer = '';
+    let timer = null;
+
+    document.getElementById('rfid-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            if (buffer.trim()) {
+                submitCheckin(buffer.trim());
+                buffer = '';
+            }
+        } else {
+            buffer += e.key;
+        }
+
+        // 超過 500ms 沒輸入就清空（避免手動輸入干擾）
+        clearTimeout(timer);
+        timer = setTimeout(() => { buffer = ''; }, 500);
+    });
+
+    // 點擊頁面重新聚焦輸入框
+    document.addEventListener('click', function() {
+        document.getElementById('rfid-input').focus();
+    });
+
+    function submitCheckin(rfid_uid) {
+        fetch("{% url 'dashboard:rfid_checkin' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: `rfid_uid=${encodeURIComponent(rfid_uid)}`
+        })
+        .then(res => res.json())
+        .then(data => showResult(data));
+    }
+
+    function showResult(data) {
+        document.getElementById('standby').classList.add('hidden');
+        document.getElementById('result').classList.remove('hidden');
+        document.getElementById('result-icon').textContent = data.ok ? '✅' : '❌';
+        document.getElementById('result-message').textContent = data.message;
+
+        // 3 秒後回到待機
+        setTimeout(() => {
+            document.getElementById('result').classList.add('hidden');
+            document.getElementById('standby').classList.remove('hidden');
+            document.getElementById('rfid-input').focus();
+        }, 3000);
+    }
+</script>
+
+</body>
+</html>
