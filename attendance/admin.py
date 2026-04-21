@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
-    Employee, AttendanceRecord, BindingToken,
-    MonthlyAllowance, AuditLog, DeliveryTask,
+    Employee, OfficeLocation, AttendanceRecord, BindingToken,
+    MonthlyAllowance, ReminderSetting, AuditLog,
+    DeliveryTask, TaskCheckIn, Customer,
 )
 
 
@@ -12,6 +13,11 @@ class EmployeeAdmin(admin.ModelAdmin):
     search_fields = ['employee_id', 'user__username', 'user__first_name', 'user__last_name']
     readonly_fields = ['created_at']
 
+
+@admin.register(OfficeLocation)
+class OfficeLocationAdmin(admin.ModelAdmin):
+    list_display = ['name', 'latitude', 'longitude', 'radius_meters', 'is_active']
+    list_filter = ['is_active']
 
 
 @admin.register(AttendanceRecord)
@@ -37,6 +43,10 @@ class MonthlyAllowanceAdmin(admin.ModelAdmin):
     search_fields = ['employee__employee_id']
 
 
+@admin.register(ReminderSetting)
+class ReminderSettingAdmin(admin.ModelAdmin):
+    list_display = ['work_start_time', 'work_end_time', 'late_reminder_minutes', 'enabled']
+
 
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
@@ -48,10 +58,20 @@ class AuditLogAdmin(admin.ModelAdmin):
 
 @admin.register(DeliveryTask)
 class DeliveryTaskAdmin(admin.ModelAdmin):
-    list_display = ['employee', 'date', 'order', 'customer', 'is_urgent', 'status', 'arrived_at']
-    list_filter = ['status', 'date','is_urgent']
+    list_display = ['employee', 'date', 'order', 'customer_name', 'status', 'arrived_at', 'completed_at']
+    list_filter = ['status', 'date']
     search_fields = ['employee__employee_id', 'customer_name']
     date_hierarchy = 'date'
 
 
+@admin.register(TaskCheckIn)
+class TaskCheckInAdmin(admin.ModelAdmin):
+    list_display = ['task', 'check_type', 'timestamp', 'distance_meters', 'is_valid']
+    list_filter = ['check_type', 'is_valid']
+    readonly_fields = ['timestamp']
 
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ['customer_id', 'name', 'address', 'phone', 'is_active']
+    search_fields = ['customer_id', 'name']
+    list_filter = ['is_active']

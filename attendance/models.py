@@ -23,10 +23,6 @@ class Employee(models.Model):
     is_delivery = models.BooleanField('是否為送貨員', default=False)
     labor_insurance_amount = models.DecimalField('勞保自負月額', max_digits=8, decimal_places=2, null=True, blank=True)
     health_insurance_amount = models.DecimalField('健保自負月額', max_digits=8, decimal_places=2, null=True, blank=True)
-    work_start_time = models.TimeField('上班時間', null=True, blank=True)
-    work_end_time = models.TimeField('下班時間', null=True, blank=True)
-
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -66,7 +62,7 @@ class AttendanceRecord(models.Model):
 
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='records', verbose_name='員工')
     record_type = models.CharField('打卡類型', max_length=15, choices=RECORD_TYPE_CHOICES)
-    timestamp = models.DateTimeField('打卡時間', default=timezone.now)
+    timestamp = models.DateTimeField('打卡時間', auto_now_add=True)
     latitude = models.DecimalField('緯度', max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField('經度', max_digits=9, decimal_places=6, null=True, blank=True)
     is_valid = models.BooleanField('GPS 驗證通過', default=True)
@@ -131,6 +127,20 @@ class MonthlyAllowance(models.Model):
         return f"{self.employee} - {self.year}/{self.month:02d} +${self.amount}"
 
 
+class ReminderSetting(models.Model):
+    work_start_time = models.TimeField('標準上班時間', default='09:00')
+    work_end_time = models.TimeField('標準下班時間', default='18:00')
+    late_reminder_minutes = models.IntegerField('逾時提醒分鐘數', default=30)
+    lunch_limit_minutes = models.IntegerField('午休上限分鐘', default=60)
+    enabled = models.BooleanField('啟用提醒', default=True)
+
+    class Meta:
+        verbose_name = '提醒設定'
+        verbose_name_plural = '提醒設定'
+
+    def __str__(self):
+        return f"上班 {self.work_start_time} / 下班 {self.work_end_time}"
+
 
 class AuditLog(models.Model):
     ACTION_CHOICES = [
@@ -167,10 +177,12 @@ class DeliveryTask(models.Model):
     order = models.IntegerField('第幾站')
     customer_name = models.CharField('客戶名稱', max_length=100)
     address = models.CharField('地址', max_length=200)
+    target_lat = models.DecimalField('目標緯度', max_digits=9, decimal_places=6)
+    target_lng = models.DecimalField('目標經度', max_digits=9, decimal_places=6)
+    radius_meters = models.IntegerField('有效半徑（公尺）', default=100)
     status = models.CharField('狀態', max_length=15, choices=STATUS_CHOICES, default='pending')
     arrived_at = models.DateTimeField('到達時間', null=True, blank=True)
     completed_at = models.DateTimeField('完成時間', null=True, blank=True)
-    is_urgent = models.BooleanField('急單', default=False)
     note = models.TextField('備註', blank=True)
     customer = models.ForeignKey(
     'Customer', 
@@ -191,7 +203,26 @@ class DeliveryTask(models.Model):
     
 
 
+class TaskCheckIn(models.Model):
+    CHECK_TYPE_CHOICES = [
+        ('arrive', '到達'),
+        ('complete', '完成'),
+    ]
 
+    task = models.ForeignKey(DeliveryTask, on_delete=models.CASCADE, related_name='checkins', verbose_name='任務')
+    check_type = models.CharField('打卡類型', max_length=10, choices=CHECK_TYPE_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    latitude = models.DecimalField('緯度', max_digits=9, decimal_places=6)
+    longitude = models.DecimalField('經度', max_digits=9, decimal_places=6)
+    distance_meters = models.IntegerField('距目標距離（公尺）')
+    is_valid = models.BooleanField('在有效範圍內')
+
+    class Meta:
+        verbose_name = '任務打卡'
+        verbose_name_plural = '任務打卡'
+
+    def __str__(self):
+        return f"{self.task} - {self.get_check_type_display()} @ {self.timestamp:%H:%M}"
     
 class Customer(models.Model):
     customer_id = models.CharField('客戶編號', max_length=20, unique=True)

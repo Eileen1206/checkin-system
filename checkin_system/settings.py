@@ -57,7 +57,6 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'attendance.context_processors.user_permissions',
             ],
         },
     },
@@ -96,7 +95,6 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 # LINE Bot
 LINE_CHANNEL_SECRET = env('LINE_CHANNEL_SECRET', default='')
 LINE_CHANNEL_ACCESS_TOKEN = env('LINE_CHANNEL_ACCESS_TOKEN', default='')
-LINE_BOT_BASIC_ID = env('LINE_BOT_BASIC_ID', default='')
 
 # 公司 GPS 設定
 OFFICE_LAT = env.float('OFFICE_LAT', default=0.0)
@@ -105,11 +103,3 @@ OFFICE_RADIUS_METERS = env('OFFICE_RADIUS_METERS')
 
 # RFID API Key
 RFID_API_KEY = env('RFID_API_KEY', default='')
-
-MANAGER_LINE_USER_ID = env('MANAGER_LINE_USER_ID', default='')
-RICHMENU_DELIVERY = env('RICHMENU_DELIVERY', default='')
-RICHMENU_STAFF = env('RICHMENU_STAFF', default='')
-
-ORS_API_KEY = env('ORS_API_KEY', default='')
-
-
