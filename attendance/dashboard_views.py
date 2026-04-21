@@ -372,7 +372,7 @@ def geocode_customers(request):
 
     customers = Customer.objects.filter(
         is_active=True, lat__isnull=True
-    ).exclude(address='')[:30]
+    ).exclude(address='')[:5]
 
     success = 0
     for c in customers:
