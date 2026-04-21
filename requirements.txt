@@ -6,3 +6,4 @@ openrouteservice>=2.3
 gunicorn>=21.2
 whitenoise>=6.6
 psycopg2-binary>=2.9
+dj-database-url>=2.1
