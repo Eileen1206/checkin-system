@@ -1,2 +1,2 @@
-release: python manage.py migrate && python manage.py collectstatic --noinput && python manage.py createsuperuser --noinput || true
+release: python manage.py migrate && python manage.py collectstatic --noinput
 web: gunicorn checkin_system.wsgi --log-file -
