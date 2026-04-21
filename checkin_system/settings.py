@@ -66,11 +66,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'checkin_system.wsgi.application'
 
-import os
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL:
-    import dj_database_url
-    DATABASES = {'default': dj_database_url.parse(DATABASE_URL)}
+import dj_database_url, os
+_db = dj_database_url.config(conn_max_age=600)
+if _db:
+    DATABASES = {'default': _db}
 else:
     DATABASES = {
         'default': {
