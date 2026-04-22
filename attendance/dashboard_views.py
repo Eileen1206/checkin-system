@@ -402,8 +402,16 @@ def customer_edit(request, pk):
 
         lat = request.POST.get('lat', '').strip()
         lng = request.POST.get('lng', '').strip()
-        customer.lat = float(lat) if lat else None
-        customer.lng = float(lng) if lng else None
+        try:
+            customer.lat = float(lat) if lat else None
+            customer.lng = float(lng) if lng else None
+            if customer.lat is not None and not (-90 <= customer.lat <= 90):
+                raise ValueError('緯度必須在 -90 到 90 之間')
+            if customer.lng is not None and not (-180 <= customer.lng <= 180):
+                raise ValueError('經度必須在 -180 到 180 之間')
+        except ValueError as e:
+            messages.error(request, f'座標格式錯誤：{e}')
+            return render(request, 'attendance/customer_edit.html', {'customer': customer})
 
         customer.save()
         messages.success(request, f'客戶【{customer.name}】已更新')
@@ -733,9 +741,20 @@ def add_record(request):
     record_type = request.GET.get('type')        or request.POST.get('record_type')
     next_url    = request.GET.get('next')        or request.POST.get('next') or '/reports/'
 
-    employee = get_object_or_404(Employee, pk=employee_id)
+    # 驗證 date_str 格式
+    try:
+        datetime.strptime(date_str or '', '%Y-%m-%d')
+    except ValueError:
+        messages.error(request, '日期格式錯誤')
+        return redirect(request.GET.get('next') or '/reports/')
 
+    # 驗證 record_type 白名單
     VALID_TYPES = dict(AttendanceRecord.RECORD_TYPE_CHOICES)
+    if record_type not in VALID_TYPES:
+        messages.error(request, '打卡類型不合法')
+        return redirect(request.GET.get('next') or '/reports/')
+
+    employee = get_object_or_404(Employee, pk=employee_id)
 
     if request.method == 'POST':
         time_str = request.POST.get('time', '').strip()
@@ -776,6 +795,8 @@ def rfid_checkin(request):
     rfid_uid = request.POST.get('rfid_uid', '').strip()
     if not rfid_uid:
         return JsonResponse({'ok': False, 'message': '未收到卡號'})
+    if len(rfid_uid) > 20 or not rfid_uid.replace('-', '').replace(':', '').isalnum():
+        return JsonResponse({'ok': False, 'message': '卡號格式不合法'}, status=400)
 
     # 查詢員工
     emp = Employee.objects.filter(rfid_uid=rfid_uid).first()
