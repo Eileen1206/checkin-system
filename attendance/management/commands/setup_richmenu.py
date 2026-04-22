@@ -7,6 +7,9 @@ from django.conf import settings
 from attendance.models import Employee
 import requests
 import json
+from pathlib import Path
+
+BASE_DIR = Path(settings.BASE_DIR)
 
 
 CHANNEL_ACCESS_TOKEN = settings.LINE_CHANNEL_ACCESS_TOKEN
@@ -89,7 +92,7 @@ class Command(BaseCommand):
 
         self.stdout.write('建立送貨員 Rich Menu...')
         delivery_menu_id = create_richmenu('送貨員選單', delivery_areas)
-        upload_image(delivery_menu_id, make_image('richmenu_delivery.png'))
+        upload_image(delivery_menu_id, make_image(BASE_DIR / 'richmenu_delivery.png'))
         self.stdout.write(f'送貨員 Rich Menu ID: {delivery_menu_id}')
 
         # === 一般員工 Rich Menu ===
@@ -102,7 +105,7 @@ class Command(BaseCommand):
 
         self.stdout.write('建立一般員工 Rich Menu...')
         staff_menu_id = create_richmenu('一般員工選單', staff_areas)
-        upload_image(staff_menu_id, make_image('richmenu_staff.png'))
+        upload_image(staff_menu_id, make_image(BASE_DIR / 'richmenu_staff.png'))
         self.stdout.write(f'一般員工 Rich Menu ID: {staff_menu_id}')
 
         # === 綁定給員工 ===
