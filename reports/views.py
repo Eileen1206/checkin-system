@@ -23,6 +23,7 @@ def _build_day(employee, d):
     is_weekend = d.weekday() >= 5
 
     # 判斷狀態
+    today = timezone.localdate()
     if clock_in:
         is_late = False
         if employee.work_start_time:
@@ -30,7 +31,15 @@ def _build_day(employee, d):
             scheduled = datetime.combine(d, employee.work_start_time)
             actual    = datetime.combine(d, ci_time)
             is_late   = (actual - scheduled).total_seconds() > 600  # 超過10分鐘
-        status = 'late' if is_late else 'normal'
+
+        # 異常：已過去的天、有上班但沒下班
+        if d < today and not clock_out:
+            status = 'missing_clockout'
+        # 異常：午休開始但沒結束
+        elif d < today and break_start and not break_end:
+            status = 'missing_breakend'
+        else:
+            status = 'late' if is_late else 'normal'
     elif is_weekend:
         status = 'weekend'
     else:
@@ -88,11 +97,12 @@ def report(request):
                       for d in range(1, days_in_month + 1)]
 
         # 統計
-        worked_days = [d for d in month_data if d['status'] in ('normal', 'late')]
+        worked_days = [d for d in month_data if d['status'] in ('normal', 'late', 'missing_clockout', 'missing_breakend')]
         stats = {
-            'worked':  len(worked_days),
-            'absent':  sum(1 for d in month_data if d['status'] == 'absent'),
-            'late':    sum(1 for d in month_data if d['status'] == 'late'),
+            'worked':    len(worked_days),
+            'absent':    sum(1 for d in month_data if d['status'] == 'absent'),
+            'late':      sum(1 for d in month_data if d['status'] == 'late'),
+            'anomaly':   sum(1 for d in month_data if d['status'] in ('missing_clockout', 'missing_breakend')),
             'total_hours': round(sum(d['hours'] for d in month_data), 1),
         }
 

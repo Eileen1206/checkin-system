@@ -725,6 +725,44 @@ def export_salary_excel(request):
     return response
 
 
+@login_required
+def add_record(request):
+    """管理員補打卡（新增一筆 AttendanceRecord）"""
+    employee_id = request.GET.get('employee_id') or request.POST.get('employee_id')
+    date_str    = request.GET.get('date')        or request.POST.get('date')
+    record_type = request.GET.get('type')        or request.POST.get('record_type')
+    next_url    = request.GET.get('next')        or request.POST.get('next') or '/reports/'
+
+    employee = get_object_or_404(Employee, pk=employee_id)
+
+    VALID_TYPES = dict(AttendanceRecord.RECORD_TYPE_CHOICES)
+
+    if request.method == 'POST':
+        time_str = request.POST.get('time', '').strip()
+        try:
+            naive_dt = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M')
+            aware_dt = timezone.make_aware(naive_dt)
+            AttendanceRecord.objects.create(
+                employee=employee,
+                record_type=record_type,
+                timestamp=aware_dt,
+                source='line',
+                is_valid=True,
+            )
+            messages.success(request, f'已為 {employee} 補打卡：{VALID_TYPES.get(record_type, record_type)} {time_str}')
+        except (ValueError, Exception) as e:
+            messages.error(request, f'補打卡失敗：{e}')
+        return redirect(next_url)
+
+    return render(request, 'attendance/add_record.html', {
+        'employee':    employee,
+        'date_str':    date_str,
+        'record_type': record_type,
+        'type_label':  VALID_TYPES.get(record_type, record_type),
+        'next_url':    next_url,
+    })
+
+
 def rfid_page(request):
     """RFID 打卡待機頁面"""
     return render(request, 'attendance/rfid.html')
