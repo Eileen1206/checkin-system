@@ -1,0 +1,200 @@
+{% extends "attendance/base.html" %}
+{% block title %}出勤報表{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  {# ── 頂部：選員工 + 月份導覽 ── #}
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-xl font-bold text-gray-800">📊 出勤報表</h1>
+
+    <div class="flex items-center gap-2 flex-wrap">
+      {# 員工下拉 #}
+      <form method="get" id="emp-form">
+        <input type="hidden" name="year"  value="{{ year }}">
+        <input type="hidden" name="month" value="{{ month }}">
+        <select name="employee_id" onchange="document.getElementById('emp-form').submit()"
+                class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300">
+          {% for emp in employees %}
+          <option value="{{ emp.pk }}" {% if emp == selected %}selected{% endif %}>
+            {{ emp.employee_id }} {{ emp.user.get_full_name|default:emp.user.username }}
+          </option>
+          {% endfor %}
+        </select>
+      </form>
+
+      {# 月份導覽 #}
+      <div class="flex items-center gap-1 bg-white rounded-xl border border-gray-200 px-1">
+        <a href="?employee_id={{ selected.pk }}&year={{ prev_year }}&month={{ prev_month }}"
+           class="px-3 py-2 text-gray-500 hover:text-gray-800 text-sm">‹</a>
+        <span class="px-2 py-2 text-sm font-semibold text-gray-800 min-w-[80px] text-center">
+          {{ year }}/{{ month|stringformat:"02d" }}
+        </span>
+        <a href="?employee_id={{ selected.pk }}&year={{ next_year }}&month={{ next_month }}"
+           class="px-3 py-2 text-gray-500 hover:text-gray-800 text-sm">›</a>
+      </div>
+    </div>
+  </div>
+
+  {% if selected %}
+
+  {# ── 統計卡片 ── #}
+  <div class="grid grid-cols-4 gap-3">
+    {% with cards=stats %}
+    <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+      <p class="text-2xl font-bold text-emerald-500">{{ stats.worked }}</p>
+      <p class="text-xs text-gray-400 mt-0.5">出勤天數</p>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+      <p class="text-2xl font-bold text-red-400">{{ stats.absent }}</p>
+      <p class="text-xs text-gray-400 mt-0.5">缺勤天數</p>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+      <p class="text-2xl font-bold text-orange-400">{{ stats.late }}</p>
+      <p class="text-xs text-gray-400 mt-0.5">遲到次數</p>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+      <p class="text-2xl font-bold text-blue-400">{{ stats.total_hours }}</p>
+      <p class="text-xs text-gray-400 mt-0.5">總工時（時）</p>
+    </div>
+    {% endwith %}
+  </div>
+
+  {# ── 主體：左邊日誌 + 右邊月曆 ── #}
+  <div class="flex gap-4 items-start">
+
+    {# ──── 左側：日誌清單 ──── #}
+    <div class="flex-1 min-w-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-600 tracking-wide">日 誌</h2>
+      </div>
+      <div class="divide-y divide-gray-50">
+        {% for day in month_data %}
+        <div class="flex items-center px-5 py-2.5 gap-3
+          {% if day.is_today %}bg-blue-50{% elif day.is_weekend %}opacity-40{% endif %}">
+
+          {# 日期 #}
+          <div class="w-14 shrink-0">
+            <span class="text-sm font-bold
+              {% if day.is_today %}text-blue-600
+              {% elif day.weekday == 6 %}text-red-400
+              {% elif day.weekday == 5 %}text-orange-400
+              {% else %}text-gray-700{% endif %}">
+              {{ day.date|date:"d" }}
+            </span>
+            <span class="text-xs text-gray-400 ml-1">
+              {% with wd=day.weekday %}
+                {% if wd == 0 %}一{% elif wd == 1 %}二{% elif wd == 2 %}三
+                {% elif wd == 3 %}四{% elif wd == 4 %}五{% elif wd == 5 %}六
+                {% else %}日{% endif %}
+              {% endwith %}
+            </span>
+          </div>
+
+          {# 狀態色塊 #}
+          {% if day.status == 'normal' %}
+            <span class="w-1.5 h-8 rounded-full bg-emerald-400 shrink-0"></span>
+          {% elif day.status == 'late' %}
+            <span class="w-1.5 h-8 rounded-full bg-orange-400 shrink-0"></span>
+          {% elif day.status == 'absent' %}
+            <span class="w-1.5 h-8 rounded-full bg-red-200 shrink-0"></span>
+          {% else %}
+            <span class="w-1.5 h-8 rounded-full bg-gray-100 shrink-0"></span>
+          {% endif %}
+
+          {# 打卡時間 #}
+          <div class="flex-1 flex items-center gap-2 text-xs text-gray-500">
+            {% if day.clock_in %}
+              <span class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 rounded-lg px-2 py-0.5">
+                ▶ {{ day.clock_in }}
+              </span>
+            {% endif %}
+            {% if day.break_start %}
+              <span class="inline-flex items-center gap-1 bg-yellow-50 text-yellow-600 rounded-lg px-2 py-0.5">
+                ⏸ {{ day.break_start }}
+              </span>
+            {% endif %}
+            {% if day.break_end %}
+              <span class="inline-flex items-center gap-1 bg-yellow-50 text-yellow-600 rounded-lg px-2 py-0.5">
+                ▶ {{ day.break_end }}
+              </span>
+            {% endif %}
+            {% if day.clock_out %}
+              <span class="inline-flex items-center gap-1 bg-blue-50 text-blue-600 rounded-lg px-2 py-0.5">
+                ■ {{ day.clock_out }}
+              </span>
+            {% endif %}
+            {% if not day.clock_in and not day.is_weekend %}
+              <span class="text-gray-300">— 缺勤</span>
+            {% endif %}
+          </div>
+
+          {# 工時 #}
+          <div class="w-12 text-right shrink-0">
+            {% if day.hours %}
+              <span class="text-sm font-semibold text-gray-700">{{ day.hours }}h</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ──── 右側：月曆格子 ──── #}
+    <div class="w-72 shrink-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-600 tracking-wide">月 曆</h2>
+      </div>
+      <div class="p-3">
+
+        {# 星期標題 #}
+        <div class="grid grid-cols-7 mb-1">
+          {% for wd in weekday_names %}
+          <div class="text-center text-xs font-medium
+            {% if forloop.counter == 6 %}text-orange-400
+            {% elif forloop.counter == 7 %}text-red-400
+            {% else %}text-gray-400{% endif %} py-1">
+            {{ wd }}
+          </div>
+          {% endfor %}
+        </div>
+
+        {# 日期格子 #}
+        {% for week in calendar_weeks %}
+        <div class="grid grid-cols-7 gap-0.5 mb-0.5">
+          {% for day in week %}
+          {% if day %}
+            <div class="aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative
+              {% if day.is_today %}ring-2 ring-blue-400 ring-offset-1{% endif %}
+              {% if day.status == 'normal' %}bg-emerald-100 text-emerald-800
+              {% elif day.status == 'late' %}bg-orange-100 text-orange-700
+              {% elif day.status == 'absent' %}bg-red-50 text-red-300
+              {% elif day.status == 'weekend' %}bg-gray-50 text-gray-300
+              {% else %}bg-gray-50 text-gray-300{% endif %}">
+              <span class="font-semibold leading-none">{{ day.date|date:"j" }}</span>
+              {% if day.hours %}
+                <span class="text-[9px] leading-none mt-0.5 opacity-70">{{ day.hours }}h</span>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="aspect-square"></div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endfor %}
+
+        {# 圖例 #}
+        <div class="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2 text-xs text-gray-500">
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-100 inline-block"></span>正常</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-orange-100 inline-block"></span>遲到</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-50 inline-block"></span>缺勤</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-100 inline-block"></span>假日</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
