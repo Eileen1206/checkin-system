@@ -54,7 +54,7 @@
                     <input type="hidden" name="employee_id" value="{{ result.employee.pk }}">
                     <input type="hidden" name="year" value="{{ year }}">
                     <input type="hidden" name="month" value="{{ month }}">
-                    <input type="number" name="amount" placeholder="金額" required
+                    <input type="number" name="amount" placeholder="金額" required min="1" step="1"
                         class="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
                     <input type="text" name="note" placeholder="備註（如電話費）"
                         class="w-40 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
