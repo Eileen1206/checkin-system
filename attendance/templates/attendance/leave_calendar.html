@@ -1,0 +1,155 @@
+{% extends "attendance/base.html" %}
+{% load attendance_extras %}
+{% block title %}請假管理{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">請假管理</h1>
+  <div class="flex items-center gap-3">
+    <a href="?year={{ prev_year }}&month={{ prev_month }}"
+       class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">←</a>
+    <span class="text-base font-semibold text-gray-700">{{ year }} 年 {{ month }} 月</span>
+    <a href="?year={{ next_year }}&month={{ next_month }}"
+       class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">→</a>
+  </div>
+</div>
+
+<div class="flex gap-5">
+
+  <!-- ── 左：月曆 ── -->
+  <div class="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <!-- 星期標題 -->
+    <div class="grid grid-cols-7 border-b border-gray-100">
+      {% for label in weekday_labels %}
+      <div class="py-2 text-center text-xs font-semibold
+        {% if forloop.counter >= 6 %}text-red-400{% else %}text-gray-500{% endif %}">
+        {{ label }}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- 日期格子 -->
+    <div class="grid grid-cols-7">
+      {% for week in weeks %}
+        {% for day in week %}
+        {% if day %}
+          <div class="day-cell min-h-[100px] border-b border-r border-gray-50 p-1.5
+              {% if day == today.day and month == today.month and year == today.year %}bg-amber-50{% endif %}"
+            data-date="{{ year }}-{{ month|stringformat:'02d' }}-{{ day|stringformat:'02d' }}"
+            ondragover="event.preventDefault(); this.classList.add('ring-2','ring-blue-300')"
+            ondragleave="this.classList.remove('ring-2','ring-blue-300')"
+            ondrop="handleDrop(event, this)">
+
+            <div class="text-xs font-medium mb-1
+              {% if day == today.day and month == today.month and year == today.year %}text-amber-600
+              {% else %}text-gray-400{% endif %}">{{ day }}</div>
+
+            <div class="leave-tags flex flex-col gap-0.5"></div>
+          </div>
+        {% else %}
+          <div class="min-h-[100px] bg-gray-50/40 border-b border-r border-gray-50"></div>
+        {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── 右：員工名單 ── -->
+  <div class="w-44 shrink-0">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sticky top-6">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">員工</p>
+      <p class="text-xs text-gray-400 mb-3">拖拉到日期新增請假</p>
+      <div class="flex flex-col gap-2">
+        {% for emp in employees %}
+        <div class="emp-chip px-3 py-2 rounded-xl text-sm font-medium text-white text-center
+                    cursor-grab active:cursor-grabbing select-none shadow-sm"
+             style="background-color: {{ emp.pk|emp_color }};"
+             draggable="true"
+             data-emp-id="{{ emp.pk }}"
+             data-emp-name="{{ emp.user.get_full_name|default:emp.user.username }}"
+             ondragstart="handleDragStart(event, this)">
+          {{ emp.user.get_full_name|default:emp.user.username }}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const EMP_COLORS = {
+  {% for emp in employees %}"{{ emp.pk }}": "{{ emp.pk|emp_color }}",{% endfor %}
+};
+const LEAVE_DATA  = {{ leave_by_day_json }};
+const YEAR        = {{ year }};
+const MONTH       = {{ month }};
+const ADD_URL     = "{% url 'dashboard:leave_add_api' %}";
+const DELETE_BASE = "{% url 'dashboard:leave_delete_api' pk=0 %}".replace('/0/', '/');
+const CSRF_TOKEN  = "{{ csrf_token }}";
+
+// ── 初始渲染 ──
+document.addEventListener('DOMContentLoaded', () => {
+  Object.entries(LEAVE_DATA).forEach(([day, leaves]) => {
+    const dateStr = `${YEAR}-${String(MONTH).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const cell = document.querySelector(`.day-cell[data-date="${dateStr}"]`);
+    if (!cell) return;
+    const container = cell.querySelector('.leave-tags');
+    leaves.forEach(lr => addTag(container, lr.id, lr.emp_id, lr.name));
+  });
+});
+
+// ── Drag ──
+let dragEmpId = null, dragEmpName = null;
+
+function handleDragStart(event, el) {
+  dragEmpId   = el.dataset.empId;
+  dragEmpName = el.dataset.empName;
+  event.dataTransfer.effectAllowed = 'copy';
+}
+
+function handleDrop(event, cell) {
+  event.preventDefault();
+  cell.classList.remove('ring-2','ring-blue-300');
+  if (!dragEmpId) return;
+  const dateStr = cell.dataset.date;
+
+  fetch(ADD_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body: JSON.stringify({ employee_id: dragEmpId, date: dateStr }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok && data.created) {
+      addTag(cell.querySelector('.leave-tags'), data.id, dragEmpId, data.name);
+    }
+  });
+}
+
+// ── 新增標籤 ──
+function addTag(container, leaveId, empId, name) {
+  const color = EMP_COLORS[String(empId)] || '#6b7280';
+  const tag = document.createElement('div');
+  tag.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-white text-xs';
+  tag.style.backgroundColor = color;
+  tag.innerHTML = `
+    <span class="truncate max-w-[68px]">${name}</span>
+    <button onclick="removeTag(${leaveId}, this.parentElement)"
+      class="shrink-0 hover:opacity-70 leading-none ml-0.5">✕</button>`;
+  container.appendChild(tag);
+}
+
+// ── 刪除標籤 ──
+function removeTag(leaveId, tagEl) {
+  fetch(`${DELETE_BASE}${leaveId}/delete/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN },
+  })
+  .then(r => r.json())
+  .then(data => { if (data.ok) tagEl.remove(); });
+}
+</script>
+{% endblock %}

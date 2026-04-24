@@ -67,17 +67,24 @@
                     <a href="{% url 'dashboard:binding_list' %}" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-cream transition-colors">🔗 LINE 綁定</a>
                     <a href="{% url 'dashboard:salary' %}" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-cream transition-colors">💰 薪資計算</a>
                     <a href="{% url 'dashboard:employee_list' %}" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-cream transition-colors">👥 員工列表</a>
+                    <a href="{% url 'dashboard:leave_calendar' %}" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-cream transition-colors">📅 請假管理</a>
                 </div>
             </div>
             {% endif %}
             <span class="text-gray-700 mx-1">|</span>
-            <span class="text-gray-400 px-2">{{ request.user.get_full_name|default:request.user.username }}</span>
-            <form method="post" action="{% url 'logout' %}">
-                {% csrf_token %}
-                <button type="submit" class="px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
-                    登出
+            <div class="dropdown relative">
+                <button class="px-2 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-1">
+                    {{ request.user.get_full_name|default:request.user.username }} <span class="text-xs text-gray-500">▾</span>
                 </button>
-            </form>
+                <div class="dropdown-menu hidden absolute top-full right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[130px] z-50">
+                    <a href="{% url 'password_change' %}" class="block px-4 py-2.5 text-sm text-gray-700 hover:bg-cream transition-colors">🔑 修改密碼</a>
+                    <div class="border-t border-gray-100 my-1"></div>
+                    <form method="post" action="{% url 'logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors">登出</button>
+                    </form>
+                </div>
+            </div>
         </div>
             
         {% endif %}

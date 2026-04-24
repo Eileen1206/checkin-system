@@ -2,8 +2,9 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.shortcuts import get_object_or_404
-from .models import DeliveryTask, AttendanceRecord
+from .models import DeliveryTask, AttendanceRecord, LeaveRecord
 from django.utils import timezone
+from django.core.cache import cache
 from datetime import datetime, timedelta, date as date_type, time
 import requests
 
@@ -191,7 +192,52 @@ def handle_postback(event):
     params = dict(p.split('=') for p in data.split('&'))
     action = params.get('action')
 
-    if action == 'approve_clockout':
+    if action == 'leave_approve':
+        target_uid = params.get('line_user_id')
+        date_str = params.get('date')
+        try:
+            emp = Employee.objects.get(line_user_id=target_uid)
+            leave_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            LeaveRecord.objects.get_or_create(employee=emp, date=leave_date)
+            cache.delete(f'leave_pending_{target_uid}')
+            emp_name = emp.user.get_full_name() or emp.user.username
+            # 通知員工
+            with ApiClient(configuration) as api_client:
+                MessagingApi(api_client).push_message(PushMessageRequest(
+                    to=target_uid,
+                    messages=[TextMessage(text=f'✅ 你的 {leave_date} 請假申請已核准。')]
+                ))
+            reply_msg = TextMessage(text=f'✅ 已核准 {emp_name} {leave_date} 請假')
+        except Employee.DoesNotExist:
+            reply_msg = TextMessage(text='⚠️ 找不到該員工')
+        with ApiClient(configuration) as api_client:
+            MessagingApi(api_client).reply_message(ReplyMessageRequest(
+                reply_token=event.reply_token, messages=[reply_msg]
+            ))
+        return
+
+    elif action == 'leave_deny':
+        target_uid = params.get('line_user_id')
+        date_str = params.get('date')
+        try:
+            emp = Employee.objects.get(line_user_id=target_uid)
+            emp_name = emp.user.get_full_name() or emp.user.username
+            cache.delete(f'leave_pending_{target_uid}')
+            with ApiClient(configuration) as api_client:
+                MessagingApi(api_client).push_message(PushMessageRequest(
+                    to=target_uid,
+                    messages=[TextMessage(text=f'❌ 你的 {date_str} 請假申請已被拒絕，請聯絡管理員。')]
+                ))
+            reply_msg = TextMessage(text=f'已拒絕 {emp_name} {date_str} 請假申請')
+        except Employee.DoesNotExist:
+            reply_msg = TextMessage(text='⚠️ 找不到該員工')
+        with ApiClient(configuration) as api_client:
+            MessagingApi(api_client).reply_message(ReplyMessageRequest(
+                reply_token=event.reply_token, messages=[reply_msg]
+            ))
+        return
+
+    elif action == 'approve_clockout':
         emp_id = params.get('employee_id')
         time_str = params.get('time')
         emp = Employee.objects.get(pk=emp_id)
@@ -313,10 +359,58 @@ def _process_message(text, line_user_id):
     # 情況一：已綁定員工
     try:
         employee = Employee.objects.get(line_user_id=line_user_id)
+
+        # 請假流程：等待日期輸入
+        state_key = f'leave_state_{line_user_id}'
+        if cache.get(state_key) == 'waiting_date':
+            cache.delete(state_key)
+            try:
+                leave_date = datetime.strptime(text, '%Y-%m-%d').date()
+                if leave_date < timezone.localdate():
+                    return [TextMessage(text='⚠️ 請假日期不能是過去的日期，請重新輸入「請假」再試一次。')]
+            except ValueError:
+                return [TextMessage(text='⚠️ 日期格式錯誤，請使用 YYYY-MM-DD（例如 2026-05-01），請重新輸入「請假」再試一次。')]
+
+            # 暫存待審核資訊
+            pending_key = f'leave_pending_{line_user_id}'
+            cache.set(pending_key, str(leave_date), 86400)
+
+            # 通知管理員
+            manager_id = getattr(settings, 'MANAGER_LINE_USER_ID', '')
+            emp_name = employee.user.get_full_name() or employee.user.username
+            if manager_id:
+                from linebot.v3.messaging import TemplateMessage, ButtonsTemplate, PostbackAction
+                template_msg = TemplateMessage(
+                    alt_text=f'{emp_name} 申請請假',
+                    template=ButtonsTemplate(
+                        text=f'📋 請假申請\n員工：{emp_name}\n日期：{leave_date}\n請確認是否核准',
+                        actions=[
+                            PostbackAction(
+                                label='✅ 同意',
+                                data=f'action=leave_approve&line_user_id={line_user_id}&date={leave_date}'
+                            ),
+                            PostbackAction(
+                                label='❌ 拒絕',
+                                data=f'action=leave_deny&line_user_id={line_user_id}&date={leave_date}'
+                            ),
+                        ]
+                    )
+                )
+                with ApiClient(configuration) as api_client:
+                    MessagingApi(api_client).push_message(PushMessageRequest(
+                        to=manager_id,
+                        messages=[template_msg]
+                    ))
+
+            return [TextMessage(text=f'✅ 已送出 {leave_date} 的請假申請，等待管理員審核。')]
+
         if text == '查詢':
             return [TextMessage(text=get_today_summary(employee))]
         elif text == '本月出勤':
             return [TextMessage(text=get_monthly_summary(employee))]
+        elif text == '請假':
+            cache.set(f'leave_state_{line_user_id}', 'waiting_date', 300)
+            return [TextMessage(text='📅 請輸入請假日期（格式：YYYY-MM-DD，例如 2026-05-01）')]
         elif text == '說明':
             return [FlexMessage(
                 alt_text='功能說明',

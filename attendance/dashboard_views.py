@@ -715,6 +715,92 @@ def employee_edit(request, pk):
 
 @login_required
 @require_group('admin')
+def leave_calendar(request):
+    import calendar as cal_module
+    today = timezone.localdate()
+    year  = int(request.GET.get('year',  today.year))
+    month = int(request.GET.get('month', today.month))
+
+    _, days_in_month = cal_module.monthrange(year, month)
+    first_weekday    = cal_module.monthrange(year, month)[0]  # 0=週一
+
+    # 建立週陣列（None 代表空格）
+    weeks, week = [], [None] * first_weekday
+    for day in range(1, days_in_month + 1):
+        week.append(day)
+        if len(week) == 7:
+            weeks.append(week); week = []
+    if week:
+        weeks.append(week + [None] * (7 - len(week)))
+
+    employees = Employee.objects.select_related('user').order_by('employee_id')
+
+    leave_records = LeaveRecord.objects.filter(
+        date__year=year, date__month=month
+    ).select_related('employee__user')
+
+    # 按日期分組
+    leave_by_day = {}
+    for lr in leave_records:
+        leave_by_day.setdefault(lr.date.day, []).append({
+            'id':   lr.pk,
+            'emp_id': lr.employee_id,
+            'name': lr.employee.user.get_full_name() or lr.employee.user.username,
+        })
+
+    # 上個月 / 下個月導覽
+    if month == 1:
+        prev_year, prev_month = year - 1, 12
+    else:
+        prev_year, prev_month = year, month - 1
+    if month == 12:
+        next_year, next_month = year + 1, 1
+    else:
+        next_year, next_month = year, month + 1
+
+    return render(request, 'attendance/leave_calendar.html', {
+        'year': year, 'month': month,
+        'weeks': weeks,
+        'employees': employees,
+        'leave_by_day': leave_by_day,
+        'leave_by_day_json': json.dumps(leave_by_day),
+        'today': today,
+        'prev_year': prev_year, 'prev_month': prev_month,
+        'next_year': next_year, 'next_month': next_month,
+        'weekday_labels': ['一','二','三','四','五','六','日'],
+    })
+
+
+@login_required
+@require_group('admin')
+def leave_add_api(request):
+    """AJAX：新增請假紀錄"""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+    data = json.loads(request.body)
+    try:
+        emp = Employee.objects.get(pk=data['employee_id'])
+        leave_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+        lr, created = LeaveRecord.objects.get_or_create(employee=emp, date=leave_date)
+        return JsonResponse({
+            'ok': True, 'id': lr.pk, 'created': created,
+            'name': emp.user.get_full_name() or emp.user.username,
+        })
+    except (Employee.DoesNotExist, ValueError, KeyError) as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_group('admin')
+def leave_delete_api(request, pk):
+    """AJAX：刪除請假紀錄"""
+    lr = get_object_or_404(LeaveRecord, pk=pk)
+    lr.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_group('admin')
 def leave_add(request, pk):
     emp = get_object_or_404(Employee, pk=pk)
     if request.method == 'POST':

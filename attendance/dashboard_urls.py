@@ -27,4 +27,7 @@ urlpatterns = [
     path('attendance/add-record/', dashboard_views.add_record, name='add_record'),
     path('employees/<int:pk>/leave/add/', dashboard_views.leave_add, name='leave_add'),
     path('leave/<int:pk>/delete/', dashboard_views.leave_delete, name='leave_delete'),
+    path('leave/', dashboard_views.leave_calendar, name='leave_calendar'),
+    path('leave/api/add/', dashboard_views.leave_add_api, name='leave_add_api'),
+    path('leave/api/<int:pk>/delete/', dashboard_views.leave_delete_api, name='leave_delete_api'),
 ]
