@@ -87,7 +87,9 @@ const LEAVE_DATA  = {{ leave_by_day_json }};
 const YEAR        = {{ year }};
 const MONTH       = {{ month }};
 const ADD_URL     = "{% url 'dashboard:leave_add_api' %}";
-const DELETE_BASE = "{% url 'dashboard:leave_delete_api' pk=0 %}".replace('/0/', '/');
+function getDeleteUrl(pk) {
+  return "{% url 'dashboard:leave_delete_api' pk=0 %}".replace('/0/', `/${pk}/`);
+}
 const CSRF_TOKEN  = "{{ csrf_token }}";
 
 // ── 初始渲染 ──
@@ -144,7 +146,7 @@ function addTag(container, leaveId, empId, name) {
 
 // ── 刪除標籤 ──
 function removeTag(leaveId, tagEl) {
-  fetch(`${DELETE_BASE}${leaveId}/delete/`, {
+  fetch(getDeleteUrl(leaveId), {
     method: 'POST',
     headers: { 'X-CSRFToken': CSRF_TOKEN },
   })
