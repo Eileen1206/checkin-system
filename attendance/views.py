@@ -10,7 +10,7 @@ import requests
 
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, FollowEvent, PostbackEvent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessageContent, FollowEvent, PostbackEvent
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -23,7 +23,20 @@ from linebot.v3.messaging import (
     PushMessageRequest,
     FlexMessage,
     FlexContainer,
+    QuickReply,
+    QuickReplyItem,
+    LocationAction,
 )
+import math
+
+def _haversine_meters(lat1, lng1, lat2, lng2):
+    """計算兩座標距離（公尺）"""
+    R = 6371000
+    p = math.pi / 180
+    a = (math.sin((lat2 - lat1) * p / 2) ** 2 +
+         math.cos(lat1 * p) * math.cos(lat2 * p) *
+         math.sin((lng2 - lng1) * p / 2) ** 2)
+    return 2 * R * math.asin(math.sqrt(a))
 
 
 # 初始化 LINE SDK（用 settings.py 裡的憑證）
@@ -303,11 +316,21 @@ def handle_postback(event):
 
             if task.status == 'completed':
                 reply_msg = TextMessage(text='這站已經完成過了！')
-            else:
+            elif not task.customer or not task.customer.lat or not task.customer.lng:
+                # 客戶沒有座標，直接完成（不驗證）
                 task.status = 'completed'
                 task.completed_at = timezone.localtime()
                 task.save()
                 reply_msg = TextMessage(text=f'✅ 第 {task.order} 站（{task.customer_name}）完成！')
+            else:
+                # 有座標 → 要求分享位置驗證
+                cache.set(f'delivery_loc_{line_user_id}', task_id, 300)  # 5分鐘內分享
+                reply_msg = TextMessage(
+                    text=f'📍 請分享你的位置，確認已到達第 {task.order} 站（{task.customer_name}）',
+                    quick_reply=QuickReply(items=[
+                        QuickReplyItem(action=LocationAction(label='📍 分享位置'))
+                    ])
+                )
 
         elif action == 'delivery_clockout_request':
             wt = employee.work_end_time
@@ -346,6 +369,53 @@ def handle_postback(event):
                     messages=[reply_msg]
                 )
             )
+
+
+# ──────────────────────────────────────────
+# 位置訊息事件（送貨到站驗證）
+# ──────────────────────────────────────────
+
+@handler.add(MessageEvent, message=LocationMessageContent)
+def handle_location(event):
+    from attendance.models import Employee
+    line_user_id = event.source.user_id
+    lat = event.message.latitude
+    lng = event.message.longitude
+
+    pending_key = f'delivery_loc_{line_user_id}'
+    task_id = cache.get(pending_key)
+
+    if not task_id:
+        # 沒有待驗證的送貨任務，忽略
+        return
+
+    try:
+        task = DeliveryTask.objects.select_related('customer').get(pk=task_id)
+    except DeliveryTask.DoesNotExist:
+        return
+
+    cust = task.customer
+    if not cust or not cust.lat or not cust.lng:
+        return
+
+    distance = _haversine_meters(lat, lng, float(cust.lat), float(cust.lng))
+    ALLOWED_METERS = 500  # 送貨允許 500 公尺誤差
+
+    with ApiClient(configuration) as api_client:
+        api = MessagingApi(api_client)
+        if distance <= ALLOWED_METERS:
+            task.status = 'completed'
+            task.completed_at = timezone.localtime()
+            task.save()
+            cache.delete(pending_key)
+            msg = TextMessage(text=f'✅ 位置驗證通過（距客戶 {int(distance)} 公尺）\n第 {task.order} 站（{task.customer_name}）完成！')
+        else:
+            msg = TextMessage(text=f'❌ 位置不符，距客戶 {int(distance)} 公尺（需在 {ALLOWED_METERS} 公尺內）\n請到達客戶位置後再試一次。')
+
+        api.reply_message(ReplyMessageRequest(
+            reply_token=event.reply_token,
+            messages=[msg]
+        ))
 
 
 # ──────────────────────────────────────────
