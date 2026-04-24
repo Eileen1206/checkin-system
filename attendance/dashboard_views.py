@@ -288,9 +288,9 @@ def delivery_push(request):
                     "style": "primary",
                     "color": "#27ACB2",
                     "action": {
-                        "type": "postback",
+                        "type": "uri",
                         "label": "✅ 完成",
-                        "data": f"action=delivery_done&task_id={task.pk}"
+                        "uri": f"https://liff.line.me/{settings.LIFF_DELIVERY_ID}?task_id={task.pk}"
                     }
                 
                 }]

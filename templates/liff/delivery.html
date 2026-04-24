@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>送貨到站確認</title>
+  <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f0e8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
+    .subtitle { font-size: 14px; color: #888; margin-bottom: 24px; }
+    .status {
+      font-size: 15px;
+      color: #555;
+      background: #f5f0e8;
+      border-radius: 12px;
+      padding: 16px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .status.success { background: #f0fdf4; color: #166534; }
+    .status.error   { background: #fef2f2; color: #991b1b; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #1a1a1a;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div id="content">
+    <div class="spinner"></div>
+    <div class="title">位置驗證中</div>
+    <div class="subtitle">正在取得您的 GPS 位置…</div>
+  </div>
+</div>
+
+<script>
+const LIFF_ID    = "{{ liff_id }}";
+const COMPLETE_URL = "/liff/delivery/complete/";
+
+async function main() {
+  const params  = new URLSearchParams(location.search);
+  const task_id = params.get('task_id');
+
+  if (!task_id) {
+    showError('缺少任務參數，請重新點擊送貨訊息');
+    return;
+  }
+
+  // 初始化 LIFF
+  await liff.init({ liffId: LIFF_ID });
+  if (!liff.isLoggedIn()) { liff.login(); return; }
+
+  const profile = await liff.getProfile();
+  const line_user_id = profile.userId;
+
+  // 取得 GPS
+  let pos;
+  try {
+    pos = await new Promise((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+    );
+  } catch (e) {
+    showError('無法取得 GPS 位置\n請確認已開啟位置權限');
+    return;
+  }
+
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+
+  // 送出驗證
+  const res  = await fetch(COMPLETE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_id, lat, lng, line_user_id }),
+  });
+  const data = await res.json();
+
+  if (data.ok) {
+    showSuccess(data.message);
+    setTimeout(() => liff.closeWindow(), 3000);
+  } else {
+    showError(data.error);
+  }
+}
+
+function showSuccess(msg) {
+  document.getElementById('content').innerHTML = `
+    <div class="icon">✅</div>
+    <div class="status success">${msg}</div>
+    <div class="subtitle" style="margin-top:16px">視窗將自動關閉…</div>`;
+}
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `
+    <div class="icon">❌</div>
+    <div class="status error">${msg}</div>`;
+}
+
+main().catch(e => showError('發生錯誤：' + e.message));
+</script>
+</body>
+</html>
