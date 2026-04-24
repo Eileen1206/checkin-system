@@ -109,7 +109,7 @@
 {% block extra_scripts %}
 {% if has_map %}
 <script>
-const POINTS = {{ map_points_json }};
+const POINTS = {{ map_points_json|safe }};
 
 // 顏色對應
 const COLOR = { completed: '#22c55e', arrived: '#f59e0b', pending: '#f87171' };
