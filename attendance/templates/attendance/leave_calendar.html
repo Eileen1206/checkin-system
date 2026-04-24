@@ -135,10 +135,11 @@ function handleDrop(event, cell) {
 function addTag(container, leaveId, empId, name) {
   const color = EMP_COLORS[String(empId)] || '#6b7280';
   const tag = document.createElement('div');
-  tag.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-white text-xs';
+  tag.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-white text-xs w-full';
   tag.style.backgroundColor = color;
+  tag.title = name;   // hover 顯示全名
   tag.innerHTML = `
-    <span class="truncate max-w-[68px]">${name}</span>
+    <span class="truncate min-w-0 flex-1">${name}</span>
     <button onclick="removeTag(${leaveId}, this.parentElement)"
       class="shrink-0 hover:opacity-70 leading-none ml-0.5">✕</button>`;
   container.appendChild(tag);

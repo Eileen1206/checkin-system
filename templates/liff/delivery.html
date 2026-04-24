@@ -64,6 +64,10 @@ const LIFF_ID    = "{{ liff_id }}";
 const COMPLETE_URL = "/liff/delivery/complete/";
 
 async function main() {
+  // 先初始化 LIFF，init 完成後 SDK 才會把 liff.state 還原成原始 query string
+  await liff.init({ liffId: LIFF_ID });
+  if (!liff.isLoggedIn()) { liff.login(); return; }
+
   const params  = new URLSearchParams(location.search);
   const task_id = params.get('task_id');
 
@@ -71,10 +75,6 @@ async function main() {
     showError('缺少任務參數，請重新點擊送貨訊息');
     return;
   }
-
-  // 初始化 LIFF
-  await liff.init({ liffId: LIFF_ID });
-  if (!liff.isLoggedIn()) { liff.login(); return; }
 
   const profile = await liff.getProfile();
   const line_user_id = profile.userId;
