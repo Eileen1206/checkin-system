@@ -3,7 +3,7 @@ import requests
 from plyer import notification
 import threading
 
-DJANGO_URL = 'http://127.0.0.1:8000/dashboard/rfid/checkin/'
+DJANGO_URL = 'https://checkin-system-production-4544.up.railway.app/dashboard/rfid/checkin/'
 CSRF_TOKEN = 'dummy'  # 待處理
 
 buffer = []
@@ -34,7 +34,7 @@ def send_checkin(rfid_uid):
     try:
         # 先取得 CSRF token
         session = requests.Session()
-        session.get('http://127.0.0.1:8000/dashboard/rfid/')
+        session.get('https://checkin-system-production-4544.up.railway.app/dashboard/rfid/')
         csrf = session.cookies.get('csrftoken', '')
 
         resp = session.post(DJANGO_URL, data={

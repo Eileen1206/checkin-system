@@ -1,1 +1,0 @@
-CreateObject("Wscript.Shell").Run "python """ & CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName) & "\launcher.py""", 0, False
