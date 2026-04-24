@@ -25,4 +25,6 @@ urlpatterns = [
     path('rfid/', dashboard_views.rfid_page, name='rfid_page'),
     path('rfid/checkin/', dashboard_views.rfid_checkin, name='rfid_checkin'),
     path('attendance/add-record/', dashboard_views.add_record, name='add_record'),
+    path('employees/<int:pk>/leave/add/', dashboard_views.leave_add, name='leave_add'),
+    path('leave/<int:pk>/delete/', dashboard_views.leave_delete, name='leave_delete'),
 ]

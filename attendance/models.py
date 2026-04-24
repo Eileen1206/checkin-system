@@ -25,7 +25,13 @@ class Employee(models.Model):
     health_insurance_amount = models.DecimalField('健保自負月額', max_digits=8, decimal_places=2, null=True, blank=True)
     work_start_time = models.TimeField('上班時間', null=True, blank=True)
     work_end_time = models.TimeField('下班時間', null=True, blank=True)
-
+    work_days = models.CharField(
+        '工作日（0=週一…6=週日，逗號分隔）',
+        max_length=20,
+        default='0,1,2,3,4',
+        help_text='例：0,1,2,3,4 代表週一至週五',
+    )
+    remind_enabled = models.BooleanField('啟用打卡提醒', default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -130,6 +136,22 @@ class MonthlyAllowance(models.Model):
     def __str__(self):
         return f"{self.employee} - {self.year}/{self.month:02d} +${self.amount}"
 
+
+
+class LeaveRecord(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_records', verbose_name='員工')
+    date = models.DateField('請假日期')
+    reason = models.CharField('原因', max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '請假紀錄'
+        verbose_name_plural = '請假紀錄'
+        unique_together = [['employee', 'date']]
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.employee} - {self.date}"
 
 
 class AuditLog(models.Model):

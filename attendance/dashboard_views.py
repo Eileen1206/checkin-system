@@ -12,7 +12,7 @@ import openpyxl
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
-from .models import Employee, AttendanceRecord, BindingToken, Customer, DeliveryTask, MonthlyAllowance, User
+from .models import Employee, AttendanceRecord, BindingToken, Customer, DeliveryTask, MonthlyAllowance, LeaveRecord, User
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -668,6 +668,11 @@ def employee_add(request):
         return redirect('dashboard:employee_list')
     return render(request, 'attendance/employee_add.html')
 
+WORK_DAY_CHOICES = [
+    (0, '週一'), (1, '週二'), (2, '週三'), (3, '週四'),
+    (4, '週五'), (5, '週六'), (6, '週日'),
+]
+
 @login_required
 @require_group('admin', 'finance')
 def employee_edit(request, pk):
@@ -690,12 +695,52 @@ def employee_edit(request, pk):
         emp.fuel_daily_allowance = request.POST.get('fuel_daily_allowance') or 0
         emp.labor_insurance_amount = request.POST.get('labor_insurance_amount') or None
         emp.health_insurance_amount = request.POST.get('health_insurance_amount') or None
+        emp.remind_enabled = request.POST.get('remind_enabled') == 'on'
+        selected_days = request.POST.getlist('work_days')
+        emp.work_days = ','.join(selected_days) if selected_days else ''
         emp.save()
 
         return redirect('dashboard:employee_list')
 
-    return render(request, 'attendance/employee_edit.html', {'emp': emp})
+    emp_work_days = [d.strip() for d in emp.work_days.split(',') if d.strip()]
+    leave_records = emp.leave_records.all()
+    return render(request, 'attendance/employee_edit.html', {
+        'emp': emp,
+        'work_day_choices': WORK_DAY_CHOICES,
+        'emp_work_days': emp_work_days,
+        'leave_records': leave_records,
+    })
 
+
+
+@login_required
+@require_group('admin')
+def leave_add(request, pk):
+    emp = get_object_or_404(Employee, pk=pk)
+    if request.method == 'POST':
+        date_str = request.POST.get('date', '')
+        reason = request.POST.get('reason', '').strip()
+        try:
+            leave_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            messages.error(request, '日期格式錯誤')
+            return redirect('dashboard:employee_edit', pk=pk)
+        LeaveRecord.objects.get_or_create(
+            employee=emp,
+            date=leave_date,
+            defaults={'reason': reason},
+        )
+    return redirect('dashboard:employee_edit', pk=pk)
+
+
+@login_required
+@require_group('admin')
+def leave_delete(request, pk):
+    lr = get_object_or_404(LeaveRecord, pk=pk)
+    emp_pk = lr.employee_id
+    lr.delete()
+    next_url = request.GET.get('next') or reverse('dashboard:employee_edit', args=[emp_pk])
+    return redirect(next_url)
 
 
 @login_required
