@@ -504,17 +504,35 @@ def delivery_today(request):
     date = request.GET.get('date', str(timezone.localdate()))
     employee_id = request.GET.get('employee_id', '')
 
-    tasks = DeliveryTask.objects.filter(date=date).select_related('employee__user').order_by('employee', 'order')
+    tasks = DeliveryTask.objects.filter(date=date).select_related('employee__user', 'customer').order_by('employee', 'order')
     if employee_id:
         tasks = tasks.filter(employee_id=employee_id)
 
     delivery_employees = Employee.objects.filter(is_delivery=True).select_related('user')
+
+    # 地圖用的 JSON 資料（只取有座標的站）
+    map_points = []
+    for t in tasks:
+        lat = float(t.customer.lat) if t.customer and t.customer.lat else None
+        lng = float(t.customer.lng) if t.customer and t.customer.lng else None
+        if lat and lng:
+            map_points.append({
+                'order':    t.order,
+                'name':     t.customer_name,
+                'address':  t.address,
+                'status':   t.status,
+                'lat':      lat,
+                'lng':      lng,
+                'employee': t.employee.user.get_full_name() or t.employee.user.username,
+            })
 
     return render(request, 'attendance/delivery_today.html', {
         'tasks': tasks,
         'date': date,
         'delivery_employees': delivery_employees,
         'selected_employee_id': employee_id,
+        'map_points_json': json.dumps(map_points, ensure_ascii=False),
+        'has_map': len(map_points) > 0,
     })
 
 

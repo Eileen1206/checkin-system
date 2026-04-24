@@ -1,5 +1,11 @@
 {% extends "attendance/base.html" %}
 {% block title %}今日送貨狀況{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
 {% block content %}
 
 <!-- 標題 + 日期查詢 -->
@@ -20,6 +26,21 @@
     <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">查詢</button>
   </form>
 </div>
+
+{% if has_map %}
+<!-- 地圖 -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+  <div class="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+    <span class="text-sm font-semibold text-gray-700">🗺️ 送貨路線</span>
+    <div class="flex gap-4 text-xs text-gray-500">
+      <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500 mr-1"></span>已完成</span>
+      <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 mr-1"></span>進行中</span>
+      <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-400 mr-1"></span>待出發</span>
+    </div>
+  </div>
+  <div id="delivery-map" style="height: 400px;"></div>
+</div>
+{% endif %}
 
 <!-- 待出發 -->
 <h2 class="text-sm font-semibold text-gray-700 mb-2">📦 待出發</h2>
@@ -46,9 +67,7 @@
         </tr>
         {% endif %}
       {% empty %}
-      <tr>
-        <td colspan="4" class="px-5 py-10 text-center text-gray-400">今日尚無送貨任務</td>
-      </tr>
+      <tr><td colspan="4" class="px-5 py-10 text-center text-gray-400">今日尚無送貨任務</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -79,12 +98,72 @@
         </tr>
         {% endif %}
       {% empty %}
-      <tr>
-        <td colspan="4" class="px-5 py-10 text-center text-gray-400">今日尚無送貨任務</td>
-      </tr>
+      <tr><td colspan="4" class="px-5 py-10 text-center text-gray-400">尚無完成紀錄</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
+{% endblock %}
+
+{% block extra_scripts %}
+{% if has_map %}
+<script>
+const POINTS = {{ map_points_json }};
+
+// 顏色對應
+const COLOR = { completed: '#22c55e', arrived: '#f59e0b', pending: '#f87171' };
+
+const map = L.map('delivery-map');
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap'
+}).addTo(map);
+
+const latlngs = [];
+
+POINTS.forEach(p => {
+  const color = COLOR[p.status] || '#6b7280';
+
+  // 圓形 marker（帶站次數字）
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="
+      background:${color}; color:#fff; border-radius:50%;
+      width:28px; height:28px; display:flex; align-items:center;
+      justify-content:center; font-size:12px; font-weight:bold;
+      border:2px solid white; box-shadow:0 2px 4px rgba(0,0,0,.3)">
+      ${p.order}
+    </div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+
+  const statusLabel = { completed:'已完成', arrived:'已到達', pending:'待出發' }[p.status] || p.status;
+
+  L.marker([p.lat, p.lng], { icon })
+    .addTo(map)
+    .bindPopup(`
+      <b>第 ${p.order} 站</b><br>
+      ${p.name}<br>
+      <span style="font-size:11px;color:#666">${p.address}</span><br>
+      <span style="font-size:11px;color:${color}">● ${statusLabel}</span>
+    `);
+
+  latlngs.push([p.lat, p.lng]);
+});
+
+// 路線連線
+if (latlngs.length > 1) {
+  L.polyline(latlngs, { color: '#6b7280', weight: 2, dashArray: '6,4' }).addTo(map);
+}
+
+// 自動縮放到全部點
+if (latlngs.length > 0) {
+  map.fitBounds(latlngs, { padding: [40, 40] });
+}
+
+// 每 30 秒重新整理頁面（更新狀態）
+setTimeout(() => location.reload(), 30000);
+</script>
+{% endif %}
 {% endblock %}
