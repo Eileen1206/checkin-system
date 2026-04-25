@@ -35,12 +35,9 @@
         {% if day %}
           <div class="day-cell min-h-[100px] border-b border-r border-gray-50 p-1.5
               {% if day == today.day and month == today.month and year == today.year %}bg-amber-50{% endif %}"
-            data-date="{{ year }}-{{ month|stringformat:'02d' }}-{{ day|stringformat:'02d' }}"
-            ondragover="event.preventDefault(); this.classList.add('ring-2','ring-blue-300')"
-            ondragleave="this.classList.remove('ring-2','ring-blue-300')"
-            ondrop="handleDrop(event, this)">
+            data-date="{{ year }}-{{ month|stringformat:'02d' }}-{{ day|stringformat:'02d' }}">
 
-            <div class="text-xs font-medium mb-1
+            <div class="text-xs font-medium mb-1 pointer-events-none
               {% if day == today.day and month == today.month and year == today.year %}text-amber-600
               {% else %}text-gray-400{% endif %}">{{ day }}</div>
 
@@ -94,12 +91,44 @@ const CSRF_TOKEN  = "{{ csrf_token }}";
 
 // ── 初始渲染 ──
 document.addEventListener('DOMContentLoaded', () => {
+  // 渲染已有的請假資料
   Object.entries(LEAVE_DATA).forEach(([day, leaves]) => {
     const dateStr = `${YEAR}-${String(MONTH).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const cell = document.querySelector(`.day-cell[data-date="${dateStr}"]`);
     if (!cell) return;
     const container = cell.querySelector('.leave-tags');
     leaves.forEach(lr => addTag(container, lr.id, lr.emp_id, lr.name));
+  });
+
+  // 用 JS 統一綁定所有格子的拖放事件（避免子元素擋住 inline ondrop）
+  document.querySelectorAll('.day-cell').forEach(cell => {
+    cell.addEventListener('dragover', e => {
+      e.preventDefault();
+      cell.classList.add('ring-2', 'ring-blue-300');
+    });
+    cell.addEventListener('dragleave', e => {
+      // 只有真正離開格子才移除藍框（移到子元素不算離開）
+      if (!cell.contains(e.relatedTarget)) {
+        cell.classList.remove('ring-2', 'ring-blue-300');
+      }
+    });
+    cell.addEventListener('drop', e => {
+      e.preventDefault();
+      cell.classList.remove('ring-2', 'ring-blue-300');
+      if (!dragEmpId) return;
+
+      fetch(ADD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({ employee_id: dragEmpId, date: cell.dataset.date }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.created) {
+          addTag(cell.querySelector('.leave-tags'), data.id, dragEmpId, dragEmpName);
+        }
+      });
+    });
   });
 });
 
@@ -110,25 +139,6 @@ function handleDragStart(event, el) {
   dragEmpId   = el.dataset.empId;
   dragEmpName = el.dataset.empName;
   event.dataTransfer.effectAllowed = 'copy';
-}
-
-function handleDrop(event, cell) {
-  event.preventDefault();
-  cell.classList.remove('ring-2','ring-blue-300');
-  if (!dragEmpId) return;
-  const dateStr = cell.dataset.date;
-
-  fetch(ADD_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-    body: JSON.stringify({ employee_id: dragEmpId, date: dateStr }),
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.ok && data.created) {
-      addTag(cell.querySelector('.leave-tags'), data.id, dragEmpId, data.name);
-    }
-  });
 }
 
 // ── 新增標籤 ──
