@@ -80,7 +80,7 @@
 const EMP_COLORS = {
   {% for emp in employees %}"{{ emp.pk }}": "{{ emp.pk|emp_color }}",{% endfor %}
 };
-const LEAVE_DATA  = {{ leave_by_day_json }};
+const LEAVE_DATA  = {{ leave_by_day_json|safe }};
 const YEAR        = {{ year }};
 const MONTH       = {{ month }};
 const ADD_URL     = "{% url 'dashboard:leave_add_api' %}";
