@@ -207,20 +207,25 @@ def handle_postback(event):
 
     if action == 'leave_approve':
         target_uid = params.get('line_user_id')
-        date_str = params.get('date')
+        # 支援新版 dates（多日）與舊版 date（單日）
+        dates_str = params.get('dates') or params.get('date', '')
         try:
             emp = Employee.objects.get(line_user_id=target_uid)
-            leave_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-            LeaveRecord.objects.get_or_create(employee=emp, date=leave_date)
-            cache.delete(f'leave_pending_{target_uid}')
             emp_name = emp.user.get_full_name() or emp.user.username
-            # 通知員工
+            date_list = [d.strip() for d in dates_str.split(',') if d.strip()]
+            approved = []
+            for d in date_list:
+                leave_date = datetime.strptime(d, '%Y-%m-%d').date()
+                LeaveRecord.objects.get_or_create(employee=emp, date=leave_date)
+                approved.append(str(leave_date))
+            cache.delete(f'leave_pending_{target_uid}')
+            dates_display = '\n'.join(approved)
             with ApiClient(configuration) as api_client:
                 MessagingApi(api_client).push_message(PushMessageRequest(
                     to=target_uid,
-                    messages=[TextMessage(text=f'✅ 你的 {leave_date} 請假申請已核准。')]
+                    messages=[TextMessage(text=f'✅ 以下請假申請已核准：\n{dates_display}')]
                 ))
-            reply_msg = TextMessage(text=f'✅ 已核准 {emp_name} {leave_date} 請假')
+            reply_msg = TextMessage(text=f'✅ 已核准 {emp_name} 請假：\n{dates_display}')
         except Employee.DoesNotExist:
             reply_msg = TextMessage(text='⚠️ 找不到該員工')
         with ApiClient(configuration) as api_client:
@@ -231,17 +236,18 @@ def handle_postback(event):
 
     elif action == 'leave_deny':
         target_uid = params.get('line_user_id')
-        date_str = params.get('date')
+        dates_str = params.get('dates') or params.get('date', '')
         try:
             emp = Employee.objects.get(line_user_id=target_uid)
             emp_name = emp.user.get_full_name() or emp.user.username
             cache.delete(f'leave_pending_{target_uid}')
+            dates_display = '\n'.join(d.strip() for d in dates_str.split(',') if d.strip())
             with ApiClient(configuration) as api_client:
                 MessagingApi(api_client).push_message(PushMessageRequest(
                     to=target_uid,
-                    messages=[TextMessage(text=f'❌ 你的 {date_str} 請假申請已被拒絕，請聯絡管理員。')]
+                    messages=[TextMessage(text=f'❌ 以下請假申請已被拒絕，請聯絡管理員：\n{dates_display}')]
                 ))
-            reply_msg = TextMessage(text=f'已拒絕 {emp_name} {date_str} 請假申請')
+            reply_msg = TextMessage(text=f'已拒絕 {emp_name} 請假申請：\n{dates_display}')
         except Employee.DoesNotExist:
             reply_msg = TextMessage(text='⚠️ 找不到該員工')
         with ApiClient(configuration) as api_client:
@@ -434,34 +440,60 @@ def _process_message(text, line_user_id):
         state_key = f'leave_state_{line_user_id}'
         if cache.get(state_key) == 'waiting_date':
             cache.delete(state_key)
-            try:
-                leave_date = datetime.strptime(text, '%Y-%m-%d').date()
-                if leave_date < timezone.localdate():
-                    return [TextMessage(text='⚠️ 請假日期不能是過去的日期，請重新輸入「請假」再試一次。')]
-            except ValueError:
-                return [TextMessage(text='⚠️ 日期格式錯誤，請使用 YYYY-MM-DD（例如 2026-05-01），請重新輸入「請假」再試一次。')]
+
+            # 解析多個日期（空格、逗號、頓號皆可）
+            import re
+            raw_parts = re.split(r'[,\s、，]+', text.strip())
+            today = timezone.localdate()
+            valid_dates, errors = [], []
+
+            for part in raw_parts:
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    d = datetime.strptime(part, '%Y-%m-%d').date()
+                    if d < today:
+                        errors.append(f'{part}（不能是過去日期）')
+                    elif d in valid_dates:
+                        pass  # 重複忽略
+                    else:
+                        valid_dates.append(d)
+                except ValueError:
+                    errors.append(f'{part}（格式錯誤）')
+
+            if errors:
+                error_list = '\n'.join(errors)
+                return [TextMessage(text=f'⚠️ 以下日期有問題：\n{error_list}\n\n請重新輸入「請假」再試一次。')]
+            if not valid_dates:
+                return [TextMessage(text='⚠️ 沒有有效日期，請重新輸入「請假」再試一次。')]
+
+            valid_dates.sort()
+            dates_str     = ','.join(str(d) for d in valid_dates)   # 存 cache / postback 用
+            dates_display = '\n'.join(str(d) for d in valid_dates)  # 顯示用
 
             # 暫存待審核資訊
-            pending_key = f'leave_pending_{line_user_id}'
-            cache.set(pending_key, str(leave_date), 86400)
+            cache.set(f'leave_pending_{line_user_id}', dates_str, 86400)
 
             # 通知管理員
             manager_id = getattr(settings, 'MANAGER_LINE_USER_ID', '')
             emp_name = employee.user.get_full_name() or employee.user.username
             if manager_id:
                 from linebot.v3.messaging import TemplateMessage, ButtonsTemplate, PostbackAction
+                # ButtonsTemplate text 上限 160 字
+                preview = dates_display if len(dates_display) <= 80 else dates_display[:77] + '…'
                 template_msg = TemplateMessage(
                     alt_text=f'{emp_name} 申請請假',
                     template=ButtonsTemplate(
-                        text=f'📋 請假申請\n員工：{emp_name}\n日期：{leave_date}\n請確認是否核准',
+                        text=f'📋 請假申請\n員工：{emp_name}\n日期：\n{preview}',
                         actions=[
                             PostbackAction(
                                 label='✅ 同意',
-                                data=f'action=leave_approve&line_user_id={line_user_id}&date={leave_date}'
+                                data=f'action=leave_approve&line_user_id={line_user_id}&dates={dates_str}'
                             ),
                             PostbackAction(
                                 label='❌ 拒絕',
-                                data=f'action=leave_deny&line_user_id={line_user_id}&date={leave_date}'
+                                data=f'action=leave_deny&line_user_id={line_user_id}&dates={dates_str}'
                             ),
                         ]
                     )
@@ -472,7 +504,7 @@ def _process_message(text, line_user_id):
                         messages=[template_msg]
                     ))
 
-            return [TextMessage(text=f'✅ 已送出 {leave_date} 的請假申請，等待管理員審核。')]
+            return [TextMessage(text=f'✅ 已送出以下日期的請假申請，等待管理員審核：\n{dates_display}')]
 
         if text == '查詢':
             return [TextMessage(text=get_today_summary(employee))]
@@ -480,7 +512,7 @@ def _process_message(text, line_user_id):
             return [TextMessage(text=get_monthly_summary(employee))]
         elif text == '請假':
             cache.set(f'leave_state_{line_user_id}', 'waiting_date', 300)
-            return [TextMessage(text='📅 請輸入請假日期（格式：YYYY-MM-DD，例如 2026-05-01）')]
+            return [TextMessage(text='📅 請輸入請假日期，可一次輸入多個（用空格或逗號分隔）\n\n例如單天：\n2026-05-01\n\n例如多天：\n2026-05-01 2026-05-02 2026-05-03')]
         elif text == '說明':
             return [FlexMessage(
                 alt_text='功能說明',
