@@ -115,7 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cell.addEventListener('drop', e => {
       e.preventDefault();
       cell.classList.remove('ring-2', 'ring-blue-300');
-      if (!dragEmpId) return;
+      console.log('[drop] dragEmpId:', dragEmpId, 'date:', cell.dataset.date);
+      if (!dragEmpId) { console.warn('[drop] dragEmpId 是空的，取消'); return; }
 
       fetch(ADD_URL, {
         method: 'POST',
@@ -124,14 +125,17 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       .then(r => r.json())
       .then(data => {
+        console.log('[drop] API 回應:', data);
         if (data.ok) {
           const container = cell.querySelector('.leave-tags');
-          // 標籤不存在才新增（避免重複顯示）
           if (!container.querySelector(`[data-leave-id="${data.id}"]`)) {
             addTag(container, data.id, dragEmpId, dragEmpName);
           }
+        } else {
+          console.error('[drop] API 錯誤:', data.error);
         }
-      });
+      })
+      .catch(err => console.error('[drop] fetch 失敗:', err));
     });
   });
 });
