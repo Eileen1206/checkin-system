@@ -1,0 +1,108 @@
+{% extends "attendance/base.html" %}
+{% block title %}請假審核{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">請假審核</h1>
+  <a href="{% url 'dashboard:leave_calendar' %}"
+     class="text-sm text-blue-500 hover:underline">← 請假月曆</a>
+</div>
+
+{% if messages %}
+  {% for msg in messages %}
+  <div class="mb-4 px-4 py-3 rounded-xl text-sm
+    {% if msg.tags == 'success' %}bg-green-50 text-green-700
+    {% elif msg.tags == 'warning' %}bg-red-50 text-red-700
+    {% else %}bg-gray-50 text-gray-700{% endif %}">
+    {{ msg }}
+  </div>
+  {% endfor %}
+{% endif %}
+
+<!-- 待審核 -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+    <span class="text-base font-semibold text-gray-800">待審核</span>
+    {% if pending %}
+    <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+      {{ pending|length }}
+    </span>
+    {% endif %}
+  </div>
+
+  {% if pending %}
+  <div class="divide-y divide-gray-50">
+    {% for req in pending %}
+    <div class="px-6 py-4 flex items-start justify-between gap-4">
+      <div>
+        <div class="font-medium text-gray-800">
+          {{ req.employee.user.get_full_name|default:req.employee.user.username }}
+        </div>
+        <div class="mt-1 text-sm text-gray-500">
+          {% for d in req.dates %}
+          <span class="inline-block bg-gray-100 rounded px-2 py-0.5 mr-1 mb-1">{{ d }}</span>
+          {% endfor %}
+        </div>
+        <div class="text-xs text-gray-400 mt-1">
+          申請時間：{{ req.requested_at|date:"Y-m-d H:i" }}
+        </div>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <form method="post" action="{% url 'dashboard:leave_request_approve' req.pk %}">
+          {% csrf_token %}
+          <button type="submit"
+            class="px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition">
+            ✅ 核准
+          </button>
+        </form>
+        <form method="post" action="{% url 'dashboard:leave_request_deny' req.pk %}">
+          {% csrf_token %}
+          <button type="submit"
+            class="px-4 py-1.5 bg-red-400 hover:bg-red-500 text-white text-sm rounded-lg transition">
+            ❌ 拒絕
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="px-6 py-10 text-center text-gray-400 text-sm">目前沒有待審核的請假申請</div>
+  {% endif %}
+</div>
+
+<!-- 近期紀錄 -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <span class="text-base font-semibold text-gray-800">近期記錄</span>
+  </div>
+  {% if recent %}
+  <div class="divide-y divide-gray-50">
+    {% for req in recent %}
+    <div class="px-6 py-3 flex items-center justify-between gap-4 text-sm">
+      <div>
+        <span class="font-medium text-gray-700">
+          {{ req.employee.user.get_full_name|default:req.employee.user.username }}
+        </span>
+        <span class="mx-2 text-gray-300">|</span>
+        {% for d in req.dates %}
+        <span class="text-gray-500">{{ d }}</span>{% if not forloop.last %}、{% endif %}
+        {% endfor %}
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="px-2 py-0.5 rounded-full text-xs font-medium
+          {% if req.status == 'approved' %}bg-green-100 text-green-700
+          {% elif req.status == 'denied' %}bg-red-100 text-red-700
+          {% else %}bg-gray-100 text-gray-600{% endif %}">
+          {{ req.get_status_display }}
+        </span>
+        <span class="text-gray-400 text-xs">{{ req.processed_at|date:"m/d H:i" }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="px-6 py-8 text-center text-gray-400 text-sm">尚無記錄</div>
+  {% endif %}
+</div>
+{% endblock %}

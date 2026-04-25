@@ -2,7 +2,7 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.shortcuts import get_object_or_404
-from .models import DeliveryTask, AttendanceRecord, LeaveRecord
+from .models import DeliveryTask, AttendanceRecord, LeaveRecord, LeaveRequest
 from django.utils import timezone
 from django.core.cache import cache
 from datetime import datetime, timedelta, date as date_type, time
@@ -206,28 +206,27 @@ def handle_postback(event):
     action = params.get('action')
 
     if action == 'leave_approve':
-        target_uid = params.get('line_user_id')
-        # 支援新版 dates（多日）與舊版 date（單日）
-        dates_str = params.get('dates') or params.get('date', '')
+        request_pk = params.get('request_pk')
         try:
-            emp = Employee.objects.get(line_user_id=target_uid)
+            leave_req = LeaveRequest.objects.select_related('employee__user').get(pk=request_pk)
+            emp = leave_req.employee
             emp_name = emp.user.get_full_name() or emp.user.username
-            date_list = [d.strip() for d in dates_str.split(',') if d.strip()]
-            approved = []
-            for d in date_list:
-                leave_date = datetime.strptime(d, '%Y-%m-%d').date()
-                LeaveRecord.objects.get_or_create(employee=emp, date=leave_date)
-                approved.append(str(leave_date))
-            cache.delete(f'leave_pending_{target_uid}')
-            dates_display = '\n'.join(approved)
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).push_message(PushMessageRequest(
-                    to=target_uid,
-                    messages=[TextMessage(text=f'✅ 以下請假申請已核准：\n{dates_display}')]
-                ))
+            if leave_req.status == 'pending':
+                leave_req.status = 'approved'
+                leave_req.processed_at = timezone.now()
+                leave_req.save()
+                for d in leave_req.dates:
+                    LeaveRecord.objects.get_or_create(employee=emp, date=d)
+            dates_display = '\n'.join(leave_req.dates)
+            if emp.line_user_id:
+                with ApiClient(configuration) as api_client:
+                    MessagingApi(api_client).push_message(PushMessageRequest(
+                        to=emp.line_user_id,
+                        messages=[TextMessage(text=f'✅ 以下請假申請已核准：\n{dates_display}')]
+                    ))
             reply_msg = TextMessage(text=f'✅ 已核准 {emp_name} 請假：\n{dates_display}')
-        except Employee.DoesNotExist:
-            reply_msg = TextMessage(text='⚠️ 找不到該員工')
+        except LeaveRequest.DoesNotExist:
+            reply_msg = TextMessage(text='⚠️ 找不到此請假申請')
         with ApiClient(configuration) as api_client:
             MessagingApi(api_client).reply_message(ReplyMessageRequest(
                 reply_token=event.reply_token, messages=[reply_msg]
@@ -235,21 +234,25 @@ def handle_postback(event):
         return
 
     elif action == 'leave_deny':
-        target_uid = params.get('line_user_id')
-        dates_str = params.get('dates') or params.get('date', '')
+        request_pk = params.get('request_pk')
         try:
-            emp = Employee.objects.get(line_user_id=target_uid)
+            leave_req = LeaveRequest.objects.select_related('employee__user').get(pk=request_pk)
+            emp = leave_req.employee
             emp_name = emp.user.get_full_name() or emp.user.username
-            cache.delete(f'leave_pending_{target_uid}')
-            dates_display = '\n'.join(d.strip() for d in dates_str.split(',') if d.strip())
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).push_message(PushMessageRequest(
-                    to=target_uid,
-                    messages=[TextMessage(text=f'❌ 以下請假申請已被拒絕，請聯絡管理員：\n{dates_display}')]
-                ))
-            reply_msg = TextMessage(text=f'已拒絕 {emp_name} 請假申請：\n{dates_display}')
-        except Employee.DoesNotExist:
-            reply_msg = TextMessage(text='⚠️ 找不到該員工')
+            if leave_req.status == 'pending':
+                leave_req.status = 'denied'
+                leave_req.processed_at = timezone.now()
+                leave_req.save()
+            dates_display = '\n'.join(leave_req.dates)
+            if emp.line_user_id:
+                with ApiClient(configuration) as api_client:
+                    MessagingApi(api_client).push_message(PushMessageRequest(
+                        to=emp.line_user_id,
+                        messages=[TextMessage(text=f'❌ 以下請假申請已被拒絕：\n{dates_display}')]
+                    ))
+            reply_msg = TextMessage(text=f'已拒絕 {emp_name} 請假：\n{dates_display}')
+        except LeaveRequest.DoesNotExist:
+            reply_msg = TextMessage(text='⚠️ 找不到此請假申請')
         with ApiClient(configuration) as api_client:
             MessagingApi(api_client).reply_message(ReplyMessageRequest(
                 reply_token=event.reply_token, messages=[reply_msg]
@@ -472,15 +475,17 @@ def _process_message(text, line_user_id):
             dates_str     = ','.join(str(d) for d in valid_dates)   # 存 cache / postback 用
             dates_display = '\n'.join(str(d) for d in valid_dates)  # 顯示用
 
-            # 暫存待審核資訊
-            cache.set(f'leave_pending_{line_user_id}', dates_str, 86400)
+            # 存進資料庫（網頁端也能看到）
+            leave_req = LeaveRequest.objects.create(
+                employee=employee,
+                dates=[str(d) for d in valid_dates],
+            )
 
             # 通知管理員
             manager_id = getattr(settings, 'MANAGER_LINE_USER_ID', '')
             emp_name = employee.user.get_full_name() or employee.user.username
             if manager_id:
                 from linebot.v3.messaging import TemplateMessage, ButtonsTemplate, PostbackAction
-                # ButtonsTemplate text 上限 160 字
                 preview = dates_display if len(dates_display) <= 80 else dates_display[:77] + '…'
                 template_msg = TemplateMessage(
                     alt_text=f'{emp_name} 申請請假',
@@ -489,11 +494,11 @@ def _process_message(text, line_user_id):
                         actions=[
                             PostbackAction(
                                 label='✅ 同意',
-                                data=f'action=leave_approve&line_user_id={line_user_id}&dates={dates_str}'
+                                data=f'action=leave_approve&request_pk={leave_req.pk}'
                             ),
                             PostbackAction(
                                 label='❌ 拒絕',
-                                data=f'action=leave_deny&line_user_id={line_user_id}&dates={dates_str}'
+                                data=f'action=leave_deny&request_pk={leave_req.pk}'
                             ),
                         ]
                     )

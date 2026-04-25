@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.urls import reverse
 from datetime import datetime
 import json
-from ..models import Employee, LeaveRecord
+from ..models import Employee, LeaveRecord, LeaveRequest
 from .base import require_group
 
 
@@ -124,3 +124,72 @@ def leave_delete(request, pk):
     lr.delete()
     next_url = request.GET.get('next') or reverse('dashboard:employee_edit', args=[emp_pk])
     return redirect(next_url)
+
+
+@login_required
+@require_group('admin')
+def leave_request_list(request):
+    """請假申請審核列表"""
+    pending = LeaveRequest.objects.filter(status='pending').select_related('employee__user')
+    recent  = LeaveRequest.objects.exclude(status='pending').select_related('employee__user')[:30]
+    return render(request, 'attendance/leave_requests.html', {
+        'pending': pending,
+        'recent':  recent,
+    })
+
+
+@login_required
+@require_group('admin')
+def leave_request_approve(request, pk):
+    """核准請假申請"""
+    leave_req = get_object_or_404(LeaveRequest, pk=pk)
+    if leave_req.status == 'pending':
+        leave_req.status = 'approved'
+        leave_req.processed_at = timezone.now()
+        leave_req.save()
+        emp = leave_req.employee
+        for d in leave_req.dates:
+            LeaveRecord.objects.get_or_create(employee=emp, date=d)
+        # 通知員工 LINE
+        from django.conf import settings
+        from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
+        if emp.line_user_id:
+            dates_display = '\n'.join(leave_req.dates)
+            try:
+                cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
+                with ApiClient(cfg) as api_client:
+                    MessagingApi(api_client).push_message(PushMessageRequest(
+                        to=emp.line_user_id,
+                        messages=[TextMessage(text=f'✅ 以下請假申請已核准：\n{dates_display}')]
+                    ))
+            except Exception:
+                pass
+        messages.success(request, f'已核准 {emp.user.get_full_name() or emp.user.username} 的請假申請')
+    return redirect('dashboard:leave_request_list')
+
+
+@login_required
+@require_group('admin')
+def leave_request_deny(request, pk):
+    """拒絕請假申請"""
+    leave_req = get_object_or_404(LeaveRequest, pk=pk)
+    if leave_req.status == 'pending':
+        leave_req.status = 'denied'
+        leave_req.processed_at = timezone.now()
+        leave_req.save()
+        emp = leave_req.employee
+        if emp.line_user_id:
+            dates_display = '\n'.join(leave_req.dates)
+            from django.conf import settings
+            from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
+            try:
+                cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
+                with ApiClient(cfg) as api_client:
+                    MessagingApi(api_client).push_message(PushMessageRequest(
+                        to=emp.line_user_id,
+                        messages=[TextMessage(text=f'❌ 以下請假申請已被拒絕：\n{dates_display}')]
+                    ))
+            except Exception:
+                pass
+        messages.warning(request, f'已拒絕 {emp.user.get_full_name() or emp.user.username} 的請假申請')
+    return redirect('dashboard:leave_request_list')

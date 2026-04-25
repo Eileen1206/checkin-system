@@ -154,6 +154,27 @@ class LeaveRecord(models.Model):
         return f"{self.employee} - {self.date}"
 
 
+class LeaveRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending',  '待審核'),
+        ('approved', '已核准'),
+        ('denied',   '已拒絕'),
+    ]
+    employee     = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_requests', verbose_name='員工')
+    dates        = models.JSONField('請假日期')          # ['2026-05-01', '2026-05-02']
+    status       = models.CharField('狀態', max_length=10, choices=STATUS_CHOICES, default='pending')
+    requested_at = models.DateTimeField('申請時間', auto_now_add=True)
+    processed_at = models.DateTimeField('處理時間', null=True, blank=True)
+
+    class Meta:
+        verbose_name = '請假申請'
+        verbose_name_plural = '請假申請'
+        ordering = ['-requested_at']
+
+    def __str__(self):
+        return f"{self.employee} - {','.join(self.dates)} ({self.get_status_display()})"
+
+
 class AuditLog(models.Model):
     ACTION_CHOICES = [
         ('create', '新增'),
