@@ -65,7 +65,8 @@ def employee_add(request):
     if request.method == 'POST':
         # 從表單取得資料
         username = request.POST.get('username')
-        password = request.POST.get('password')
+        password   = request.POST.get('password')
+        need_login = request.POST.get('need_login') == 'on'
         first_name = request.POST.get('first_name')
         last_name = request.POST.get('last_name')
         employee_id = request.POST.get('employee_id')
@@ -91,10 +92,13 @@ def employee_add(request):
 
         user = User.objects.create_user(
             username=username,
-            password=password,
+            password=password if need_login else None,
             first_name=first_name,
             last_name=last_name,
         )
+        if not need_login:
+            user.set_unusable_password()
+            user.save()
 
         # 建立員工
         Employee.objects.create(

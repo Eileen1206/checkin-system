@@ -118,9 +118,15 @@
       </div>
     </div>
 
-    <!-- 請假紀錄 -->
+    <button type="submit" class="px-6 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">
+      儲存變更
+    </button>
+  </form>
+
+  <!-- 請假紀錄（獨立於主表單之外，避免巢狀 form） -->
+  <div class="mt-8 pt-6 border-t border-gray-100">
     <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">請假紀錄</p>
-    <div class="mb-4 bg-gray-50 rounded-xl p-4">
+    <div class="bg-gray-50 rounded-xl p-4">
       {% if leave_records %}
       <ul class="divide-y divide-gray-200 mb-3">
         {% for lr in leave_records %}
@@ -136,7 +142,7 @@
       <p class="text-sm text-gray-400 mb-3">尚無請假紀錄</p>
       {% endif %}
 
-      <!-- 新增請假 -->
+      <!-- 新增請假（獨立 form） -->
       <form method="post" action="{% url 'dashboard:leave_add' emp.pk %}" class="flex gap-2 items-center">
         {% csrf_token %}
         <input type="date" name="date" required
@@ -147,11 +153,7 @@
           class="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-700">新增</button>
       </form>
     </div>
-
-    <button type="submit" class="px-6 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">
-      儲存變更
-    </button>
-  </form>
+  </div>
 </div>
 
 {% endblock %}
