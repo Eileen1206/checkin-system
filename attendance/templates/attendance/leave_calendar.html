@@ -151,11 +151,13 @@ function addTag(container, leaveId, empId, name) {
   const tag = document.createElement('div');
   tag.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-white text-xs w-full';
   tag.style.backgroundColor = color;
+  tag.style.pointerEvents = 'none';  // 拖放時標籤透明，事件傳到格子
   tag.title = name;
-  tag.dataset.leaveId = leaveId;  // 供重複判斷用
+  tag.dataset.leaveId = leaveId;
   tag.innerHTML = `
     <span class="truncate min-w-0 flex-1">${name}</span>
     <button onclick="removeTag(${leaveId}, this.parentElement)"
+      style="pointer-events: auto;"
       class="shrink-0 hover:opacity-70 leading-none ml-0.5">✕</button>`;
   container.appendChild(tag);
 }
