@@ -124,8 +124,12 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       .then(r => r.json())
       .then(data => {
-        if (data.ok && data.created) {
-          addTag(cell.querySelector('.leave-tags'), data.id, dragEmpId, dragEmpName);
+        if (data.ok) {
+          const container = cell.querySelector('.leave-tags');
+          // 標籤不存在才新增（避免重複顯示）
+          if (!container.querySelector(`[data-leave-id="${data.id}"]`)) {
+            addTag(container, data.id, dragEmpId, dragEmpName);
+          }
         }
       });
     });
@@ -147,7 +151,8 @@ function addTag(container, leaveId, empId, name) {
   const tag = document.createElement('div');
   tag.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-white text-xs w-full';
   tag.style.backgroundColor = color;
-  tag.title = name;   // hover 顯示全名
+  tag.title = name;
+  tag.dataset.leaveId = leaveId;  // 供重複判斷用
   tag.innerHTML = `
     <span class="truncate min-w-0 flex-1">${name}</span>
     <button onclick="removeTag(${leaveId}, this.parentElement)"
