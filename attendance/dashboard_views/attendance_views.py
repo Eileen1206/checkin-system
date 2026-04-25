@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime
 from django.conf import settings
-from ..models import Employee, AttendanceRecord, DeliveryTask
+from ..models import Employee, AttendanceRecord, DeliveryTask, LeaveRequest
 from collections import defaultdict
 from linebot.v3.messaging import (
     Configuration,
@@ -66,11 +66,24 @@ def index(request):
             'all_done':  completed == total and total > 0,
         })
 
+    # 待處理事項（僅 admin / superuser）
+    is_admin = (
+        request.user.is_superuser or
+        request.user.groups.filter(name__in=['admin', 'finance']).exists()
+    )
+    pending_leaves = (
+        LeaveRequest.objects
+        .filter(status='pending')
+        .select_related('employee__user')
+        .order_by('requested_at')
+    ) if is_admin else []
+
     return render(request, 'attendance/dashboard.html', {
         'employee_list':   employee_list,
         'counts':          counts,
         'today':           today,
         'delivery_status': delivery_status,
+        'pending_leaves':  pending_leaves,
     })
 
 

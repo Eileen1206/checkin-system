@@ -77,6 +77,64 @@
 </div>
 {% endif %}
 
+<!-- 待處理事項（管理員限定） -->
+{% if is_admin_or_finance %}
+<div class="mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-base font-semibold text-gray-700">
+      📋 待處理事項
+      {% if pending_leaves %}
+      <span class="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-red-500 text-white rounded-full">{{ pending_leaves|length }}</span>
+      {% endif %}
+    </h2>
+    <a href="{% url 'dashboard:leave_request_list' %}" class="text-xs text-blue-500 hover:underline">查看全部 →</a>
+  </div>
+
+  {% if pending_leaves %}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-hidden">
+    {% for req in pending_leaves %}
+    <div class="px-5 py-4 flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-sm font-semibold text-gray-800">
+            {{ req.employee.user.get_full_name|default:req.employee.user.username }}
+          </span>
+          <span class="text-xs text-gray-400">請假申請</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          {% for d in req.dates %}
+          <span class="inline-block bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded px-2 py-0.5">{{ d }}</span>
+          {% endfor %}
+        </div>
+        <div class="text-xs text-gray-400 mt-1">申請時間：{{ req.requested_at|date:"m/d H:i" }}</div>
+      </div>
+      <div class="flex gap-2 shrink-0 mt-0.5">
+        <form method="post" action="{% url 'dashboard:leave_request_approve' req.pk %}">
+          {% csrf_token %}
+          <button type="submit"
+            class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition">
+            ✅ 核准
+          </button>
+        </form>
+        <form method="post" action="{% url 'dashboard:leave_request_deny' req.pk %}">
+          {% csrf_token %}
+          <button type="submit"
+            class="px-3 py-1.5 bg-red-400 hover:bg-red-500 text-white text-xs font-medium rounded-lg transition">
+            ❌ 拒絕
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-8 text-center text-sm text-gray-400">
+    ✓ 目前無待處理事項
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 <!-- 員工明細 -->
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
   <div class="px-5 py-4 border-b border-gray-100">
