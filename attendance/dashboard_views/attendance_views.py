@@ -6,7 +6,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime
 from django.conf import settings
-from ..models import Employee, AttendanceRecord
+from ..models import Employee, AttendanceRecord, DeliveryTask
+from collections import defaultdict
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -38,10 +39,38 @@ def index(request):
         'absent':  sum(1 for s in status_map.values() if s == 'absent'),
     }
 
+    # 今日送貨狀況
+    all_tasks = list(
+        DeliveryTask.objects
+        .filter(date=today)
+        .select_related('employee__user')
+        .order_by('employee', 'order')
+    )
+    emp_tasks_map = defaultdict(list)
+    for task in all_tasks:
+        emp_tasks_map[task.employee].append(task)
+
+    delivery_status = []
+    for emp, tasks in emp_tasks_map.items():
+        total     = len(tasks)
+        completed = sum(1 for t in tasks if t.status == 'completed')
+        next_task = next((t for t in tasks if t.status == 'pending'), None)
+        last_done = next((t for t in reversed(tasks) if t.status == 'completed'), None)
+        delivery_status.append({
+            'employee':  emp,
+            'total':     total,
+            'completed': completed,
+            'next_task': next_task,
+            'last_done': last_done,
+            'progress':  int(completed / total * 100) if total else 0,
+            'all_done':  completed == total and total > 0,
+        })
+
     return render(request, 'attendance/dashboard.html', {
-        'employee_list': employee_list,
-        'counts': counts,
-        'today': today,
+        'employee_list':   employee_list,
+        'counts':          counts,
+        'today':           today,
+        'delivery_status': delivery_status,
     })
 
 

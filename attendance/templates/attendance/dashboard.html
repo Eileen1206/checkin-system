@@ -28,6 +28,55 @@
   </div>
 </div>
 
+<!-- 今日送貨狀況 -->
+{% if delivery_status %}
+<div class="mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-base font-semibold text-gray-700">🚚 今日送貨狀況</h2>
+    <a href="{% url 'dashboard:delivery_today' %}" class="text-xs text-blue-500 hover:underline">查看全部 →</a>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for d in delivery_status %}
+    <a href="{% url 'dashboard:delivery_today' %}?employee_id={{ d.employee.pk }}"
+       class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow block">
+      <div class="flex items-center justify-between mb-3">
+        <span class="font-semibold text-gray-800">
+          {{ d.employee.user.get_full_name|default:d.employee.user.username }}
+        </span>
+        {% if d.all_done %}
+          <span class="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">✅ 全部完成</span>
+        {% else %}
+          <span class="text-xs text-gray-400">{{ d.completed }} / {{ d.total }} 站</span>
+        {% endif %}
+      </div>
+
+      <!-- 進度條 -->
+      <div class="w-full bg-gray-100 rounded-full h-2 mb-3">
+        <div class="h-2 rounded-full transition-all
+          {% if d.all_done %}bg-emerald-400{% else %}bg-blue-400{% endif %}"
+          style="width: {{ d.progress }}%"></div>
+      </div>
+
+      <!-- 目前位置 -->
+      <div class="text-sm text-gray-500">
+        {% if d.all_done %}
+          <span class="text-emerald-600">今日路線已全數完成</span>
+        {% elif d.next_task %}
+          <span class="text-gray-400">下一站：</span>
+          <span class="text-gray-700 font-medium">第 {{ d.next_task.order }} 站・{{ d.next_task.customer_name }}</span>
+          {% if d.last_done %}
+          <div class="text-xs text-gray-400 mt-0.5">上一站完成：{{ d.last_done.customer_name }}</div>
+          {% endif %}
+        {% else %}
+          <span class="text-gray-400">尚未開始送貨</span>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <!-- 員工明細 -->
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
   <div class="px-5 py-4 border-b border-gray-100">
