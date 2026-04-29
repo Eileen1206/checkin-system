@@ -97,6 +97,10 @@ def delivery_add_task(request):
     customer_id = request.POST.get('customer_id')
     date = request.POST.get('date', str(timezone.localdate()))
 
+    if not customer_id:
+        messages.error(request, '請先搜尋並選擇客戶')
+        return redirect('dashboard:delivery_plan')
+
     employee = get_object_or_404(Employee, pk=employee_id)
     customer = get_object_or_404(Customer, pk=customer_id)
 
