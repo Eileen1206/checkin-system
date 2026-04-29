@@ -22,25 +22,20 @@ def delivery_push(request):
     """將今日路線以 LINE 訊息推播給指定員工"""
     employee_id = request.POST.get('employee_id')
     date = request.POST.get('date', str(timezone.localdate()))
-    employee = get_object_or_404(
-        Employee,
-        pk=employee_id
-    )
+    employee = get_object_or_404(Employee, pk=employee_id)
+
     if not employee.line_user_id:
-        messages.error(request, '該員工尚未綁定line帳號，無法推播')
+        messages.error(request, '該員工尚未綁定 LINE 帳號，無法推播')
         return redirect('dashboard:delivery_plan')
+
     tasks = DeliveryTask.objects.filter(
-        employee=employee,
-        date=date,
-        status='pending'
-    )
+        employee=employee, date=date, status='pending'
+    ).order_by('order')
 
     lines = ['🚚 本趟路線']
-
     for task in tasks:
-        lines.append(f'第 {task.order}站 | {task.customer_name}')
+        lines.append(f'第 {task.order} 站 | {task.customer_name}')
         lines.append(f'📍 {task.address}')
-
     message_text = '\n'.join(lines)
 
     bubbles = []
@@ -92,13 +87,91 @@ def delivery_push(request):
 
 
 @login_required
+def delivery_add_task(request):
+    """臨時加站：加在當天最後一站，並推播通知員工"""
+    if request.method != 'POST':
+        return redirect('dashboard:delivery_plan')
+
+    employee_id = request.POST.get('employee_id')
+    customer_id = request.POST.get('customer_id')
+    date = request.POST.get('date', str(timezone.localdate()))
+
+    employee = get_object_or_404(Employee, pk=employee_id)
+    customer = get_object_or_404(Customer, pk=customer_id)
+
+    # 取得當天最大 order，新任務排在最後
+    last_order = DeliveryTask.objects.filter(
+        employee=employee, date=date
+    ).order_by('-order').values_list('order', flat=True).first() or 0
+
+    task = DeliveryTask.objects.create(
+        employee=employee,
+        date=date,
+        order=last_order + 1,
+        customer=customer,
+        customer_name=customer.name,
+        address=customer.address,
+        is_urgent=False,
+    )
+
+    # 推播通知員工
+    if employee.line_user_id:
+        try:
+            bubble = {
+                "type": "bubble",
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": "🆕 臨時加站通知", "weight": "bold", "color": "#e67e22"},
+                        {"type": "text", "text": f"第 {task.order} 站", "weight": "bold", "margin": "md"},
+                        {"type": "text", "text": customer.name},
+                        {"type": "text", "text": f"📍 {customer.address}", "wrap": True, "color": "#888888"},
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [{
+                        "type": "button",
+                        "style": "primary",
+                        "color": "#27ACB2",
+                        "action": {
+                            "type": "uri",
+                            "label": "✅ 完成",
+                            "uri": f"https://liff.line.me/{settings.LIFF_DELIVERY_ID}?task_id={task.pk}"
+                        }
+                    }]
+                }
+            }
+            flex_msg = FlexMessage(
+                alt_text=f'臨時加站：{customer.name}',
+                contents=FlexContainer.from_dict(bubble)
+            )
+            configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
+            with ApiClient(configuration) as api_client:
+                MessagingApi(api_client).push_message(PushMessageRequest(
+                    to=employee.line_user_id,
+                    messages=[
+                        TextMessage(text=f'📢 老闆新增了一站！\n客戶：{customer.name}\n地址：{customer.address}\n排在第 {task.order} 站'),
+                        flex_msg,
+                    ]
+                ))
+        except Exception:
+            pass
+
+    messages.success(request, f'已新增「{customer.name}」為第 {task.order} 站，並通知 {employee.user.get_full_name() or employee.user.username}')
+    return redirect('dashboard:delivery_plan')
+
+
+@login_required
 def delivery_reorder(request):
     """AJAX：儲存手動調整後的送貨順序"""
     if request.method != 'POST':
         return JsonResponse({'ok': False}, status=405)
 
     data = json.loads(request.body)
-    task_ids = data.get('task_ids', [])  # 按新順序排列的 DeliveryTask PK 列表
+    task_ids = data.get('task_ids', [])
 
     for i, task_id in enumerate(task_ids, start=1):
         DeliveryTask.objects.filter(pk=task_id).update(order=i)
@@ -111,9 +184,7 @@ def delivery_plan(request):
     """送貨路線規劃頁面"""
     from ..utils.routing import get_optimal_order, geocode_customer
 
-    employees = Employee.objects.filter(
-        is_delivery=True
-    ).select_related('user')
+    employees = Employee.objects.filter(is_delivery=True).select_related('user')
 
     if request.method == 'GET':
         from ..utils.routing import get_office_coords
@@ -141,24 +212,18 @@ def delivery_plan(request):
 
     # POST：計算路線並建立任務
     employee_id = request.POST.get('employee_id')
-    customer_ids = request.POST.getlist('customer_ids')  # list of Customer PKs
-    urgent_ids = request.POST.getlist('urgent_ids')       # 急單的 Customer PKs
+    customer_ids = request.POST.getlist('customer_ids')
+    urgent_ids = request.POST.getlist('urgent_ids')
     date = request.POST.get('date', str(timezone.localdate()))
 
     employee = get_object_or_404(Employee, pk=employee_id)
     customers = list(Customer.objects.filter(pk__in=customer_ids))
 
-    # 分成急單和非急單
     urgent = [c for c in customers if str(c.pk) in urgent_ids]
     normal = [c for c in customers if str(c.pk) not in urgent_ids]
-
-    # 非急單計算最短路線
     normal_sorted = get_optimal_order(normal)
-
-    # 合併：急單在前
     final_order = urgent + normal_sorted
 
-    # 建立 DeliveryTask
     DeliveryTask.objects.filter(employee=employee, date=date, status='pending').delete()
     completed_count = DeliveryTask.objects.filter(employee=employee, date=date, status='completed').count()
     for i, customer in enumerate(final_order, start=completed_count + 1):
@@ -173,51 +238,37 @@ def delivery_plan(request):
         )
 
     from ..utils.routing import get_office_coords
-    tasks = DeliveryTask.objects.filter(employee=employee, date=date, status='pending').order_by('order').select_related('customer')
-    office = get_office_coords()  # (lat, lng) or None
+    office = get_office_coords()
+    tasks = DeliveryTask.objects.filter(
+        employee=employee, date=date
+    ).order_by('order')
+
     return render(request, 'attendance/delivery_plan.html', {
         'employees': employees,
-        'today': timezone.localdate(),
+        'success': True,
         'tasks': tasks,
         'employee': employee,
+        'date': date,
+        'today': timezone.localdate(),
+        'pending_by_employee': {},
         'office_lat': office[0] if office else None,
         'office_lng': office[1] if office else None,
-        'success': True,
     })
 
 
 @login_required
 def delivery_today(request):
-    date = request.GET.get('date', str(timezone.localdate()))
-    employee_id = request.GET.get('employee_id', '')
+    """今日送貨狀況總覽"""
+    from ..utils.routing import get_office_coords
+    today = timezone.localdate()
+    tasks = DeliveryTask.objects.filter(date=today).select_related(
+        'employee__user', 'customer'
+    ).order_by('employee', 'order')
 
-    tasks = DeliveryTask.objects.filter(date=date).select_related('employee__user', 'customer').order_by('employee', 'order')
-    if employee_id:
-        tasks = tasks.filter(employee_id=employee_id)
-
-    delivery_employees = Employee.objects.filter(is_delivery=True).select_related('user')
-
-    # 地圖用的 JSON 資料（只取有座標的站）
-    map_points = []
-    for t in tasks:
-        lat = float(t.customer.lat) if t.customer and t.customer.lat else None
-        lng = float(t.customer.lng) if t.customer and t.customer.lng else None
-        if lat and lng:
-            map_points.append({
-                'order':    t.order,
-                'name':     t.customer_name,
-                'address':  t.address,
-                'status':   t.status,
-                'lat':      lat,
-                'lng':      lng,
-                'employee': t.employee.user.get_full_name() or t.employee.user.username,
-            })
-
+    office = get_office_coords()
     return render(request, 'attendance/delivery_today.html', {
         'tasks': tasks,
-        'date': date,
-        'delivery_employees': delivery_employees,
-        'selected_employee_id': employee_id,
-        'map_points_json': json.dumps(map_points, ensure_ascii=False),
-        'has_map': len(map_points) > 0,
+        'today': today,
+        'office_lat': office[0] if office else None,
+        'office_lng': office[1] if office else None,
     })
