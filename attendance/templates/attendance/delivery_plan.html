@@ -33,8 +33,7 @@
       </thead>
       <tbody id="sortableBody" class="divide-y divide-gray-50">
         {% for task in tasks %}
-        <tr data-id="{{ task.pk }}"
-            class="hover:bg-cream cursor-grab active:cursor-grabbing transition-colors">
+        <tr data-id="{{ task.pk }}" class="hover:bg-cream cursor-grab active:cursor-grabbing transition-colors">
           <td class="px-4 py-3 text-gray-300 select-none">☰</td>
           <td class="px-4 py-3 text-gray-500 text-xs seq-num">第 {{ forloop.counter }} 站</td>
           <td class="px-4 py-3">
@@ -42,11 +41,8 @@
             <div class="text-xs text-gray-400 mt-0.5">{{ task.address }}</div>
           </td>
           <td class="px-4 py-3 text-center">
-            {% if task.is_urgent %}
-              <span class="text-amber-500 text-base">⚡</span>
-            {% else %}
-              <span class="text-gray-200">—</span>
-            {% endif %}
+            {% if task.is_urgent %}<span class="text-amber-500 text-base">⚡</span>
+            {% else %}<span class="text-gray-200">—</span>{% endif %}
           </td>
           <td class="px-2 py-3 text-right">
             <form method="post" action="{% url 'dashboard:delivery_delete_task' task.pk %}"
@@ -62,16 +58,14 @@
   </div>
 
   <div class="flex flex-col gap-2">
-    <button onclick="saveOrder()"
-      class="px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 transition-colors">
+    <button onclick="saveOrder()" class="px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 transition-colors">
       💾 儲存順序
     </button>
     <form method="post" action="{% url 'dashboard:delivery_push' %}">
       {% csrf_token %}
       <input type="hidden" name="employee_id" value="{{ employee.pk }}">
       <input type="hidden" name="date" value="{{ tasks.0.date|date:'Y-m-d' }}">
-      <button type="submit"
-        class="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 transition-colors">
+      <button type="submit" class="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm hover:bg-blue-700 transition-colors">
         📲 推播路線給員工
       </button>
     </form>
@@ -89,16 +83,13 @@ Sortable.create(document.getElementById('sortableBody'), {
     });
   }
 });
-
 function saveOrder() {
   const taskIds = [...document.querySelectorAll('#sortableBody tr')].map(tr => tr.dataset.id);
   fetch('{% url "dashboard:delivery_reorder" %}', {
     method: 'POST',
     headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
     body: JSON.stringify({task_ids: taskIds}),
-  })
-  .then(r => r.json())
-  .then(data => {
+  }).then(r => r.json()).then(data => {
     const msg = document.getElementById('saveMsg');
     msg.classList.remove('hidden');
     if (data.ok) {
@@ -119,9 +110,10 @@ function saveOrder() {
   <h1 class="text-2xl font-bold text-gray-800">🚚 送貨路線規劃</h1>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+<!-- 上半：兩欄（說明 + 表單） -->
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
 
-  <!-- 左欄：說明 + 待推播 -->
+  <!-- 左欄：說明 -->
   <div class="lg:col-span-2 flex flex-col gap-4">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
       <h2 class="font-semibold text-gray-700 mb-4">📖 使用說明</h2>
@@ -161,76 +153,6 @@ function saveOrder() {
       ⚠️ 規劃前請確認客戶資料已設定 GPS 座標，否則無法計算距離。
     </div>
 
-    <!-- 待推播路線 -->
-    {% if pending_by_employee %}
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <h2 class="font-semibold text-gray-700 mb-3">📋 今日待推播路線</h2>
-      <div class="space-y-3">
-        {% for emp, emp_tasks in pending_by_employee.items %}
-        <div class="border border-gray-100 rounded-xl p-3">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-medium text-gray-700">{{ emp.user.get_full_name|default:emp.user.username }}</span>
-            <span class="text-xs text-gray-400">{{ emp_tasks|length }} 站</span>
-          </div>
-          <div class="space-y-1 mb-3">
-            {% for task in emp_tasks %}
-            <div class="flex items-center justify-between text-xs text-gray-500">
-              <div class="flex items-center gap-2">
-                <span class="w-4 h-4 bg-gray-100 rounded-full flex items-center justify-center font-bold">{{ forloop.counter }}</span>
-                <span>{{ task.customer_name }}</span>
-                {% if task.is_urgent %}<span class="text-amber-500">⚡</span>{% endif %}
-              </div>
-              <form method="post" action="{% url 'dashboard:delivery_delete_task' task.pk %}"
-                onsubmit="return confirm('確定刪除「{{ task.customer_name }}」這站？')">
-                {% csrf_token %}
-                <button type="submit" class="px-2 py-0.5 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">刪除</button>
-              </form>
-            </div>
-            {% endfor %}
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <form method="post" action="{% url 'dashboard:delivery_push' %}">
-              {% csrf_token %}
-              <input type="hidden" name="employee_id" value="{{ emp.pk }}">
-              <input type="hidden" name="date" value="{{ today }}">
-              <button type="submit"
-                class="w-full px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors">
-                📲 推播給 {{ emp.user.get_full_name|default:emp.user.username }}
-              </button>
-            </form>
-
-            <button type="button" onclick="toggleAddTask('{{ emp.pk }}')"
-              class="w-full px-3 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs hover:bg-orange-100 transition-colors">
-              ➕ 臨時加站
-            </button>
-            <div id="addTask_{{ emp.pk }}" class="hidden mt-1 space-y-2">
-              <div class="relative">
-                <input type="text" id="addTaskSearch_{{ emp.pk }}"
-                  placeholder="搜尋客戶編號或名稱"
-                  class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-200">
-                <div id="addTaskResults_{{ emp.pk }}"
-                  class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-sm"></div>
-              </div>
-              <div id="addTaskSelected_{{ emp.pk }}" class="hidden px-2 py-1.5 bg-orange-50 rounded-lg text-xs text-orange-700"></div>
-              <form method="post" action="{% url 'dashboard:delivery_add_task' %}">
-                {% csrf_token %}
-                <input type="hidden" name="employee_id" value="{{ emp.pk }}">
-                <input type="hidden" name="date" value="{{ today }}">
-                <input type="hidden" name="customer_id" id="addTaskCustomerId_{{ emp.pk }}">
-                <button type="submit"
-                  class="w-full px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs hover:bg-orange-600 transition-colors">
-                  確認加站並通知員工
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
     <a href="{% url 'dashboard:delivery_today' %}"
       class="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-100 shadow-sm text-sm text-gray-600 hover:bg-cream transition-colors">
       <span>📦 查看今日送貨狀況</span>
@@ -247,8 +169,7 @@ function saveOrder() {
           <input type="text" id="searchInput"
             class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
             placeholder="輸入客戶編號或名稱...">
-          <div id="searchResults"
-            class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"></div>
+          <div id="searchResults" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"></div>
         </div>
         <p class="text-xs text-gray-400 mt-1">最多可加入 5 站</p>
       </div>
@@ -288,6 +209,98 @@ function saveOrder() {
     </div>
   </div>
 </div>
+
+<!-- 下半：今日待推播路線（滿版） -->
+{% if pending_by_employee %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <h2 class="font-semibold text-gray-700">📋 今日待推播路線</h2>
+    <span class="text-xs text-gray-400">{{ pending_by_employee|length }} 位員工</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+        <tr>
+          <th class="text-left px-6 py-3 font-medium w-32">員工</th>
+          <th class="text-left px-4 py-3 font-medium w-12">站次</th>
+          <th class="text-left px-4 py-3 font-medium">客戶</th>
+          <th class="text-left px-4 py-3 font-medium">地址</th>
+          <th class="px-4 py-3 w-16"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        {% for emp, emp_tasks in pending_by_employee.items %}
+          {% for task in emp_tasks %}
+          <tr class="hover:bg-amber-50/20">
+            {% if forloop.first %}
+            <td class="px-6 py-3 font-medium text-gray-800" rowspan="{{ emp_tasks|length }}">
+              {{ emp.user.get_full_name|default:emp.user.username }}
+            </td>
+            {% endif %}
+            <td class="px-4 py-3 text-gray-500 text-xs">第 {{ forloop.counter }} 站</td>
+            <td class="px-4 py-3 font-medium text-gray-800">
+              {% if task.is_urgent %}<span class="text-amber-500">⚡</span>{% endif %}
+              {{ task.customer_name }}
+            </td>
+            <td class="px-4 py-3 text-gray-500">{{ task.address }}</td>
+            <td class="px-3 py-3 text-right">
+              <form method="post" action="{% url 'dashboard:delivery_delete_task' task.pk %}"
+                onsubmit="return confirm('確定刪除「{{ task.customer_name }}」這站？')">
+                {% csrf_token %}
+                <button type="submit" class="px-2 py-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">刪除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          <!-- 每個員工底部：推播 + 臨時加站 -->
+          <tr class="bg-gray-50/50">
+            <td colspan="5" class="px-6 py-3">
+              <div class="flex items-center gap-3 flex-wrap">
+                <form method="post" action="{% url 'dashboard:delivery_push' %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+                  <input type="hidden" name="date" value="{{ today }}">
+                  <button type="submit"
+                    class="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors">
+                    📲 推播給 {{ emp.user.get_full_name|default:emp.user.username }}
+                  </button>
+                </form>
+
+                <button type="button" onclick="toggleAddTask('{{ emp.pk }}')"
+                  class="px-4 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs hover:bg-orange-100 transition-colors">
+                  ➕ 臨時加站
+                </button>
+
+                <div id="addTask_{{ emp.pk }}" class="hidden flex items-center gap-2 flex-wrap">
+                  <div class="relative">
+                    <input type="text" id="addTaskSearch_{{ emp.pk }}"
+                      placeholder="搜尋客戶"
+                      class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-200 w-48">
+                    <div id="addTaskResults_{{ emp.pk }}"
+                      class="hidden absolute z-10 w-64 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-sm"></div>
+                  </div>
+                  <span id="addTaskSelected_{{ emp.pk }}" class="hidden text-xs text-orange-600 font-medium"></span>
+                  <form method="post" action="{% url 'dashboard:delivery_add_task' %}" class="inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+                    <input type="hidden" name="date" value="{{ today }}">
+                    <input type="hidden" name="customer_id" id="addTaskCustomerId_{{ emp.pk }}">
+                    <button type="submit"
+                      class="px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs hover:bg-orange-600 transition-colors">
+                      確認加站
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% endif %}
 
 {% endblock %}
@@ -318,10 +331,7 @@ searchInput.addEventListener('input', async function() {
   });
   searchResults.classList.remove('hidden');
 });
-
-document.addEventListener('click', e => {
-  if (!searchInput.contains(e.target)) searchResults.classList.add('hidden');
-});
+document.addEventListener('click', e => { if (!searchInput.contains(e.target)) searchResults.classList.add('hidden'); });
 
 function addCustomer(c) {
   if (selected.length >= 5) { alert('最多只能加 5 站！'); return; }
@@ -331,12 +341,10 @@ function addCustomer(c) {
   searchResults.classList.add('hidden');
   renderSelected();
 }
-
 function removeCustomer(id) {
   selected = selected.filter(s => s.id !== id);
   renderSelected();
 }
-
 function renderSelected() {
   selectedList.innerHTML = '';
   hiddenInputs.innerHTML = '';
@@ -360,29 +368,21 @@ function renderSelected() {
           <input class="urgent-check rounded" type="checkbox" id="urgent_${c.id}" value="${c.id}">
           <span>⚡ 急單</span>
         </label>
-        <button type="button" onclick="removeCustomer(${c.id})"
-          class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">×</button>
+        <button type="button" onclick="removeCustomer(${c.id})" class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">×</button>
       </div>
     `;
     selectedList.appendChild(div);
     const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'customer_ids';
-    input.value = c.id;
+    input.type = 'hidden'; input.name = 'customer_ids'; input.value = c.id;
     hiddenInputs.appendChild(input);
   });
-  document.querySelectorAll('.urgent-check').forEach(cb => {
-    cb.addEventListener('change', updateUrgent);
-  });
+  document.querySelectorAll('.urgent-check').forEach(cb => cb.addEventListener('change', updateUrgent));
 }
-
 function updateUrgent() {
   document.querySelectorAll('input[name="urgent_ids"]').forEach(el => el.remove());
   document.querySelectorAll('.urgent-check:checked').forEach(cb => {
     const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'urgent_ids';
-    input.value = cb.value;
+    input.type = 'hidden'; input.name = 'urgent_ids'; input.value = cb.value;
     hiddenInputs.appendChild(input);
   });
 }
@@ -391,13 +391,11 @@ function updateUrgent() {
 function toggleAddTask(empPk) {
   document.getElementById(`addTask_${empPk}`).classList.toggle('hidden');
 }
-
 document.querySelectorAll('[id^="addTaskSearch_"]').forEach(input => {
   const empPk = input.id.replace('addTaskSearch_', '');
   const resultsEl = document.getElementById(`addTaskResults_${empPk}`);
   const selectedEl = document.getElementById(`addTaskSelected_${empPk}`);
   const customerIdInput = document.getElementById(`addTaskCustomerId_${empPk}`);
-
   input.addEventListener('input', async function() {
     const q = this.value.trim();
     if (!q) { resultsEl.classList.add('hidden'); return; }
@@ -412,7 +410,7 @@ document.querySelectorAll('[id^="addTaskSearch_"]').forEach(input => {
       item.innerHTML = `<span class="font-medium">${c.customer_id} ${c.name}</span><span class="text-gray-400 ml-2">${c.address}</span>`;
       item.onclick = () => {
         customerIdInput.value = c.id;
-        selectedEl.textContent = `已選：${c.customer_id} ${c.name}`;
+        selectedEl.textContent = `✓ ${c.customer_id} ${c.name}`;
         selectedEl.classList.remove('hidden');
         input.value = '';
         resultsEl.classList.add('hidden');
@@ -421,10 +419,7 @@ document.querySelectorAll('[id^="addTaskSearch_"]').forEach(input => {
     });
     resultsEl.classList.remove('hidden');
   });
-
-  document.addEventListener('click', e => {
-    if (!input.contains(e.target)) resultsEl.classList.add('hidden');
-  });
+  document.addEventListener('click', e => { if (!input.contains(e.target)) resultsEl.classList.add('hidden'); });
 });
 </script>
 {% endif %}
