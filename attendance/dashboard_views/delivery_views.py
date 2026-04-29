@@ -258,6 +258,8 @@ def delivery_plan(request):
         'date': date,
         'today': timezone.localdate(),
         'pending_by_employee': {},
+        'office_lat': office[0] if office else None,  
+        'office_lng': office[1] if office else None, 
     })
 
 
