@@ -19,6 +19,7 @@ if DEBUG:
         'http://127.0.0.1:8000',
         'https://*.ngrok-free.app',
         'https://*.ngrok-free.dev',
+        'https://*.railway.app',
     ]
 else:
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
