@@ -23,6 +23,7 @@
     class="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
     <option value="active" {% if show == 'active' %}selected{% endif %}>啟用中（{{ total }}）</option>
     <option value="no_address" {% if show == 'no_address' %}selected{% endif %}>無地址（{{ no_address_count }}）</option>
+    <option value="no_gps" {% if show == 'no_gps' %}selected{% endif %}>無 GPS（{{ no_gps_count }}）</option>
     <option value="all" {% if show == 'all' %}selected{% endif %}>全部</option>
   </select>
   <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">搜尋</button>
@@ -61,7 +62,7 @@
           {% if c.lat and c.lng %}
             <span class="text-emerald-500 font-bold">✓</span>
           {% else %}
-            <span class="text-gray-300">—</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-400">無</span>
           {% endif %}
         </td>
         <td class="px-5 py-3 align-middle whitespace-nowrap">
@@ -72,8 +73,8 @@
           {% endif %}
         </td>
         <td class="px-3 py-3 text-right">
-        <a href="{% url 'dashboard:customer_edit' c.pk %}"
-          class="inline-block whitespace-nowrap px-3 py-1.5 border border-gray-300 text-gray-600 rounded-xl text-xs hover:bg-gray-50">編輯</a>
+          <a href="{% url 'dashboard:customer_edit' c.pk %}"
+            class="inline-block whitespace-nowrap px-3 py-1.5 border border-gray-300 text-gray-600 rounded-xl text-xs hover:bg-gray-50">編輯</a>
         </td>
       </tr>
       {% empty %}
