@@ -39,14 +39,9 @@ def _haversine_meters(lat1, lng1, lat2, lng2):
     return 2 * R * math.asin(math.sqrt(a))
 
 
-# 初始化 LINE SDK（用 settings.py 裡的憑證）
 handler = WebhookHandler(settings.LINE_CHANNEL_SECRET)
 configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
 
-
-# ──────────────────────────────────────────
-# Flex 卡片模板（加入好友 & 綁定成功 & 說明 共用）
-# ──────────────────────────────────────────
 
 def _welcome_flex():
     return {
@@ -74,7 +69,6 @@ def _welcome_flex():
                         {
                             "type": "box", "layout": "horizontal",
                             "contents": [
-                               
                                 {"type": "text", "text": "打卡", "flex": 5, "size": "sm", "color": "#333333"},
                                 {"type": "text", "text": "刷卡感應即會記錄，立即通知", "flex": 8, "size": "sm", "color": "#888888", "wrap": True}
                             ]
@@ -82,7 +76,6 @@ def _welcome_flex():
                         {
                             "type": "box", "layout": "horizontal",
                             "contents": [
-                               
                                 {"type": "text", "text": "查詢", "flex": 5, "size": "sm", "color": "#333333"},
                                 {"type": "text", "text": "查看今日出勤紀錄", "flex": 8, "size": "sm", "color": "#888888"}
                             ]
@@ -90,7 +83,6 @@ def _welcome_flex():
                         {
                             "type": "box", "layout": "horizontal",
                             "contents": [
-                                
                                 {"type": "text", "text": "本月出勤", "flex": 5, "size": "sm", "color": "#333333"},
                                 {"type": "text", "text": "查看本月總工時", "flex": 8, "size": "sm", "color": "#888888"}
                             ]
@@ -98,7 +90,6 @@ def _welcome_flex():
                         {
                             "type": "box", "layout": "horizontal",
                             "contents": [
-                                
                                 {"type": "text", "text": "送貨路線", "flex": 5, "size": "sm", "color": "#333333"},
                                 {"type": "text", "text": "管理員推播後可確認完成", "flex": 8, "size": "sm", "color": "#888888", "wrap": True}
                             ]
@@ -106,7 +97,6 @@ def _welcome_flex():
                         {
                             "type": "box", "layout": "horizontal",
                             "contents": [
-                               
                                 {"type": "text", "text": "說明", "flex": 5, "size": "sm", "color": "#333333"},
                                 {"type": "text", "text": "顯示功能使用說明", "flex": 8, "size": "sm", "color": "#888888"}
                             ]
@@ -217,14 +207,17 @@ def handle_postback(event):
                 leave_req.save()
                 for d in leave_req.dates:
                     LeaveRecord.objects.get_or_create(employee=emp, date=d)
-            dates_display = '\n'.join(leave_req.dates)
-            if emp.line_user_id:
-                with ApiClient(configuration) as api_client:
-                    MessagingApi(api_client).push_message(PushMessageRequest(
-                        to=emp.line_user_id,
-                        messages=[TextMessage(text=f'✅ 以下請假申請已核准：\n{dates_display}')]
-                    ))
-            reply_msg = TextMessage(text=f'✅ 已核准 {emp_name} 請假：\n{dates_display}')
+                dates_display = '\n'.join(leave_req.dates)
+                # ✅ 通知員工在 if 裡面，只執行一次
+                if emp.line_user_id:
+                    with ApiClient(configuration) as api_client:
+                        MessagingApi(api_client).push_message(PushMessageRequest(
+                            to=emp.line_user_id,
+                            messages=[TextMessage(text=f'✅ 以下請假申請已核准：\n{dates_display}')]
+                        ))
+                reply_msg = TextMessage(text=f'✅ 已核准 {emp_name} 請假：\n{dates_display}')
+            else:
+                reply_msg = TextMessage(text='⚠️ 此請假申請已處理過了')
         except LeaveRequest.DoesNotExist:
             reply_msg = TextMessage(text='⚠️ 找不到此請假申請')
         with ApiClient(configuration) as api_client:
@@ -243,14 +236,17 @@ def handle_postback(event):
                 leave_req.status = 'denied'
                 leave_req.processed_at = timezone.now()
                 leave_req.save()
-            dates_display = '\n'.join(leave_req.dates)
-            if emp.line_user_id:
-                with ApiClient(configuration) as api_client:
-                    MessagingApi(api_client).push_message(PushMessageRequest(
-                        to=emp.line_user_id,
-                        messages=[TextMessage(text=f'❌ 以下請假申請已被拒絕：\n{dates_display}')]
-                    ))
-            reply_msg = TextMessage(text=f'已拒絕 {emp_name} 請假：\n{dates_display}')
+                dates_display = '\n'.join(leave_req.dates)
+                # ✅ 通知員工在 if 裡面，只執行一次
+                if emp.line_user_id:
+                    with ApiClient(configuration) as api_client:
+                        MessagingApi(api_client).push_message(PushMessageRequest(
+                            to=emp.line_user_id,
+                            messages=[TextMessage(text=f'❌ 以下請假申請已被拒絕：\n{dates_display}')]
+                        ))
+                reply_msg = TextMessage(text=f'已拒絕 {emp_name} 請假：\n{dates_display}')
+            else:
+                reply_msg = TextMessage(text='⚠️ 此請假申請已處理過了')
         except LeaveRequest.DoesNotExist:
             reply_msg = TextMessage(text='⚠️ 找不到此請假申請')
         with ApiClient(configuration) as api_client:
@@ -326,14 +322,12 @@ def handle_postback(event):
             if task.status == 'completed':
                 reply_msg = TextMessage(text='這站已經完成過了！')
             elif not task.customer or not task.customer.lat or not task.customer.lng:
-                # 客戶沒有座標，直接完成（不驗證）
                 task.status = 'completed'
                 task.completed_at = timezone.localtime()
                 task.save()
                 reply_msg = TextMessage(text=f'✅ 第 {task.order} 站（{task.customer_name}）完成！')
             else:
-                # 有座標 → 要求分享位置驗證
-                cache.set(f'delivery_loc_{line_user_id}', task_id, 300)  # 5分鐘內分享
+                cache.set(f'delivery_loc_{line_user_id}', task_id, 300)
                 reply_msg = TextMessage(
                     text=f'📍 請分享你的位置，確認已到達第 {task.order} 站（{task.customer_name}）',
                     quick_reply=QuickReply(items=[
@@ -395,7 +389,6 @@ def handle_location(event):
     task_id = cache.get(pending_key)
 
     if not task_id:
-        # 沒有待驗證的送貨任務，忽略
         return
 
     try:
@@ -408,7 +401,7 @@ def handle_location(event):
         return
 
     distance = _haversine_meters(lat, lng, float(cust.lat), float(cust.lng))
-    ALLOWED_METERS = 500  # 送貨允許 500 公尺誤差
+    ALLOWED_METERS = 500
 
     with ApiClient(configuration) as api_client:
         api = MessagingApi(api_client)
@@ -439,12 +432,10 @@ def _process_message(text, line_user_id):
     try:
         employee = Employee.objects.get(line_user_id=line_user_id)
 
-        # 請假流程：等待日期輸入
         state_key = f'leave_state_{line_user_id}'
         if cache.get(state_key) == 'waiting_date':
             cache.delete(state_key)
 
-            # 解析多個日期（空格、逗號、頓號皆可）
             import re
             raw_parts = re.split(r'[,\s、，]+', text.strip())
             today = timezone.localdate()
@@ -459,7 +450,7 @@ def _process_message(text, line_user_id):
                     if d < today:
                         errors.append(f'{part}（不能是過去日期）')
                     elif d in valid_dates:
-                        pass  # 重複忽略
+                        pass
                     else:
                         valid_dates.append(d)
                 except ValueError:
@@ -472,16 +463,13 @@ def _process_message(text, line_user_id):
                 return [TextMessage(text='⚠️ 沒有有效日期，請重新輸入「請假」再試一次。')]
 
             valid_dates.sort()
-            dates_str     = ','.join(str(d) for d in valid_dates)   # 存 cache / postback 用
-            dates_display = '\n'.join(str(d) for d in valid_dates)  # 顯示用
+            dates_display = '\n'.join(str(d) for d in valid_dates)
 
-            # 存進資料庫（網頁端也能看到）
             leave_req = LeaveRequest.objects.create(
                 employee=employee,
                 dates=[str(d) for d in valid_dates],
             )
 
-            # 通知管理員
             manager_id = getattr(settings, 'MANAGER_LINE_USER_ID', '')
             emp_name = employee.user.get_full_name() or employee.user.username
             if manager_id:
