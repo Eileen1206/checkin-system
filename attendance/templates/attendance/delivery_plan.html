@@ -339,7 +339,7 @@ initMap();
                   ➕ 臨時加站
                 </button>
 
-                <div id="addTask_{{ emp.pk }}" class="hidden flex items-center gap-2 flex-wrap">
+                <div id="addTask_{{ emp.pk }}" class="hidden items-center gap-2 flex-wrap">
                   <div class="relative">
                     <input type="text" id="addTaskSearch_{{ emp.pk }}"
                       placeholder="搜尋客戶"
@@ -456,7 +456,14 @@ function updateUrgent() {
 }
 
 function toggleAddTask(empPk) {
-  document.getElementById(`addTask_${empPk}`).classList.toggle('hidden');
+  const el = document.getElementById(`addTask_${empPk}`);
+  if (el.classList.contains('hidden')) {
+    el.classList.remove('hidden');
+    el.classList.add('flex');
+  } else {
+    el.classList.add('hidden');
+    el.classList.remove('flex');
+  }
 }
 document.querySelectorAll('[id^="addTaskSearch_"]').forEach(input => {
   const empPk = input.id.replace('addTaskSearch_', '');
