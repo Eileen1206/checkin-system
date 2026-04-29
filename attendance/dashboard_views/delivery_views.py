@@ -5,6 +5,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.conf import settings
 import json
+from ..utils.routing import get_office_coords
 from ..models import Employee, Customer, DeliveryTask
 from linebot.v3.messaging import (
     Configuration,
@@ -224,6 +225,7 @@ def delivery_plan(request):
     customer_ids = request.POST.getlist('customer_ids')
     urgent_ids = request.POST.getlist('urgent_ids')
     date = request.POST.get('date', str(timezone.localdate()))
+    office = get_office_coords()
 
     employee = get_object_or_404(Employee, pk=employee_id)
     customers = list(Customer.objects.filter(pk__in=customer_ids))
