@@ -16,14 +16,12 @@
   <a href="{% url 'dashboard:delivery_plan' %}" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">重新規劃</a>
 </div>
 
-<!-- 提示列 -->
 <div class="flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-5">
   <span>✅</span>
   <span>路線已建立！可<strong>拖曳列表</strong>調整站點順序，調整後按「儲存順序」。確認無誤後推播給員工。</span>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
-
   <!-- 左欄：路線表 -->
   <div class="lg:col-span-2 flex flex-col gap-4">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -67,7 +65,6 @@
       </table>
     </div>
 
-    <!-- 操作按鈕 -->
     <div class="flex flex-col gap-2">
       <button onclick="saveOrder()"
         class="px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 transition-colors flex items-center justify-center gap-2">
@@ -106,12 +103,10 @@
 <script>
 const officeLat = {{ office_lat|default:'null' }};
 const officeLng = {{ office_lng|default:'null' }};
-
 const map = L.map('map');
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap contributors © CARTO'
 }).addTo(map);
-
 let routeLayer = null;
 
 function buildWaypoints() {
@@ -193,7 +188,7 @@ drawRoute();
 
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-  <!-- 左欄：使用說明 -->
+  <!-- 左欄：說明 + 待推播 + 臨時加站 -->
   <div class="lg:col-span-2 flex flex-col gap-4">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
       <h2 class="font-semibold text-gray-700 mb-4">📖 使用說明</h2>
@@ -238,14 +233,14 @@ drawRoute();
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
       <h2 class="font-semibold text-gray-700 mb-3">📋 今日待推播路線</h2>
       <div class="space-y-3">
-        {% for emp, tasks in pending_by_employee.items %}
+        {% for emp, emp_tasks in pending_by_employee.items %}
         <div class="border border-gray-100 rounded-xl p-3">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-medium text-gray-700">{{ emp.user.get_full_name|default:emp.user.username }}</span>
-            <span class="text-xs text-gray-400">{{ tasks|length }} 站</span>
+            <span class="text-xs text-gray-400">{{ emp_tasks|length }} 站</span>
           </div>
           <div class="space-y-1 mb-3">
-            {% for task in tasks %}
+            {% for task in emp_tasks %}
             <div class="flex items-center gap-2 text-xs text-gray-500">
               <span class="w-4 h-4 bg-gray-100 rounded-full flex items-center justify-center font-bold">{{ forloop.counter }}</span>
               <span>{{ task.customer_name }}</span>
@@ -253,22 +248,53 @@ drawRoute();
             </div>
             {% endfor %}
           </div>
-          <form method="post" action="{% url 'dashboard:delivery_push' %}">
-            {% csrf_token %}
-            <input type="hidden" name="employee_id" value="{{ emp.pk }}">
-            <input type="hidden" name="date" value="{{ today }}">
-            <button type="submit"
-              class="w-full px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors">
-              📲 推播給 {{ emp.user.get_full_name|default:emp.user.username }}
+
+          <div class="flex flex-col gap-2">
+            <!-- 推播按鈕 -->
+            <form method="post" action="{% url 'dashboard:delivery_push' %}">
+              {% csrf_token %}
+              <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+              <input type="hidden" name="date" value="{{ today }}">
+              <button type="submit"
+                class="w-full px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors">
+                📲 推播給 {{ emp.user.get_full_name|default:emp.user.username }}
+              </button>
+            </form>
+
+            <!-- 臨時加站按鈕 -->
+            <button type="button"
+              onclick="toggleAddTask('{{ emp.pk }}')"
+              class="w-full px-3 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs hover:bg-orange-100 transition-colors">
+              ➕ 臨時加站
             </button>
-          </form>
+            <div id="addTask_{{ emp.pk }}" class="hidden mt-1 space-y-2">
+              <div class="relative">
+                <input type="text"
+                  id="addTaskSearch_{{ emp.pk }}"
+                  placeholder="搜尋客戶編號或名稱"
+                  class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-200">
+                <div id="addTaskResults_{{ emp.pk }}"
+                  class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-sm"></div>
+              </div>
+              <div id="addTaskSelected_{{ emp.pk }}" class="hidden px-2 py-1.5 bg-orange-50 rounded-lg text-xs text-orange-700"></div>
+              <form method="post" action="{% url 'dashboard:delivery_add_task' %}">
+                {% csrf_token %}
+                <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+                <input type="hidden" name="date" value="{{ today }}">
+                <input type="hidden" name="customer_id" id="addTaskCustomerId_{{ emp.pk }}">
+                <button type="submit"
+                  class="w-full px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs hover:bg-orange-600 transition-colors">
+                  確認加站並通知員工
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
         {% endfor %}
       </div>
     </div>
     {% endif %}
 
-    <!-- 送貨紀錄連結 -->
     <a href="{% url 'dashboard:delivery_today' %}"
       class="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-100 shadow-sm text-sm text-gray-600 hover:bg-cream transition-colors">
       <span>📦 查看今日送貨狀況</span>
@@ -279,8 +305,6 @@ drawRoute();
   <!-- 右欄：操作表單 -->
   <div class="lg:col-span-3">
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
-
-    <!-- 搜尋客戶 -->
     <div class="mb-5">
       <label class="block text-sm font-semibold text-gray-700 mb-1.5">搜尋客戶</label>
       <div class="relative">
@@ -293,7 +317,6 @@ drawRoute();
       <p class="text-xs text-gray-400 mt-1">最多可加入 5 站</p>
     </div>
 
-    <!-- 已選客戶 -->
     <div class="mb-5">
       <label class="block text-sm font-semibold text-gray-700 mb-1.5">已選站點</label>
       <div id="selectedList" class="space-y-2 min-h-[48px]">
@@ -326,11 +349,44 @@ drawRoute();
         計算最短路線並建立任務 →
       </button>
     </form>
-  </div><!-- end 右欄卡片 -->
-  </div><!-- end 右欄 -->
-</div><!-- end grid -->
+  </div>
 
+  <!-- 右欄：地圖 -->
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100">
+      <span class="font-semibold text-gray-700">🗺️ 路線地圖</span>
+      {% if not office_lat %}
+      <span class="ml-2 text-xs text-amber-500">⚠️ 尚未設定公司座標（A000）</span>
+      {% endif %}
+    </div>
+    <div id="map" class="w-full" style="height: 460px;"></div>
+  </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+
+{% if not success %}
 <script>
+const officeLat = {{ office_lat|default:'null' }};
+const officeLng = {{ office_lng|default:'null' }};
+const map = L.map('map');
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CARTO'
+}).addTo(map);
+if (officeLat && officeLng) {
+  map.setView([officeLat, officeLng], 13);
+} else {
+  map.setView([23.0, 120.2], 11);
+}
+
+// ── 搜尋客戶（路線規劃用）──
 const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
 const selectedList = document.getElementById('selectedList');
@@ -376,12 +432,10 @@ function removeCustomer(id) {
 function renderSelected() {
   selectedList.innerHTML = '';
   hiddenInputs.innerHTML = '';
-
   if (selected.length === 0) {
     selectedList.innerHTML = '<p class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-xl">尚未選擇任何客戶</p>';
     return;
   }
-
   selected.forEach((c, idx) => {
     const div = document.createElement('div');
     div.className = 'flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl border border-gray-100';
@@ -403,14 +457,12 @@ function renderSelected() {
       </div>
     `;
     selectedList.appendChild(div);
-
     const input = document.createElement('input');
     input.type = 'hidden';
     input.name = 'customer_ids';
     input.value = c.id;
     hiddenInputs.appendChild(input);
   });
-
   document.querySelectorAll('.urgent-check').forEach(cb => {
     cb.addEventListener('change', updateUrgent);
   });
@@ -426,6 +478,48 @@ function updateUrgent() {
     hiddenInputs.appendChild(input);
   });
 }
+
+// ── 臨時加站 ──
+function toggleAddTask(empPk) {
+  const box = document.getElementById(`addTask_${empPk}`);
+  box.classList.toggle('hidden');
+}
+
+// 為每個員工設定臨時加站搜尋
+document.querySelectorAll('[id^="addTaskSearch_"]').forEach(input => {
+  const empPk = input.id.replace('addTaskSearch_', '');
+  const resultsEl = document.getElementById(`addTaskResults_${empPk}`);
+  const selectedEl = document.getElementById(`addTaskSelected_${empPk}`);
+  const customerIdInput = document.getElementById(`addTaskCustomerId_${empPk}`);
+
+  input.addEventListener('input', async function() {
+    const q = this.value.trim();
+    if (!q) { resultsEl.classList.add('hidden'); return; }
+    const res = await fetch(`{% url 'dashboard:search_customer' %}?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    resultsEl.innerHTML = '';
+    if (!data.results.length) { resultsEl.classList.add('hidden'); return; }
+    data.results.forEach(c => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'w-full text-left px-4 py-2.5 text-xs hover:bg-orange-50 border-b border-gray-50 last:border-0';
+      item.innerHTML = `<span class="font-medium">${c.customer_id} ${c.name}</span><span class="text-gray-400 ml-2">${c.address}</span>`;
+      item.onclick = () => {
+        customerIdInput.value = c.id;
+        selectedEl.textContent = `已選：${c.customer_id} ${c.name}`;
+        selectedEl.classList.remove('hidden');
+        input.value = '';
+        resultsEl.classList.add('hidden');
+      };
+      resultsEl.appendChild(item);
+    });
+    resultsEl.classList.remove('hidden');
+  });
+
+  document.addEventListener('click', e => {
+    if (!input.contains(e.target)) resultsEl.classList.add('hidden');
+  });
+});
 </script>
 {% endif %}
 {% endblock %}
