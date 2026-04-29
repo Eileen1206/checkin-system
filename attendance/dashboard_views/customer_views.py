@@ -49,7 +49,7 @@ def search_customer(request):
     customers = Customer.objects.filter(
         is_active=True
     ).exclude(
-        customer_id='A000'  # 排除公司本身
+        customer_id='A000'
     ).filter(
         models.Q(customer_id__icontains=q) | models.Q(name__icontains=q)
     )[:10]
@@ -65,13 +65,17 @@ def search_customer(request):
 def customer_list(request):
     """客戶管理列表，支援搜尋與篩選"""
     q = request.GET.get('q', '').strip()
-    show = request.GET.get('show', 'active')  # active | all | no_address
+    show = request.GET.get('show', 'active')  # active | all | no_address | no_gps
 
     customers = Customer.objects.all()
     if show == 'active':
         customers = customers.filter(is_active=True)
     elif show == 'no_address':
         customers = customers.filter(is_active=True, address='')
+    elif show == 'no_gps':
+        customers = customers.filter(is_active=True).filter(
+            models.Q(lat__isnull=True) | models.Q(lng__isnull=True)
+        )
 
     if q:
         customers = customers.filter(
@@ -84,8 +88,11 @@ def customer_list(request):
         'customers': customers,
         'q': q,
         'show': show,
-        'total': Customer.objects.count(),
+        'total': Customer.objects.filter(is_active=True).count(),
         'no_address_count': Customer.objects.filter(is_active=True, address='').count(),
+        'no_gps_count': Customer.objects.filter(is_active=True).filter(
+            models.Q(lat__isnull=True) | models.Q(lng__isnull=True)
+        ).count(),
     })
 
 
@@ -103,45 +110,33 @@ def customer_edit(request, pk):
 
         lat = request.POST.get('lat', '').strip()
         lng = request.POST.get('lng', '').strip()
-        try:
-            customer.lat = float(lat) if lat else None
-            customer.lng = float(lng) if lng else None
-            if customer.lat is not None and not (-90 <= customer.lat <= 90):
-                raise ValueError('緯度必須在 -90 到 90 之間')
-            if customer.lng is not None and not (-180 <= customer.lng <= 180):
-                raise ValueError('經度必須在 -180 到 180 之間')
-        except ValueError as e:
-            messages.error(request, f'座標格式錯誤：{e}')
-            return render(request, 'attendance/customer_edit.html', {'customer': customer})
+        customer.lat = float(lat) if lat else None
+        customer.lng = float(lng) if lng else None
 
         customer.save()
-        messages.success(request, f'客戶【{customer.name}】已更新')
+        messages.success(request, f'已更新客戶 {customer.name}')
         return redirect('dashboard:customer_list')
 
     return render(request, 'attendance/customer_edit.html', {'customer': customer})
 
 
 @login_required
+@require_group('admin')
 def geocode_customers(request):
-    """批次將無座標的客戶地址轉換為 GPS 座標（每次最多 30 筆避免逾時）"""
+    """批次 geocode 所有有地址但無座標的客戶"""
     if request.method != 'POST':
         return redirect('dashboard:customer_list')
 
-    from attendance.management.commands.geocode_customers import nominatim_geocode
-    import time
-
+    from ..utils.routing import geocode_customer
     customers = Customer.objects.filter(
         is_active=True, lat__isnull=True
-    ).exclude(address='')[:5]
+    ).exclude(address='')
 
-    success = 0
+    count = 0
     for c in customers:
-        result = nominatim_geocode(c.address)
+        result = geocode_customer(c)
         if result:
-            c.lat, c.lng = result
-            c.save(update_fields=['lat', 'lng'])
-            success += 1
-        time.sleep(1)
+            count += 1
 
-    messages.success(request, f'定位完成：成功 {success} 筆，可再次點擊繼續定位剩餘客戶。')
+    messages.success(request, f'成功定位 {count} 筆客戶')
     return redirect('dashboard:customer_list')
