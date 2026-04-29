@@ -1,7 +1,3 @@
-# Re-export all public functions so that dashboard_urls.py (which uses
-# `from . import dashboard_views` and `dashboard_views.function_name`) needs
-# no changes at all.
-
 from .base import (
     require_group,
     get_today_status,
@@ -35,6 +31,7 @@ from .customer_views import (
 
 from .delivery_views import (
     delivery_push,
+    delivery_add_task,
     delivery_reorder,
     delivery_plan,
     delivery_today,
@@ -58,42 +55,12 @@ from .leave_views import (
 )
 
 __all__ = [
-    # base
-    'require_group',
-    'get_today_status',
-    'get_work_hours',
-    'WORK_DAY_CHOICES',
-    'calculate_salary',
-    # attendance
-    'index',
-    'add_record',
-    'rfid_page',
-    'rfid_checkin',
-    # employee
-    'binding_list',
-    'generate_token',
-    'employee_list',
-    'employee_add',
-    'employee_edit',
-    # customer
-    'import_customers',
-    'search_customer',
-    'customer_list',
-    'customer_edit',
-    'geocode_customers',
-    # delivery
-    'delivery_push',
-    'delivery_reorder',
-    'delivery_plan',
-    'delivery_today',
-    # salary
-    'salary',
-    'add_allowance',
-    'export_salary_excel',
-    # leave
-    'leave_calendar',
-    'leave_add_api',
-    'leave_delete_api',
-    'leave_add',
-    'leave_delete',
+    'require_group', 'get_today_status', 'get_work_hours', 'WORK_DAY_CHOICES', 'calculate_salary',
+    'index', 'add_record', 'rfid_page', 'rfid_checkin',
+    'binding_list', 'generate_token', 'employee_list', 'employee_add', 'employee_edit',
+    'import_customers', 'search_customer', 'customer_list', 'customer_edit', 'geocode_customers',
+    'delivery_push', 'delivery_add_task', 'delivery_reorder', 'delivery_plan', 'delivery_today',
+    'salary', 'add_allowance', 'export_salary_excel',
+    'leave_calendar', 'leave_add_api', 'leave_delete_api', 'leave_add', 'leave_delete',
+    'leave_request_list', 'leave_request_approve', 'leave_request_deny',
 ]
