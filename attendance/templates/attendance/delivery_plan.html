@@ -351,7 +351,7 @@ initMap();
                   <form method="post" action="{% url 'dashboard:delivery_add_task' %}" class="inline">
                     {% csrf_token %}
                     <input type="hidden" name="employee_id" value="{{ emp.pk }}">
-                    <input type="hidden" name="date" value="{{ today }}">
+                    <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
                     <input type="hidden" name="customer_id" id="addTaskCustomerId_{{ emp.pk }}">
                     <button type="submit"
                       class="px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs hover:bg-orange-600 transition-colors">
