@@ -99,7 +99,6 @@ def delivery_add_task(request):
     employee = get_object_or_404(Employee, pk=employee_id)
     customer = get_object_or_404(Customer, pk=customer_id)
 
-    # 取得當天最大 order，新任務排在最後
     last_order = DeliveryTask.objects.filter(
         employee=employee, date=date
     ).order_by('-order').values_list('order', flat=True).first() or 0
@@ -114,7 +113,6 @@ def delivery_add_task(request):
         is_urgent=False,
     )
 
-    # 推播通知員工
     if employee.line_user_id:
         try:
             bubble = {
@@ -165,6 +163,20 @@ def delivery_add_task(request):
 
 
 @login_required
+def delivery_delete_task(request, pk):
+    """刪除送貨任務"""
+    if request.method != 'POST':
+        return redirect('dashboard:delivery_plan')
+
+    task = get_object_or_404(DeliveryTask, pk=pk)
+    emp_name = task.employee.user.get_full_name() or task.employee.user.username
+    customer_name = task.customer_name
+    task.delete()
+    messages.success(request, f'已刪除「{customer_name}」的送貨任務（{emp_name}）')
+    return redirect('dashboard:delivery_plan')
+
+
+@login_required
 def delivery_reorder(request):
     """AJAX：儲存手動調整後的送貨順序"""
     if request.method != 'POST':
@@ -187,7 +199,6 @@ def delivery_plan(request):
     employees = Employee.objects.filter(is_delivery=True).select_related('user')
 
     if request.method == 'GET':
-        from ..utils.routing import get_office_coords
         today = timezone.localdate()
         pending_tasks = (
             DeliveryTask.objects
@@ -201,13 +212,11 @@ def delivery_plan(request):
             if emp not in pending_by_employee:
                 pending_by_employee[emp] = []
             pending_by_employee[emp].append(task)
-        office = get_office_coords()
+
         return render(request, 'attendance/delivery_plan.html', {
             'employees': employees,
             'today': today,
             'pending_by_employee': pending_by_employee,
-            'office_lat': office[0] if office else None,
-            'office_lng': office[1] if office else None,
         })
 
     # POST：計算路線並建立任務
@@ -237,8 +246,6 @@ def delivery_plan(request):
             is_urgent=(customer in urgent),
         )
 
-    from ..utils.routing import get_office_coords
-    office = get_office_coords()
     tasks = DeliveryTask.objects.filter(
         employee=employee, date=date
     ).order_by('order')
@@ -251,24 +258,26 @@ def delivery_plan(request):
         'date': date,
         'today': timezone.localdate(),
         'pending_by_employee': {},
-        'office_lat': office[0] if office else None,
-        'office_lng': office[1] if office else None,
     })
 
 
 @login_required
 def delivery_today(request):
     """今日送貨狀況總覽"""
-    from ..utils.routing import get_office_coords
-    today = timezone.localdate()
-    tasks = DeliveryTask.objects.filter(date=today).select_related(
+    date = request.GET.get('date', str(timezone.localdate()))
+    employee_id = request.GET.get('employee_id', '')
+
+    tasks = DeliveryTask.objects.filter(date=date).select_related(
         'employee__user', 'customer'
     ).order_by('employee', 'order')
+    if employee_id:
+        tasks = tasks.filter(employee_id=employee_id)
 
-    office = get_office_coords()
+    delivery_employees = Employee.objects.filter(is_delivery=True).select_related('user')
+
     return render(request, 'attendance/delivery_today.html', {
         'tasks': tasks,
-        'today': today,
-        'office_lat': office[0] if office else None,
-        'office_lng': office[1] if office else None,
+        'date': date,
+        'delivery_employees': delivery_employees,
+        'selected_employee_id': employee_id,
     })
