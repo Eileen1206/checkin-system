@@ -1,6 +1,7 @@
 from django.core.exceptions import PermissionDenied
 from django.utils import timezone
-from datetime import datetime, date as date_type
+from datetime import datetime, timedelta
+import math
 from ..models import Employee, AttendanceRecord, MonthlyAllowance
 
 
@@ -27,7 +28,6 @@ def get_today_status():
     today = timezone.localdate()
     status_map = {}
 
-    # 查每位員工今天的最後一筆打卡
     for emp in employees:
         last = AttendanceRecord.objects.filter(
             employee=emp,
@@ -48,6 +48,7 @@ def get_today_status():
 
 def get_work_hours(employee, date=None):
     date = date or timezone.localdate()
+
     clock_in = AttendanceRecord.objects.filter(
         employee=employee, timestamp__date=date, record_type='clock_in'
     ).first()
@@ -60,26 +61,54 @@ def get_work_hours(employee, date=None):
     ).first()
 
     end_time = clock_out.timestamp if clock_out else timezone.now()
-    duration = end_time - clock_in.timestamp
-    total_seconds = duration.total_seconds()
+
+    # 計算計薪起始時間（考慮遲到）
+    clock_in_local = clock_in.timestamp.astimezone()
+    clock_in_naive = datetime.combine(clock_in_local.date(), clock_in_local.time())
+
+    if employee.work_start_time:
+        scheduled_naive = datetime.combine(clock_in_local.date(), employee.work_start_time)
+        late_seconds = (clock_in_naive - scheduled_naive).total_seconds()
+
+        if late_seconds <= 600:
+            # 準時或寬限 10 分鐘內 → 從排班時間開始算
+            start_naive = scheduled_naive
+        else:
+            # 超過 10 分鐘遲到 → 無條件進位到下一個半小時
+            half_hours_late = math.ceil(late_seconds / 1800)
+            start_naive = scheduled_naive + timedelta(seconds=half_hours_late * 1800)
+    else:
+        # 沒設排班時間 → 從實際打卡時間算
+        start_naive = clock_in_naive
+
+    # 換算回 aware datetime 做時間差計算
+    start_time = clock_in.timestamp + (
+        datetime.combine(clock_in_local.date(), start_naive.time()) -
+        clock_in_naive
+    )
+
+    total_seconds = (end_time - start_time).total_seconds()
+    if total_seconds < 0:
+        total_seconds = 0
+
+    # 扣除實際午休時間
+    break_start = AttendanceRecord.objects.filter(
+        employee=employee, timestamp__date=date, record_type='break_start'
+    ).first()
+    break_end = AttendanceRecord.objects.filter(
+        employee=employee, timestamp__date=date, record_type='break_end'
+    ).first()
+    if break_start and break_end:
+        total_seconds -= (break_end.timestamp - break_start.timestamp).total_seconds()
+        if total_seconds < 0:
+            total_seconds = 0
 
     # 工時進位：以半小時為單位，15分(900秒)以上進半小時
-    half_hours = total_seconds // 1800       # 完整的半小時數
-    remainder  = total_seconds % 1800        # 不足半小時的秒數
+    half_hours = total_seconds // 1800
+    remainder  = total_seconds % 1800
     if remainder >= 900:
         half_hours += 1
-    hours = half_hours / 2                   # 換算回小時
-
-    # 遲到扣薪：比上班時間晚超過10分鐘 → 扣0.5小時
-    if employee.work_start_time:
-        clock_in_time = clock_in.timestamp.astimezone().time()
-        clock_in_date = clock_in.timestamp.astimezone().date()
-        # 計算遲到幾分鐘
-        scheduled = datetime.combine(clock_in_date, employee.work_start_time)
-        actual    = datetime.combine(date_type.today(), clock_in_time)
-        late_minutes = (actual - scheduled).total_seconds() / 60  # 換算成分鐘
-        if late_minutes > 10:
-            hours -= 0.5
+    hours = half_hours / 2
 
     return hours
 
@@ -103,7 +132,7 @@ def calculate_salary(emp, year, month):
     )
 
     if emp.employment_type == 'monthly':
-        base = float(emp.monthly_salary or 0)
+        base = float(emp.monthly_salary) if emp.monthly_salary else 0
         maintenance = 0
         deduction = 0
     else:
@@ -111,13 +140,15 @@ def calculate_salary(emp, year, month):
             get_work_hours(emp, d)
             for d in records.filter(record_type='clock_in').dates('timestamp', 'day')
         )
-        base = total_hours * float(emp.hourly_rate or 0)
+        hourly = float(emp.hourly_rate) if emp.hourly_rate else 0
+        base = total_hours * hourly
         maintenance = sum(
             100 if get_work_hours(emp, d) >= 4 else 50
             for d in records.filter(record_type='clock_in').dates('timestamp', 'day')
         )
-        deduction = float(emp.labor_insurance_amount or 0) + \
-                    float(emp.health_insurance_amount or 0)
+        labor = float(emp.labor_insurance_amount) if emp.labor_insurance_amount else 0
+        health = float(emp.health_insurance_amount) if emp.health_insurance_amount else 0
+        deduction = labor + health
 
     total = base + maintenance + allowance_amount - deduction
     return {
