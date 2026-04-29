@@ -11,7 +11,6 @@ from .base import require_group, get_work_hours, calculate_salary
 @login_required
 @require_group('admin', 'finance')
 def salary(request):
-    # 預設查當月
     year = int(request.GET.get('year', timezone.localdate().year))
     month = int(request.GET.get('month', timezone.localdate().month))
 
@@ -29,7 +28,8 @@ def salary(request):
             total_hours = sum(
                 get_work_hours(emp, d)
                 for d in records.filter(record_type='clock_in').dates('timestamp', 'day'))
-            result['detail'] = f'時薪 ${float(emp.hourly_rate):.0f} × {total_hours:.1f}小時 = ${int(result["base"]):,}\n保養費：${int(result["maintenance"]):,}\n勞健保扣除：-${int(result["deduction"]):,}'
+            hourly = float(emp.hourly_rate) if emp.hourly_rate else 0
+            result['detail'] = f'時薪 ${hourly:.0f} × {total_hours:.1f}小時 = ${int(result["base"]):,}\n保養費：${int(result["maintenance"]):,}\n勞健保扣除：-${int(result["deduction"]):,}'
         results.append(result)
 
     return render(request, 'attendance/salary.html', {
@@ -51,8 +51,10 @@ def add_allowance(request):
     note = request.POST.get('note')
 
     emp = Employee.objects.get(pk=employee_id)
-
-    MonthlyAllowance.objects.update_or_create(employee=emp, year=year, month=month, defaults={'amount': amount, 'note': note})
+    MonthlyAllowance.objects.update_or_create(
+        employee=emp, year=year, month=month,
+        defaults={'amount': amount, 'note': note}
+    )
     return redirect(f"{reverse('dashboard:salary')}?year={year}&month={month}")
 
 
@@ -66,7 +68,6 @@ def export_salary_excel(request):
     ws = wb.active
     ws.title = f"{year}-{month:02d} 薪資表"
 
-    # 表頭
     ws.append(['工號', '姓名', '部門', '底薪', '保養費', '勞務加給', '勞健保扣除', '實領'])
 
     employees = Employee.objects.select_related('user').order_by('employee_id')
