@@ -60,7 +60,23 @@ def get_work_hours(employee, date=None):
         employee=employee, timestamp__date=date, record_type='clock_out'
     ).first()
 
-    end_time = clock_out.timestamp if clock_out else timezone.now()
+    if clock_out:
+        co_local  = clock_out.timestamp.astimezone()
+        co_naive  = datetime.combine(co_local.date(), co_local.time())
+        # 下班時間四捨五入到最近的半小時（< 15 分捨去，≥ 15 分進位）
+        total_mins = co_local.hour * 60 + co_local.minute
+        remainder  = total_mins % 30
+        if remainder < 15:
+            rounded_mins = total_mins - remainder          # 捨去
+        else:
+            rounded_mins = total_mins + (30 - remainder)  # 進位
+        rounded_h, rounded_m = divmod(rounded_mins, 60)
+        rounded_naive = co_naive.replace(
+            hour=rounded_h % 24, minute=rounded_m, second=0, microsecond=0
+        )
+        end_time = clock_out.timestamp + (rounded_naive - co_naive)
+    else:
+        end_time = timezone.now()
 
     # 計算計薪起始時間（考慮遲到）
     clock_in_local = clock_in.timestamp.astimezone()
