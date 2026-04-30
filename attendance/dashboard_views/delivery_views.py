@@ -291,8 +291,9 @@ def delivery_plan(request):
             is_urgent=(customer in urgent),
         )
 
+    # 只顯示本次新建的 pending 任務，排除已完成的舊任務
     tasks = DeliveryTask.objects.filter(
-        employee=employee, date=date
+        employee=employee, date=date, status='pending'
     ).order_by('order')
 
     return render(request, 'attendance/delivery_plan.html', {
