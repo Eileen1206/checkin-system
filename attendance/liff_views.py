@@ -24,6 +24,37 @@ def liff_delivery_page(request):
 
 
 @csrf_exempt
+def liff_delivery_start(request):
+    """POST API：員工按下「出發」，寫入趟次出發時間"""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    from django.utils import timezone as tz
+    data         = json.loads(request.body)
+    session_id   = data.get('session_id')
+    line_user_id = data.get('line_user_id', '').strip()
+
+    session = None
+    if session_id:
+        session = DeliverySession.objects.filter(pk=session_id).first()
+    if not session and line_user_id:
+        emp = Employee.objects.filter(line_user_id=line_user_id).first()
+        if emp:
+            session = DeliverySession.objects.filter(
+                employee=emp, finished_at__isnull=True
+            ).order_by('-trip_number').first()
+
+    if not session:
+        return JsonResponse({'ok': False, 'error': '找不到送貨趟次'})
+
+    if not session.started_at:
+        session.started_at = tz.now()
+        session.save(update_fields=['started_at'])
+
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
 def liff_delivery_finish(request):
     """POST API：完成本次運送，寫入整趟結束時間"""
     if request.method != 'POST':
@@ -96,9 +127,10 @@ def liff_delivery_tasks_api(request):
     tasks = DeliveryTask.objects.filter(session=session).order_by('order')
 
     return JsonResponse({
-        'ok':        True,
-        'session_id': session.pk,
+        'ok':          True,
+        'session_id':  session.pk,
         'trip_number': session.trip_number,
+        'started':     session.started_at is not None,   # 是否已出發
         'tasks': [
             {
                 'id':            t.pk,
@@ -137,15 +169,7 @@ def liff_delivery_complete(request):
     if task.status == 'completed':
         return JsonResponse({'ok': False, 'error': '此站已標記完成'})
 
-    # 若是本趟第一站完成 → 寫入出發時間到 task.session
     from django.utils import timezone as tz
-    if task.session and not task.session.started_at:
-        already_done = DeliveryTask.objects.filter(
-            session=task.session, status='completed'
-        ).exists()
-        if not already_done:
-            task.session.started_at = tz.now()
-            task.session.save(update_fields=['started_at'])
 
     # 客戶沒有座標 → 直接完成，不驗證
     cust = task.customer

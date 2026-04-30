@@ -48,99 +48,60 @@
       border: 2px solid transparent;
       transition: border-color 0.2s, opacity 0.2s;
     }
-    .stop-card.done {
-      opacity: 0.55;
-      border-color: #d1fae5;
-    }
-    .stop-card.next {
-      border-color: #27ACB2;
-      box-shadow: 0 4px 16px rgba(39,172,178,0.15);
-    }
+    .stop-card.done { opacity: 0.55; border-color: #d1fae5; }
+    .stop-card.next { border-color: #27ACB2; box-shadow: 0 4px 16px rgba(39,172,178,0.15); }
 
-    .stop-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 4px;
-    }
+    .stop-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
     .stop-num {
-      width: 28px; height: 28px;
-      border-radius: 50%;
+      width: 28px; height: 28px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
       font-size: 12px; font-weight: 700; flex-shrink: 0;
       background: #e5e7eb; color: #555;
     }
-    .stop-card.done .stop-num  { background: #d1fae5; color: #059669; }
-    .stop-card.next .stop-num  { background: #27ACB2; color: white; }
-
+    .stop-card.done .stop-num { background: #d1fae5; color: #059669; }
+    .stop-card.next .stop-num { background: #27ACB2; color: white; }
     .stop-name { font-size: 15px; font-weight: 600; color: #1a1a1a; }
     .stop-card.done .stop-name { text-decoration: line-through; color: #9ca3af; }
-
     .stop-addr { font-size: 13px; color: #888; margin-top: 2px; padding-left: 38px; }
-
     .stop-status { font-size: 12px; color: #27ACB2; margin-left: auto; white-space: nowrap; }
 
     .arrive-btn {
-      display: block;
-      width: 100%;
-      margin-top: 12px;
-      padding: 12px;
-      background: #27ACB2;
-      color: white;
-      border: none;
-      border-radius: 12px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
+      display: block; width: 100%; margin-top: 12px; padding: 12px;
+      background: #27ACB2; color: white; border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 700; cursor: pointer;
       transition: background 0.15s, transform 0.1s;
     }
     .arrive-btn:active { transform: scale(0.97); background: #1d8f94; }
     .arrive-btn:disabled { background: #9ca3af; cursor: not-allowed; transform: none; }
-
     .arrive-btn.loading::after {
       content: '';
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.4);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      margin-left: 8px;
-      vertical-align: middle;
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.4); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+      margin-left: 8px; vertical-align: middle;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .msg-box {
-      font-size: 13px;
-      padding: 8px 12px;
-      border-radius: 8px;
-      margin-top: 8px;
-      display: none;
+      font-size: 13px; padding: 8px 12px; border-radius: 8px; margin-top: 8px; display: none;
     }
-    .msg-box.ok    { background: #f0fdf4; color: #166534; display: block; }
-    .msg-box.err   { background: #fef2f2; color: #991b1b; display: block; }
-    .msg-box.warn  { background: #fffbeb; color: #92400e; display: block; }
+    .msg-box.ok   { background: #f0fdf4; color: #166534; display: block; }
+    .msg-box.err  { background: #fef2f2; color: #991b1b; display: block; }
+    .msg-box.warn { background: #fffbeb; color: #92400e; display: block; }
 
-    /* ── 底部完成按鈕 ── */
+    /* ── 底部按鈕 ── */
     .footer {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
+      position: fixed; bottom: 0; left: 0; right: 0;
       padding: 16px;
       background: rgba(245,240,232,0.95);
       backdrop-filter: blur(6px);
       border-top: 1px solid rgba(0,0,0,0.06);
     }
     .finish-btn {
-      width: 100%;
-      padding: 15px;
-      background: #1a1a1a;
-      color: white;
-      border: none;
-      border-radius: 14px;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
+      width: 100%; padding: 15px;
+      background: #1a1a1a; color: white; border: none;
+      border-radius: 14px; font-size: 16px; font-weight: 700;
+      cursor: pointer; transition: background 0.15s, transform 0.1s;
     }
     .finish-btn:active { transform: scale(0.97); }
     .finish-btn.all-done { background: #059669; }
@@ -153,15 +114,86 @@
     }
     .big-icon { font-size: 56px; margin-bottom: 16px; }
     .big-title { font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
-    .big-sub   { font-size: 14px; color: #888; }
+    .big-sub   { font-size: 14px; color: #888; line-height: 1.6; }
     .spinner {
       width: 44px; height: 44px;
-      border: 3px solid #e5e7eb;
-      border-top-color: #1a1a1a;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      border: 3px solid #e5e7eb; border-top-color: #1a1a1a;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
       margin: 0 auto 20px;
     }
+
+    /* ── 出發確認畫面 ── */
+    .start-screen {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 100vh;
+      padding: 32px; text-align: center;
+      background: #f5f0e8;
+    }
+    .start-icon  { font-size: 64px; margin-bottom: 20px; }
+    .start-title { font-size: 22px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
+    .start-sub   { font-size: 14px; color: #888; margin-bottom: 32px; line-height: 1.6; }
+    .start-stops {
+      background: white; border-radius: 16px; padding: 16px;
+      width: 100%; max-width: 360px; margin-bottom: 28px; text-align: left;
+    }
+    .start-stops-title { font-size: 12px; color: #aaa; font-weight: 600; margin-bottom: 10px; letter-spacing: .05em; }
+    .start-stop-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid #f3f4f6;
+    }
+    .start-stop-row:last-child { border-bottom: none; }
+    .start-stop-num {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: #e5e7eb; color: #555;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; flex-shrink: 0;
+    }
+    .start-stop-name { font-size: 14px; color: #1a1a1a; font-weight: 500; }
+    .depart-btn {
+      width: 100%; max-width: 360px;
+      padding: 18px; background: #27ACB2; color: white;
+      border: none; border-radius: 16px;
+      font-size: 18px; font-weight: 700; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      box-shadow: 0 4px 20px rgba(39,172,178,0.3);
+    }
+    .depart-btn:active { transform: scale(0.97); background: #1d8f94; }
+    .depart-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
+
+    /* ── 完成確認 Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 100; padding: 0;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-sheet {
+      background: white; border-radius: 24px 24px 0 0;
+      padding: 28px 24px 40px; width: 100%; max-width: 480px;
+    }
+    .modal-handle {
+      width: 40px; height: 4px; background: #e5e7eb;
+      border-radius: 99px; margin: 0 auto 20px;
+    }
+    .modal-title { font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
+    .modal-sub   { font-size: 14px; color: #888; margin-bottom: 20px; line-height: 1.5; }
+    .modal-remain {
+      background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 20px;
+      font-size: 13px; color: #92400e;
+    }
+    .modal-remain ul { margin: 6px 0 0 16px; }
+    .modal-remain li { margin-bottom: 3px; }
+    .modal-btn-row { display: flex; gap: 10px; }
+    .modal-cancel {
+      flex: 1; padding: 14px; background: #f3f4f6; color: #555;
+      border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .modal-confirm {
+      flex: 2; padding: 14px; background: #1a1a1a; color: white;
+      border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
+    }
+    .modal-confirm.danger { background: #dc2626; }
   </style>
 </head>
 <body>
@@ -173,9 +205,24 @@
   </div>
 </div>
 
+<!-- 完成確認 Modal -->
+<div class="modal-overlay hidden" id="finish-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-sub"  id="modal-sub"></div>
+    <div class="modal-remain hidden" id="modal-remain"></div>
+    <div class="modal-btn-row">
+      <button class="modal-cancel" onclick="closeModal()">取消</button>
+      <button class="modal-confirm" id="modal-confirm-btn" onclick="doFinish()">確認結束</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const LIFF_ID    = "{{ liff_route_id }}";
 const API_TASKS  = "/liff/delivery/tasks/";
+const API_START  = "/liff/delivery/start/";
 const API_DONE   = "/liff/delivery/complete/";
 const API_FINISH = "/liff/delivery/finish/";
 
@@ -191,7 +238,6 @@ async function main() {
   const profile = await liff.getProfile();
   lineUserId = profile.userId;
 
-  // 取今日任務
   const res  = await fetch(`${API_TASKS}?line_user_id=${lineUserId}`);
   const data = await res.json();
 
@@ -200,10 +246,53 @@ async function main() {
 
   tasks     = data.tasks;
   sessionId = data.session_id;
+
+  // 若趟次尚未出發 → 顯示出發確認畫面
+  if (!data.started) {
+    showStartScreen();
+  } else {
+    renderPage();
+  }
+}
+
+/* ────────── 出發確認畫面 ────────── */
+function showStartScreen() {
+  const stopRows = tasks.map(t => `
+    <div class="start-stop-row">
+      <div class="start-stop-num">${t.order}</div>
+      <div class="start-stop-name">${t.customer_name}</div>
+    </div>`).join('');
+
+  document.getElementById('app').innerHTML = `
+    <div class="start-screen">
+      <div class="start-icon">🚚</div>
+      <div class="start-title">今日共 ${tasks.length} 站</div>
+      <div class="start-sub">確認路線後，按下出發開始計時</div>
+      <div class="start-stops">
+        <div class="start-stops-title">TODAY'S ROUTE</div>
+        ${stopRows}
+      </div>
+      <button class="depart-btn" id="depart-btn" onclick="depart()">🚀 出發！</button>
+    </div>`;
+}
+
+async function depart() {
+  const btn = document.getElementById('depart-btn');
+  btn.disabled = true;
+  btn.textContent = '記錄出發時間…';
+
+  try {
+    await fetch(API_START, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, line_user_id: lineUserId }),
+    });
+  } catch (e) { /* 即使失敗也繼續，避免卡住 */ }
+
   renderPage();
 }
 
-/* ────────── 渲染整頁 ────────── */
+/* ────────── 渲染送貨路線頁 ────────── */
 function renderPage() {
   const done  = tasks.filter(t => t.status === 'completed').length;
   const total = tasks.length;
@@ -220,22 +309,20 @@ function renderPage() {
     </div>
 
     <div class="list" id="stop-list">
-      ${tasks.map(t => renderStop(t, done)).join('')}
+      ${tasks.map(t => renderStop(t)).join('')}
     </div>
 
     <div class="footer">
-      <button class="finish-btn ${allDone ? 'all-done' : ''}" onclick="finishDelivery()">
-        ${allDone ? '✅ 已全部完成・關閉' : '🏠 完成本次運送'}
+      <button class="finish-btn ${allDone ? 'all-done' : ''}" onclick="confirmFinish()">
+        ${allDone ? '✅ 已全部完成・結束運送' : '🏠 完成本次運送'}
       </button>
     </div>`;
 }
 
-function renderStop(task, completedBefore) {
+function renderStop(task) {
   const isDone = task.status === 'completed';
-  // 找第一個 pending 的站（下一站）
   const nextTask = tasks.find(t => t.status !== 'completed');
   const isNext   = nextTask && nextTask.id === task.id;
-
   const cls = isDone ? 'done' : isNext ? 'next' : '';
 
   return `
@@ -265,7 +352,6 @@ async function arrive(taskId) {
   btn.textContent = '定位中';
   msg.className = 'msg-box';
 
-  // 取 GPS
   let lat = null, lng = null;
   try {
     const pos = await new Promise((resolve, reject) =>
@@ -274,7 +360,6 @@ async function arrive(taskId) {
     lat = pos.coords.latitude;
     lng = pos.coords.longitude;
   } catch (e) {
-    // GPS 失敗：給使用者選擇
     btn.classList.remove('loading');
     btn.disabled = false;
     btn.textContent = '📍 到達確認';
@@ -283,7 +368,6 @@ async function arrive(taskId) {
     return;
   }
 
-  // 送出
   try {
     const res  = await fetch(API_DONE, {
       method: 'POST',
@@ -293,7 +377,6 @@ async function arrive(taskId) {
     const data = await res.json();
 
     if (data.ok) {
-      // 更新本地資料並重繪
       const t = tasks.find(t => t.id === taskId);
       if (t) t.status = 'completed';
       renderPage();
@@ -313,16 +396,45 @@ async function arrive(taskId) {
   }
 }
 
-/* ────────── 完成本次運送 ────────── */
-async function finishDelivery() {
-  const remaining = tasks.filter(t => t.status !== 'completed').length;
+/* ────────── 完成確認 Modal ────────── */
+function confirmFinish() {
+  const remaining = tasks.filter(t => t.status !== 'completed');
+  const done      = tasks.length - remaining.length;
 
-  if (remaining > 0) {
-    const ok = confirm(`還有 ${remaining} 站尚未完成，確定要結束本次運送？`);
-    if (!ok) return;
+  const modal      = document.getElementById('finish-modal');
+  const title      = document.getElementById('modal-title');
+  const sub        = document.getElementById('modal-sub');
+  const remainDiv  = document.getElementById('modal-remain');
+  const confirmBtn = document.getElementById('modal-confirm-btn');
+
+  if (remaining.length === 0) {
+    title.textContent = '結束本次運送';
+    sub.textContent   = `全部 ${done} 站已完成，確認結束？`;
+    remainDiv.classList.add('hidden');
+    confirmBtn.className = 'modal-confirm';
+    confirmBtn.textContent = '✅ 確認結束';
+  } else {
+    title.textContent = '尚有未完成的站';
+    sub.textContent   = `已完成 ${done} / ${tasks.length} 站，仍有 ${remaining.length} 站未送達，確定要結束本次運送嗎？`;
+    remainDiv.innerHTML = `<strong>未完成站點：</strong><ul>` +
+      remaining.map(t => `<li>第 ${t.order} 站｜${t.customer_name}</li>`).join('') +
+      `</ul>`;
+    remainDiv.classList.remove('hidden');
+    confirmBtn.className = 'modal-confirm danger';
+    confirmBtn.textContent = '強制結束';
   }
 
-  // 呼叫 finish API，寫入結束時間
+  modal.classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('finish-modal').classList.add('hidden');
+}
+
+/* ────────── 執行完成 ────────── */
+async function doFinish() {
+  closeModal();
+
   try {
     const today = new Date().toISOString().slice(0, 10);
     const res   = await fetch(API_FINISH, {
@@ -348,7 +460,6 @@ async function finishDelivery() {
         </button>
       </div>`;
   } catch (e) {
-    // 即使 API 失敗也關閉
     liff.closeWindow();
   }
 }
