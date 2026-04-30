@@ -174,9 +174,10 @@
 </div>
 
 <script>
-const LIFF_ID   = "{{ liff_route_id }}";
-const API_TASKS = "/liff/delivery/tasks/";
-const API_DONE  = "/liff/delivery/complete/";
+const LIFF_ID    = "{{ liff_route_id }}";
+const API_TASKS  = "/liff/delivery/tasks/";
+const API_DONE   = "/liff/delivery/complete/";
+const API_FINISH = "/liff/delivery/finish/";
 
 let lineUserId = null;
 let tasks      = [];
@@ -319,7 +320,35 @@ async function finishDelivery() {
     if (!ok) return;
   }
 
-  liff.closeWindow();
+  // 呼叫 finish API，寫入結束時間
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const res   = await fetch(API_FINISH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ line_user_id: lineUserId, date: today }),
+    });
+    const data = await res.json();
+
+    const done  = tasks.filter(t => t.status === 'completed').length;
+    const total = tasks.length;
+    const mins  = data.duration ? `（共 ${data.duration} 分鐘）` : '';
+
+    document.getElementById('app').innerHTML = `
+      <div class="fullscreen">
+        <div class="big-icon">🎉</div>
+        <div class="big-title">本次運送完成！</div>
+        <div class="big-sub">${done} / ${total} 站完成 ${mins}</div>
+        <button onclick="liff.closeWindow()"
+          style="margin-top:32px; padding:14px 36px; background:#1a1a1a; color:white;
+                 border:none; border-radius:14px; font-size:16px; font-weight:700; cursor:pointer;">
+          關閉
+        </button>
+      </div>`;
+  } catch (e) {
+    // 即使 API 失敗也關閉
+    liff.closeWindow();
+  }
 }
 
 /* ────────── 全螢幕提示 ────────── */

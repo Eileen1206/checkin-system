@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from .models import Employee, DeliveryTask
+from .models import Employee, DeliveryTask, DeliverySession
 
 
 def _haversine_meters(lat1, lng1, lat2, lng2):
@@ -20,6 +20,39 @@ def liff_delivery_page(request):
     """LIFF 頁面：送貨到站 GPS 驗證（舊版單站）"""
     return render(request, 'liff/delivery.html', {
         'liff_id': settings.LIFF_DELIVERY_ID,
+    })
+
+
+@csrf_exempt
+def liff_delivery_finish(request):
+    """POST API：完成本次運送，寫入整趟結束時間"""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    from django.utils import timezone as tz
+    data         = json.loads(request.body)
+    line_user_id = data.get('line_user_id', '').strip()
+    date_str     = data.get('date', str(tz.localdate()))
+
+    emp = Employee.objects.filter(line_user_id=line_user_id).first()
+    if not emp:
+        return JsonResponse({'ok': False, 'error': '找不到員工'})
+
+    session, _ = DeliverySession.objects.get_or_create(
+        employee=emp, date=date_str
+    )
+    if not session.finished_at:
+        session.finished_at = tz.now()
+        session.save(update_fields=['finished_at'])
+
+    total     = DeliveryTask.objects.filter(employee=emp, date=date_str).count()
+    completed = DeliveryTask.objects.filter(employee=emp, date=date_str, status='completed').count()
+
+    return JsonResponse({
+        'ok':       True,
+        'total':    total,
+        'completed': completed,
+        'duration': session.duration_minutes(),
     })
 
 
@@ -87,6 +120,19 @@ def liff_delivery_complete(request):
 
     if task.status == 'completed':
         return JsonResponse({'ok': False, 'error': '此站已標記完成'})
+
+    # 若是今日第一站完成 → 寫入整趟出發時間
+    from django.utils import timezone as tz
+    already_done = DeliveryTask.objects.filter(
+        employee=task.employee, date=task.date, status='completed'
+    ).exists()
+    if not already_done:
+        session, _ = DeliverySession.objects.get_or_create(
+            employee=task.employee, date=task.date
+        )
+        if not session.started_at:
+            session.started_at = tz.now()
+            session.save(update_fields=['started_at'])
 
     # 客戶沒有座標 → 直接完成，不驗證
     cust = task.customer

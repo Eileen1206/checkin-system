@@ -236,6 +236,30 @@ class DeliveryTask(models.Model):
 
 
     
+class DeliverySession(models.Model):
+    """記錄員工整趟送貨的出發與完成時間"""
+    employee    = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                    related_name='delivery_sessions', verbose_name='送貨員')
+    date        = models.DateField('任務日期')
+    started_at  = models.DateTimeField('出發時間', null=True, blank=True)   # 第一站完成時寫入
+    finished_at = models.DateTimeField('完成時間', null=True, blank=True)   # 按「完成本次運送」時寫入
+
+    class Meta:
+        verbose_name        = '送貨行程'
+        verbose_name_plural = '送貨行程'
+        unique_together     = ('employee', 'date')
+        ordering            = ['-date']
+
+    def duration_minutes(self):
+        """整趟花費分鐘數（出發→完成）"""
+        if self.started_at and self.finished_at:
+            return int((self.finished_at - self.started_at).total_seconds() / 60)
+        return None
+
+    def __str__(self):
+        return f"{self.employee} {self.date}"
+
+
 class Customer(models.Model):
     customer_id = models.CharField('客戶編號', max_length=20, unique=True)
     name        = models.CharField('客戶名稱', max_length=100)
