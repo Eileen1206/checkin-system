@@ -263,7 +263,8 @@ def delivery_plan(request):
 @login_required
 def delivery_today(request):
     """今日送貨狀況總覽"""
-    date = request.GET.get('date', str(timezone.localdate()))
+    from ..models import DeliverySession
+    date        = request.GET.get('date', str(timezone.localdate()))
     employee_id = request.GET.get('employee_id', '')
 
     tasks = DeliveryTask.objects.filter(date=date).select_related(
@@ -272,11 +273,18 @@ def delivery_today(request):
     if employee_id:
         tasks = tasks.filter(employee_id=employee_id)
 
+    # 查當日每位員工的 session（出發 / 完成時間）
+    sessions_qs = DeliverySession.objects.filter(date=date).select_related('employee')
+    if employee_id:
+        sessions_qs = sessions_qs.filter(employee_id=employee_id)
+    session_map = {s.employee_id: s for s in sessions_qs}
+
     delivery_employees = Employee.objects.filter(is_delivery=True).select_related('user')
 
     return render(request, 'attendance/delivery_today.html', {
-        'tasks': tasks,
-        'date': date,
-        'delivery_employees': delivery_employees,
+        'tasks':                tasks,
+        'date':                 date,
+        'delivery_employees':   delivery_employees,
         'selected_employee_id': employee_id,
+        'session_map':          session_map,
     })
