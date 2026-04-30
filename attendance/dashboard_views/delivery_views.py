@@ -234,14 +234,16 @@ def delivery_plan(request):
         })
 
     # POST：計算路線並建立任務
-    employee_id = request.POST.get('employee_id')
-    customer_ids = request.POST.getlist('customer_ids')
-    urgent_ids = request.POST.getlist('urgent_ids')
-    date = request.POST.get('date', str(timezone.localdate()))
-    office = get_office_coords()
+    employee_id  = request.POST.get('employee_id')
+    customer_ids = list(dict.fromkeys(request.POST.getlist('customer_ids')))  # 保持順序去重
+    urgent_ids   = request.POST.getlist('urgent_ids')
+    date         = request.POST.get('date', str(timezone.localdate()))
+    office       = get_office_coords()
 
-    employee = get_object_or_404(Employee, pk=employee_id)
-    customers = list(Customer.objects.filter(pk__in=customer_ids))
+    employee  = get_object_or_404(Employee, pk=employee_id)
+    # 依送出順序排列（filter 不保證順序）
+    cust_map  = {str(c.pk): c for c in Customer.objects.filter(pk__in=customer_ids)}
+    customers = [cust_map[cid] for cid in customer_ids if cid in cust_map]
 
     urgent = [c for c in customers if str(c.pk) in urgent_ids]
     normal = [c for c in customers if str(c.pk) not in urgent_ids]
