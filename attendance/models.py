@@ -216,10 +216,17 @@ class DeliveryTask(models.Model):
     is_urgent = models.BooleanField('急單', default=False)
     note = models.TextField('備註', blank=True)
     customer = models.ForeignKey(
-    'Customer', 
-    on_delete=models.SET_NULL, 
-    null=True, blank=True,
-    verbose_name='客戶'
+        'Customer',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        verbose_name='客戶'
+    )
+    session = models.ForeignKey(
+        'DeliverySession',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='tasks',
+        verbose_name='所屬趟次'
     )
 
 
@@ -237,27 +244,31 @@ class DeliveryTask(models.Model):
 
     
 class DeliverySession(models.Model):
-    """記錄員工整趟送貨的出發與完成時間"""
+    """一趟送貨行程（一次推播 + 後續臨時加站 = 一趟）"""
     employee    = models.ForeignKey(Employee, on_delete=models.CASCADE,
                                     related_name='delivery_sessions', verbose_name='送貨員')
     date        = models.DateField('任務日期')
-    started_at  = models.DateTimeField('出發時間', null=True, blank=True)   # 第一站完成時寫入
-    finished_at = models.DateTimeField('完成時間', null=True, blank=True)   # 按「完成本次運送」時寫入
+    trip_number = models.PositiveSmallIntegerField('趟次', default=1)
+    pushed_at   = models.DateTimeField('推播時間', null=True, blank=True)
+    started_at  = models.DateTimeField('出發時間', null=True, blank=True)
+    finished_at = models.DateTimeField('完成時間', null=True, blank=True)
 
     class Meta:
         verbose_name        = '送貨行程'
         verbose_name_plural = '送貨行程'
-        unique_together     = ('employee', 'date')
-        ordering            = ['-date']
+        unique_together     = ('employee', 'date', 'trip_number')
+        ordering            = ['-date', 'trip_number']
 
     def duration_minutes(self):
-        """整趟花費分鐘數（出發→完成）"""
         if self.started_at and self.finished_at:
             return int((self.finished_at - self.started_at).total_seconds() / 60)
         return None
 
+    def is_active(self):
+        return self.started_at is not None and self.finished_at is None
+
     def __str__(self):
-        return f"{self.employee} {self.date}"
+        return f"{self.employee} {self.date} 第{self.trip_number}趟"
 
 
 class Customer(models.Model):

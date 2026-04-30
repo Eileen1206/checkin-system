@@ -181,6 +181,7 @@ const API_FINISH = "/liff/delivery/finish/";
 
 let lineUserId = null;
 let tasks      = [];
+let sessionId  = null;
 
 /* ────────── 主流程 ────────── */
 async function main() {
@@ -197,7 +198,8 @@ async function main() {
   if (!data.ok) { showFull('❌', '載入失敗', data.error); return; }
   if (!data.tasks.length) { showFull('📦', '今日無任務', '尚未安排送貨路線'); return; }
 
-  tasks = data.tasks;
+  tasks     = data.tasks;
+  sessionId = data.session_id;
   renderPage();
 }
 
@@ -326,7 +328,7 @@ async function finishDelivery() {
     const res   = await fetch(API_FINISH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ line_user_id: lineUserId, date: today }),
+      body: JSON.stringify({ session_id: sessionId, line_user_id: lineUserId, date: today }),
     });
     const data = await res.json();
 

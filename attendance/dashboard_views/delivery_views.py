@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.conf import settings
 import json
 from ..utils.routing import get_office_coords
-from ..models import Employee, Customer, DeliveryTask
+from ..models import Employee, Customer, DeliveryTask, DeliverySession
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -32,6 +32,18 @@ def delivery_push(request):
     tasks = DeliveryTask.objects.filter(
         employee=employee, date=date, status='pending'
     ).order_by('order')
+
+    # 建立本趟 DeliverySession
+    trip_number = DeliverySession.objects.filter(
+        employee=employee, date=date
+    ).count() + 1
+    session = DeliverySession.objects.create(
+        employee=employee,
+        date=date,
+        trip_number=trip_number,
+        pushed_at=timezone.now(),
+    )
+    tasks.update(session=session)
 
     # 文字摘要
     lines = [f'🚚 今日共 {tasks.count()} 站，出發前請確認路線']
@@ -131,6 +143,11 @@ def delivery_add_task(request):
         employee=employee, date=date
     ).order_by('-order').values_list('order', flat=True).first() or 0
 
+    # 找最新未完成的趟次
+    active_session = DeliverySession.objects.filter(
+        employee=employee, date=date, finished_at__isnull=True
+    ).order_by('-trip_number').first()
+
     task = DeliveryTask.objects.create(
         employee=employee,
         date=date,
@@ -139,6 +156,7 @@ def delivery_add_task(request):
         customer_name=customer.name,
         address=customer.address,
         is_urgent=False,
+        session=active_session,
     )
 
     if employee.line_user_id:
@@ -262,29 +280,41 @@ def delivery_plan(request):
 
 @login_required
 def delivery_today(request):
-    """今日送貨狀況總覽"""
-    from ..models import DeliverySession
+    """今日送貨狀況總覽（按趟次顯示）"""
     date        = request.GET.get('date', str(timezone.localdate()))
     employee_id = request.GET.get('employee_id', '')
 
-    tasks = DeliveryTask.objects.filter(date=date).select_related(
-        'employee__user', 'customer'
-    ).order_by('employee', 'order')
-    if employee_id:
-        tasks = tasks.filter(employee_id=employee_id)
-
-    # 查當日每位員工的 session（出發 / 完成時間）
-    sessions_qs = DeliverySession.objects.filter(date=date).select_related('employee')
+    sessions_qs = DeliverySession.objects.filter(date=date).select_related('employee__user').order_by('employee', 'trip_number')
     if employee_id:
         sessions_qs = sessions_qs.filter(employee_id=employee_id)
-    session_map = {s.employee_id: s for s in sessions_qs}
+
+    # 每個 session 附上其 tasks
+    trips = []
+    for session in sessions_qs:
+        tasks = list(DeliveryTask.objects.filter(session=session).order_by('order'))
+        total     = len(tasks)
+        completed = sum(1 for t in tasks if t.status == 'completed')
+        trips.append({
+            'session':   session,
+            'tasks':     tasks,
+            'total':     total,
+            'completed': completed,
+            'all_done':  total > 0 and completed == total,
+        })
+
+    # 無 session 的任務（舊資料或直接建立的）另外處理
+    orphan_tasks = DeliveryTask.objects.filter(
+        date=date, session__isnull=True
+    ).select_related('employee__user').order_by('employee', 'order')
+    if employee_id:
+        orphan_tasks = orphan_tasks.filter(employee_id=employee_id)
 
     delivery_employees = Employee.objects.filter(is_delivery=True).select_related('user')
 
     return render(request, 'attendance/delivery_today.html', {
-        'tasks':                tasks,
+        'trips':                trips,
+        'orphan_tasks':         orphan_tasks,
         'date':                 date,
         'delivery_employees':   delivery_employees,
         'selected_employee_id': employee_id,
-        'session_map':          session_map,
     })

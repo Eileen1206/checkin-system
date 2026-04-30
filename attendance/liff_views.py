@@ -31,28 +31,35 @@ def liff_delivery_finish(request):
 
     from django.utils import timezone as tz
     data         = json.loads(request.body)
+    session_id   = data.get('session_id')
     line_user_id = data.get('line_user_id', '').strip()
-    date_str     = data.get('date', str(tz.localdate()))
 
-    emp = Employee.objects.filter(line_user_id=line_user_id).first()
-    if not emp:
-        return JsonResponse({'ok': False, 'error': '找不到員工'})
+    session = None
+    if session_id:
+        session = DeliverySession.objects.filter(pk=session_id).first()
+    if not session and line_user_id:
+        # fallback：找最新未完成趟次
+        emp = Employee.objects.filter(line_user_id=line_user_id).first()
+        if emp:
+            session = DeliverySession.objects.filter(
+                employee=emp, finished_at__isnull=True
+            ).order_by('-trip_number').first()
 
-    session, _ = DeliverySession.objects.get_or_create(
-        employee=emp, date=date_str
-    )
+    if not session:
+        return JsonResponse({'ok': False, 'error': '找不到送貨趟次'})
+
     if not session.finished_at:
         session.finished_at = tz.now()
         session.save(update_fields=['finished_at'])
 
-    total     = DeliveryTask.objects.filter(employee=emp, date=date_str).count()
-    completed = DeliveryTask.objects.filter(employee=emp, date=date_str, status='completed').count()
+    total     = session.tasks.count()
+    completed = session.tasks.filter(status='completed').count()
 
     return JsonResponse({
-        'ok':       True,
-        'total':    total,
+        'ok':        True,
+        'total':     total,
         'completed': completed,
-        'duration': session.duration_minutes(),
+        'duration':  session.duration_minutes(),
     })
 
 
@@ -77,12 +84,21 @@ def liff_delivery_tasks_api(request):
     if not emp:
         return JsonResponse({'ok': False, 'error': '找不到對應員工，請先綁定 LINE'})
 
-    tasks = DeliveryTask.objects.filter(
-        employee=emp, date=date_str
-    ).order_by('order')
+    # 抓最新未完成的趟次
+    from django.utils import timezone as tz
+    session = DeliverySession.objects.filter(
+        employee=emp, date=date_str, finished_at__isnull=True
+    ).order_by('-trip_number').first()
+
+    if not session:
+        return JsonResponse({'ok': True, 'tasks': [], 'session_id': None})
+
+    tasks = DeliveryTask.objects.filter(session=session).order_by('order')
 
     return JsonResponse({
-        'ok': True,
+        'ok':        True,
+        'session_id': session.pk,
+        'trip_number': session.trip_number,
         'tasks': [
             {
                 'id':            t.pk,
@@ -121,18 +137,15 @@ def liff_delivery_complete(request):
     if task.status == 'completed':
         return JsonResponse({'ok': False, 'error': '此站已標記完成'})
 
-    # 若是今日第一站完成 → 寫入整趟出發時間
+    # 若是本趟第一站完成 → 寫入出發時間到 task.session
     from django.utils import timezone as tz
-    already_done = DeliveryTask.objects.filter(
-        employee=task.employee, date=task.date, status='completed'
-    ).exists()
-    if not already_done:
-        session, _ = DeliverySession.objects.get_or_create(
-            employee=task.employee, date=task.date
-        )
-        if not session.started_at:
-            session.started_at = tz.now()
-            session.save(update_fields=['started_at'])
+    if task.session and not task.session.started_at:
+        already_done = DeliveryTask.objects.filter(
+            session=task.session, status='completed'
+        ).exists()
+        if not already_done:
+            task.session.started_at = tz.now()
+            task.session.save(update_fields=['started_at'])
 
     # 客戶沒有座標 → 直接完成，不驗證
     cust = task.customer

@@ -1,9 +1,9 @@
 {% extends "attendance/base.html" %}
-{% block title %}今日送貨狀況{% endblock %}
+{% block title %}送貨狀況{% endblock %}
 
 {% block content %}
 
-<!-- 標題 + 日期查詢 -->
+<!-- 標題 + 篩選 -->
 <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
   <h1 class="text-2xl font-bold text-gray-800">送貨狀況</h1>
   <form method="get" class="flex gap-2 items-center flex-wrap">
@@ -22,108 +22,157 @@
   </form>
 </div>
 
-<!-- 送貨時間摘要 -->
-{% if session_map %}
-<div class="mb-6">
-  <h2 class="text-sm font-semibold text-gray-700 mb-2">🕐 送貨時間紀錄</h2>
-  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-    {% for emp_id, session in session_map.items %}
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4">
-      <div class="font-semibold text-gray-800 mb-3">
-        {{ session.employee.user.get_full_name|default:session.employee.user.username }}
+<!-- 趟次列表 -->
+{% if trips %}
+<div class="space-y-4">
+  {% for trip in trips %}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+
+    <!-- 趟次標題列 -->
+    <div class="px-5 py-4 flex items-center justify-between gap-4 cursor-pointer"
+         onclick="toggleTrip('trip-{{ trip.session.pk }}')">
+      <div class="flex items-center gap-4">
+        <!-- 趟次 badge -->
+        <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
+          第 {{ trip.session.trip_number }} 趟
+        </span>
+        <!-- 員工 -->
+        <span class="font-semibold text-gray-800">
+          {{ trip.session.employee.user.get_full_name|default:trip.session.employee.user.username }}
+        </span>
+        <!-- 站數 -->
+        <span class="text-sm text-gray-500">{{ trip.completed }} / {{ trip.total }} 站</span>
       </div>
-      <div class="grid grid-cols-2 gap-2 text-sm">
-        <div>
-          <div class="text-xs text-gray-400 mb-0.5">出發時間</div>
-          <div class="font-medium {% if session.started_at %}text-gray-800{% else %}text-gray-300{% endif %}">
-            {{ session.started_at|date:"H:i"|default:"—" }}
-          </div>
+
+      <div class="flex items-center gap-4">
+        <!-- 時間 -->
+        <div class="text-sm text-right hidden sm:block">
+          <span class="text-gray-400">出發 </span>
+          <span class="font-medium text-gray-700">{{ trip.session.started_at|date:"H:i"|default:"—" }}</span>
+          <span class="mx-2 text-gray-200">|</span>
+          <span class="text-gray-400">完成 </span>
+          <span class="font-medium {% if trip.session.finished_at %}text-emerald-600{% else %}text-gray-300{% endif %}">
+            {{ trip.session.finished_at|date:"H:i"|default:"送貨中" }}
+          </span>
+          {% if trip.session.duration_minutes %}
+          <span class="ml-2 text-xs text-blue-500">{{ trip.session.duration_minutes }} 分鐘</span>
+          {% endif %}
         </div>
-        <div>
-          <div class="text-xs text-gray-400 mb-0.5">完成時間</div>
-          <div class="font-medium {% if session.finished_at %}text-emerald-600{% else %}text-gray-300{% endif %}">
-            {{ session.finished_at|date:"H:i"|default:"送貨中…" }}
-          </div>
-        </div>
-        {% if session.started_at and session.finished_at %}
-        <div class="col-span-2 mt-1 pt-2 border-t border-gray-50">
-          <span class="text-xs text-gray-400">總花費時間</span>
-          <span class="ml-2 text-sm font-semibold text-blue-600">{{ session.duration_minutes }} 分鐘</span>
-        </div>
+        <!-- 狀態 -->
+        {% if trip.all_done %}
+          <span class="text-xs px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium">✅ 完成</span>
+        {% elif trip.session.started_at %}
+          <span class="text-xs px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">🚚 送貨中</span>
+        {% else %}
+          <span class="text-xs px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full font-medium">待出發</span>
         {% endif %}
+        <span class="text-gray-400 text-xs">▾</span>
       </div>
     </div>
-    {% endfor %}
+
+    <!-- 展開：站點明細 -->
+    <div id="trip-{{ trip.session.pk }}" class="hidden border-t border-gray-50">
+      <!-- 行動版時間（小螢幕才顯示） -->
+      <div class="px-5 py-2 flex gap-4 text-sm sm:hidden bg-gray-50">
+        <span class="text-gray-400">出發 <strong class="text-gray-700">{{ trip.session.started_at|date:"H:i"|default:"—" }}</strong></span>
+        <span class="text-gray-400">完成 <strong class="{% if trip.session.finished_at %}text-emerald-600{% else %}text-gray-300{% endif %}">{{ trip.session.finished_at|date:"H:i"|default:"—" }}</strong></span>
+        {% if trip.session.duration_minutes %}<span class="text-blue-500">{{ trip.session.duration_minutes }} 分鐘</span>{% endif %}
+      </div>
+
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-400 text-xs">
+          <tr>
+            <th class="text-left px-5 py-2 font-medium">站</th>
+            <th class="text-left px-5 py-2 font-medium">客戶</th>
+            <th class="text-left px-5 py-2 font-medium hidden sm:table-cell">地址</th>
+            <th class="text-left px-5 py-2 font-medium">完成時間</th>
+            <th class="px-3 py-2 w-12"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for task in trip.tasks %}
+          <tr class="{% if task.status == 'completed' %}bg-gray-50/50{% endif %}">
+            <td class="px-5 py-3 text-gray-400">{{ task.order }}</td>
+            <td class="px-5 py-3 font-medium {% if task.status == 'completed' %}text-gray-400 line-through{% else %}text-gray-800{% endif %}">
+              {% if task.is_urgent %}<span class="text-amber-500">⚡</span>{% endif %}
+              {{ task.customer_name }}
+            </td>
+            <td class="px-5 py-3 text-gray-400 hidden sm:table-cell">{{ task.address }}</td>
+            <td class="px-5 py-3 text-gray-500">
+              {% if task.status == 'completed' %}
+                {{ task.completed_at|date:"H:i"|default:"—" }}
+              {% else %}
+                <span class="text-gray-300">—</span>
+              {% endif %}
+            </td>
+            <td class="px-3 py-3 text-right">
+              {% if task.status == 'pending' %}
+              <form method="post" action="{% url 'dashboard:delivery_delete_task' task.pk %}"
+                onsubmit="return confirm('確定刪除「{{ task.customer_name }}」？')">
+                {% csrf_token %}
+                <button type="submit" class="px-2 py-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">刪除</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-16 text-center text-gray-400">
+  今日尚無送貨趟次
+</div>
+{% endif %}
+
+<!-- 無趟次資料的舊任務（backward compat） -->
+{% if orphan_tasks %}
+<div class="mt-6">
+  <h2 class="text-sm font-semibold text-gray-500 mb-2">其他任務（未綁定趟次）</h2>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-400 text-xs">
+        <tr>
+          <th class="text-left px-5 py-3 font-medium">員工</th>
+          <th class="text-left px-5 py-3 font-medium">站</th>
+          <th class="text-left px-5 py-3 font-medium">客戶</th>
+          <th class="text-left px-5 py-3 font-medium">狀態</th>
+          <th class="text-left px-5 py-3 font-medium">完成時間</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        {% for task in orphan_tasks %}
+        <tr>
+          <td class="px-5 py-3 text-gray-600">{{ task.employee.user.get_full_name|default:task.employee.user.username }}</td>
+          <td class="px-5 py-3 text-gray-400">{{ task.order }}</td>
+          <td class="px-5 py-3 text-gray-800">{{ task.customer_name }}</td>
+          <td class="px-5 py-3">
+            {% if task.status == 'completed' %}
+              <span class="text-emerald-600 text-xs">✅ 完成</span>
+            {% else %}
+              <span class="text-gray-400 text-xs">待出發</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3 text-gray-500">{{ task.completed_at|date:"H:i"|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% endif %}
 
-<!-- 待出發 -->
-<h2 class="text-sm font-semibold text-gray-700 mb-2">📦 待出發</h2>
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-  <table class="w-full text-sm">
-    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-      <tr>
-        <th class="text-left px-5 py-3 font-medium">員工</th>
-        <th class="text-left px-5 py-3 font-medium">順序</th>
-        <th class="text-left px-5 py-3 font-medium">客戶</th>
-        <th class="text-left px-5 py-3 font-medium">地址</th>
-        <th class="px-5 py-3 w-16"></th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-50">
-      {% for task in tasks %}
-        {% if task.status == 'pending' %}
-        <tr class="hover:bg-amber-50/30">
-          <td class="px-5 py-3 text-gray-700">{{ task.employee.user.get_full_name|default:task.employee.user.username }}</td>
-          <td class="px-5 py-3 text-gray-500">第 {{ task.order }} 站</td>
-          <td class="px-5 py-3 font-medium text-gray-800">
-            {% if task.is_urgent %}<span class="text-amber-500">⚡</span>{% endif %}{{ task.customer_name }}
-          </td>
-          <td class="px-5 py-3 text-gray-500">{{ task.address }}</td>
-          <td class="px-3 py-3 text-right">
-            <form method="post" action="{% url 'dashboard:delivery_delete_task' task.pk %}"
-              onsubmit="return confirm('確定刪除「{{ task.customer_name }}」這站？')">
-              {% csrf_token %}
-              <button type="submit" class="px-2 py-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">刪除</button>
-            </form>
-          </td>
-        </tr>
-        {% endif %}
-      {% empty %}
-        <tr><td colspan="5" class="px-5 py-8 text-center text-gray-400">今日暫無待出發任務</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+{% endblock %}
 
-<!-- 已完成 -->
-<h2 class="text-sm font-semibold text-gray-700 mb-2">✅ 已完成</h2>
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-  <table class="w-full text-sm">
-    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-      <tr>
-        <th class="text-left px-5 py-3 font-medium">員工</th>
-        <th class="text-left px-5 py-3 font-medium">順序</th>
-        <th class="text-left px-5 py-3 font-medium">客戶</th>
-        <th class="text-left px-5 py-3 font-medium">地址</th>
-        <th class="text-left px-5 py-3 font-medium">完成時間</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-50">
-      {% for task in tasks %}
-        {% if task.status == 'completed' %}
-        <tr class="hover:bg-emerald-50/20">
-          <td class="px-5 py-3 text-gray-700">{{ task.employee.user.get_full_name|default:task.employee.user.username }}</td>
-          <td class="px-5 py-3 text-gray-500">第 {{ task.order }} 站</td>
-          <td class="px-5 py-3 font-medium text-gray-800">{{ task.customer_name }}</td>
-          <td class="px-5 py-3 text-gray-500">{{ task.address }}</td>
-          <td class="px-5 py-3 text-gray-500">{{ task.completed_at|date:"H:i"|default:"—" }}</td>
-        </tr>
-        {% endif %}
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-
+{% block extra_scripts %}
+<script>
+function toggleTrip(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('hidden');
+}
+</script>
 {% endblock %}
