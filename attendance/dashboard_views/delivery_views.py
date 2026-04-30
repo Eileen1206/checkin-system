@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.utils import timezone
 from django.conf import settings
+from django.db import models
 import json
 from ..utils.routing import get_office_coords
 from ..models import Employee, Customer, DeliveryTask, DeliverySession
@@ -250,7 +251,26 @@ def delivery_plan(request):
     normal_sorted = get_optimal_order(normal)
     final_order = urgent + normal_sorted
 
-    DeliveryTask.objects.filter(employee=employee, date=date, status='pending').delete()
+    # 若有正在送貨中的趟次（已出發但未完成），禁止覆蓋
+    active_session = DeliverySession.objects.filter(
+        employee=employee, date=date,
+        started_at__isnull=False,
+        finished_at__isnull=True,
+    ).first()
+    if active_session:
+        messages.error(request,
+            f'{employee.user.get_full_name() or employee.user.username} 目前第 {active_session.trip_number} 趟送貨進行中，'
+            '請等送貨員完成後再重新規劃。'
+        )
+        return redirect('dashboard:delivery_plan')
+
+    # 刪除尚未推播（無 session）或已推播但未出發的 pending 任務
+    DeliveryTask.objects.filter(
+        employee=employee, date=date, status='pending'
+    ).filter(
+        models.Q(session__isnull=True) |
+        models.Q(session__started_at__isnull=True)
+    ).delete()
     completed_count = DeliveryTask.objects.filter(employee=employee, date=date, status='completed').count()
     for i, customer in enumerate(final_order, start=completed_count + 1):
         DeliveryTask.objects.create(
