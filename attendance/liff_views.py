@@ -17,9 +17,49 @@ def _haversine_meters(lat1, lng1, lat2, lng2):
 
 
 def liff_delivery_page(request):
-    """LIFF 頁面：送貨到站 GPS 驗證"""
+    """LIFF 頁面：送貨到站 GPS 驗證（舊版單站）"""
     return render(request, 'liff/delivery.html', {
         'liff_id': settings.LIFF_DELIVERY_ID,
+    })
+
+
+def liff_delivery_route_page(request):
+    """LIFF 頁面：完整路線管理（開始送貨入口）"""
+    return render(request, 'liff/delivery_route.html', {
+        'liff_route_id': settings.LIFF_DELIVERY_ROUTE_ID,
+    })
+
+
+@csrf_exempt
+def liff_delivery_tasks_api(request):
+    """GET API：回傳今日任務清單"""
+    from django.utils import timezone
+    line_user_id = request.GET.get('line_user_id', '').strip()
+    date_str     = request.GET.get('date', str(timezone.localdate()))
+
+    if not line_user_id:
+        return JsonResponse({'ok': False, 'error': '缺少 line_user_id'})
+
+    emp = Employee.objects.filter(line_user_id=line_user_id).first()
+    if not emp:
+        return JsonResponse({'ok': False, 'error': '找不到對應員工，請先綁定 LINE'})
+
+    tasks = DeliveryTask.objects.filter(
+        employee=emp, date=date_str
+    ).order_by('order')
+
+    return JsonResponse({
+        'ok': True,
+        'tasks': [
+            {
+                'id':            t.pk,
+                'order':         t.order,
+                'customer_name': t.customer_name,
+                'address':       t.address,
+                'status':        t.status,
+            }
+            for t in tasks
+        ],
     })
 
 

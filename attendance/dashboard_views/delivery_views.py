@@ -33,46 +33,69 @@ def delivery_push(request):
         employee=employee, date=date, status='pending'
     ).order_by('order')
 
-    lines = ['🚚 本趟路線']
+    # 文字摘要
+    lines = [f'🚚 今日共 {tasks.count()} 站，出發前請確認路線']
     for task in tasks:
-        lines.append(f'第 {task.order} 站 | {task.customer_name}')
-        lines.append(f'📍 {task.address}')
+        lines.append(f'第 {task.order} 站｜{task.customer_name}')
     message_text = '\n'.join(lines)
 
-    bubbles = []
-    for task in tasks:
-        bubble = {
-            "type": "bubble",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {"type": "text", "text": f"第 {task.order} 站", "weight": "bold"},
-                    {"type": "text", "text": task.customer_name},
-                    {"type": "text", "text": f"📍 {task.address}", "wrap": True, "color": "#888888"},
-                ]
-            },
-            "footer": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [{
-                    "type": "button",
-                    "style": "primary",
-                    "color": "#27ACB2",
-                    "action": {
-                        "type": "uri",
-                        "label": "✅ 完成",
-                        "uri": f"https://liff.line.me/{settings.LIFF_DELIVERY_ID}?task_id={task.pk}"
-                    }
-                }]
-            }
+    # Flex 卡片：路線摘要 + 開始送貨按鈕
+    route_url = f"https://liff.line.me/{settings.LIFF_DELIVERY_ROUTE_ID}"
+    stop_items = [
+        {
+            "type": "box",
+            "layout": "horizontal",
+            "contents": [
+                {"type": "text", "text": f"{task.order}", "size": "sm",
+                 "color": "#27ACB2", "flex": 0, "gravity": "center"},
+                {"type": "text", "text": task.customer_name,
+                 "size": "sm", "color": "#333333", "margin": "md"},
+            ],
+            "margin": "xs",
         }
-        bubbles.append(bubble)
+        for task in tasks
+    ]
 
-    carousel = {"type": 'carousel', "contents": bubbles}
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#1a1a1a",
+            "paddingAll": "20px",
+            "contents": [
+                {"type": "text", "text": "今日送貨路線",
+                 "color": "#ffffff", "weight": "bold", "size": "lg"},
+                {"type": "text", "text": f"共 {tasks.count()} 站",
+                 "color": "#aaaaaa", "size": "sm", "margin": "xs"},
+            ],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": stop_items,
+            "spacing": "sm",
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [{
+                "type": "button",
+                "style": "primary",
+                "color": "#27ACB2",
+                "height": "md",
+                "action": {
+                    "type": "uri",
+                    "label": "🚚 開始送貨",
+                    "uri": route_url,
+                }
+            }],
+        }
+    }
+
     flex_msg = FlexMessage(
-        alt_text='今日送貨路線',
-        contents=FlexContainer.from_dict(carousel)
+        alt_text='今日送貨路線，點擊開始送貨',
+        contents=FlexContainer.from_dict(bubble)
     )
 
     configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)

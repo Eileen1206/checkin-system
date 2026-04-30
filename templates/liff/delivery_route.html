@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>今日送貨路線</title>
+  <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f0e8;
+      min-height: 100vh;
+    }
+
+    /* ── 頂部 ── */
+    .header {
+      background: #1a1a1a;
+      color: white;
+      padding: 20px 20px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-title { font-size: 17px; font-weight: 700; margin-bottom: 12px; }
+    .progress-bar-bg {
+      background: rgba(255,255,255,0.15);
+      border-radius: 99px;
+      height: 6px;
+      margin-bottom: 8px;
+    }
+    .progress-bar-fill {
+      background: #27ACB2;
+      border-radius: 99px;
+      height: 6px;
+      transition: width 0.4s ease;
+    }
+    .progress-text { font-size: 13px; color: rgba(255,255,255,0.7); }
+
+    /* ── 站點清單 ── */
+    .list { padding: 16px 16px 120px; }
+
+    .stop-card {
+      background: white;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 10px;
+      border: 2px solid transparent;
+      transition: border-color 0.2s, opacity 0.2s;
+    }
+    .stop-card.done {
+      opacity: 0.55;
+      border-color: #d1fae5;
+    }
+    .stop-card.next {
+      border-color: #27ACB2;
+      box-shadow: 0 4px 16px rgba(39,172,178,0.15);
+    }
+
+    .stop-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .stop-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; flex-shrink: 0;
+      background: #e5e7eb; color: #555;
+    }
+    .stop-card.done .stop-num  { background: #d1fae5; color: #059669; }
+    .stop-card.next .stop-num  { background: #27ACB2; color: white; }
+
+    .stop-name { font-size: 15px; font-weight: 600; color: #1a1a1a; }
+    .stop-card.done .stop-name { text-decoration: line-through; color: #9ca3af; }
+
+    .stop-addr { font-size: 13px; color: #888; margin-top: 2px; padding-left: 38px; }
+
+    .stop-status { font-size: 12px; color: #27ACB2; margin-left: auto; white-space: nowrap; }
+
+    .arrive-btn {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 12px;
+      background: #27ACB2;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .arrive-btn:active { transform: scale(0.97); background: #1d8f94; }
+    .arrive-btn:disabled { background: #9ca3af; cursor: not-allowed; transform: none; }
+
+    .arrive-btn.loading::after {
+      content: '';
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .msg-box {
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-top: 8px;
+      display: none;
+    }
+    .msg-box.ok    { background: #f0fdf4; color: #166534; display: block; }
+    .msg-box.err   { background: #fef2f2; color: #991b1b; display: block; }
+    .msg-box.warn  { background: #fffbeb; color: #92400e; display: block; }
+
+    /* ── 底部完成按鈕 ── */
+    .footer {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 16px;
+      background: rgba(245,240,232,0.95);
+      backdrop-filter: blur(6px);
+      border-top: 1px solid rgba(0,0,0,0.06);
+    }
+    .finish-btn {
+      width: 100%;
+      padding: 15px;
+      background: #1a1a1a;
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .finish-btn:active { transform: scale(0.97); }
+    .finish-btn.all-done { background: #059669; }
+
+    /* ── 全螢幕狀態 ── */
+    .fullscreen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 32px;
+      text-align: center; flex-direction: column;
+    }
+    .big-icon { font-size: 56px; margin-bottom: 16px; }
+    .big-title { font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
+    .big-sub   { font-size: 14px; color: #888; }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #1a1a1a;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div class="fullscreen">
+    <div class="spinner"></div>
+    <div class="big-title">載入中…</div>
+  </div>
+</div>
+
+<script>
+const LIFF_ID   = "{{ liff_route_id }}";
+const API_TASKS = "/liff/delivery/tasks/";
+const API_DONE  = "/liff/delivery/complete/";
+
+let lineUserId = null;
+let tasks      = [];
+
+/* ────────── 主流程 ────────── */
+async function main() {
+  await liff.init({ liffId: LIFF_ID });
+  if (!liff.isLoggedIn()) { liff.login(); return; }
+
+  const profile = await liff.getProfile();
+  lineUserId = profile.userId;
+
+  // 取今日任務
+  const res  = await fetch(`${API_TASKS}?line_user_id=${lineUserId}`);
+  const data = await res.json();
+
+  if (!data.ok) { showFull('❌', '載入失敗', data.error); return; }
+  if (!data.tasks.length) { showFull('📦', '今日無任務', '尚未安排送貨路線'); return; }
+
+  tasks = data.tasks;
+  renderPage();
+}
+
+/* ────────── 渲染整頁 ────────── */
+function renderPage() {
+  const done  = tasks.filter(t => t.status === 'completed').length;
+  const total = tasks.length;
+  const pct   = total ? Math.round(done / total * 100) : 0;
+  const allDone = done === total;
+
+  document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div class="header-title">🚚 今日送貨路線</div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="progress-text">${done} / ${total} 站完成</div>
+    </div>
+
+    <div class="list" id="stop-list">
+      ${tasks.map(t => renderStop(t, done)).join('')}
+    </div>
+
+    <div class="footer">
+      <button class="finish-btn ${allDone ? 'all-done' : ''}" onclick="finishDelivery()">
+        ${allDone ? '✅ 已全部完成・關閉' : '🏠 完成本次運送'}
+      </button>
+    </div>`;
+}
+
+function renderStop(task, completedBefore) {
+  const isDone = task.status === 'completed';
+  // 找第一個 pending 的站（下一站）
+  const nextTask = tasks.find(t => t.status !== 'completed');
+  const isNext   = nextTask && nextTask.id === task.id;
+
+  const cls = isDone ? 'done' : isNext ? 'next' : '';
+
+  return `
+  <div class="stop-card ${cls}" id="card-${task.id}">
+    <div class="stop-header">
+      <div class="stop-num">${isDone ? '✓' : task.order}</div>
+      <div class="stop-name">${task.customer_name}</div>
+      ${isDone ? '<span class="stop-status">已完成</span>' : ''}
+    </div>
+    <div class="stop-addr">📍 ${task.address}</div>
+    ${isNext ? `
+      <button class="arrive-btn" id="btn-${task.id}" onclick="arrive(${task.id})">
+        📍 到達確認
+      </button>
+      <div class="msg-box" id="msg-${task.id}"></div>
+    ` : ''}
+  </div>`;
+}
+
+/* ────────── 到達確認 ────────── */
+async function arrive(taskId) {
+  const btn = document.getElementById(`btn-${taskId}`);
+  const msg = document.getElementById(`msg-${taskId}`);
+
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = '定位中';
+  msg.className = 'msg-box';
+
+  // 取 GPS
+  let lat = null, lng = null;
+  try {
+    const pos = await new Promise((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 })
+    );
+    lat = pos.coords.latitude;
+    lng = pos.coords.longitude;
+  } catch (e) {
+    // GPS 失敗：給使用者選擇
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.textContent = '📍 到達確認';
+    msg.className = 'msg-box warn';
+    msg.textContent = '⚠️ 無法取得 GPS，請確認已開啟位置權限';
+    return;
+  }
+
+  // 送出
+  try {
+    const res  = await fetch(API_DONE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: taskId, lat, lng, line_user_id: lineUserId }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      // 更新本地資料並重繪
+      const t = tasks.find(t => t.id === taskId);
+      if (t) t.status = 'completed';
+      renderPage();
+    } else {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      btn.textContent = '📍 到達確認';
+      msg.className = 'msg-box err';
+      msg.textContent = data.error;
+    }
+  } catch (e) {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.textContent = '📍 到達確認';
+    msg.className = 'msg-box err';
+    msg.textContent = '網路錯誤，請稍後再試';
+  }
+}
+
+/* ────────── 完成本次運送 ────────── */
+async function finishDelivery() {
+  const remaining = tasks.filter(t => t.status !== 'completed').length;
+
+  if (remaining > 0) {
+    const ok = confirm(`還有 ${remaining} 站尚未完成，確定要結束本次運送？`);
+    if (!ok) return;
+  }
+
+  liff.closeWindow();
+}
+
+/* ────────── 全螢幕提示 ────────── */
+function showFull(icon, title, sub) {
+  document.getElementById('app').innerHTML = `
+    <div class="fullscreen">
+      <div class="big-icon">${icon}</div>
+      <div class="big-title">${title}</div>
+      <div class="big-sub">${sub}</div>
+    </div>`;
+}
+
+main().catch(e => showFull('❌', '發生錯誤', e.message));
+</script>
+</body>
+</html>

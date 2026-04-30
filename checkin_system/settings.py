@@ -133,6 +133,7 @@ RICHMENU_STAFF = env('RICHMENU_STAFF', default='')
 
 ORS_API_KEY = env('ORS_API_KEY', default='')
 
-LIFF_DELIVERY_ID = env('LIFF_DELIVERY_ID', default='')
+LIFF_DELIVERY_ID       = env('LIFF_DELIVERY_ID', default='')
+LIFF_DELIVERY_ROUTE_ID = env('LIFF_DELIVERY_ROUTE_ID', default='')
 
 

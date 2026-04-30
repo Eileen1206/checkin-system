@@ -14,5 +14,7 @@ urlpatterns = [
     path('dashboard/', include('attendance.dashboard_urls', namespace='dashboard')),
     path('liff/delivery/', liff_views.liff_delivery_page, name='liff_delivery'),
     path('liff/delivery/complete/', liff_views.liff_delivery_complete, name='liff_delivery_complete'),
+    path('liff/delivery/route/', liff_views.liff_delivery_route_page, name='liff_delivery_route'),
+    path('liff/delivery/tasks/', liff_views.liff_delivery_tasks_api, name='liff_delivery_tasks'),
     path('', RedirectView.as_view(url='/dashboard/', permanent=False)),
 ]
