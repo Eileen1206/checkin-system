@@ -34,6 +34,10 @@ def delivery_push(request):
         employee=employee, date=date, status='pending'
     ).order_by('order')
 
+    if not tasks.exists():
+        messages.error(request, '目前沒有待送的任務，無法推播')
+        return redirect('dashboard:delivery_plan')
+
     # 建立本趟 DeliverySession
     trip_number = DeliverySession.objects.filter(
         employee=employee, date=date
@@ -314,18 +318,20 @@ def delivery_today(request):
     if employee_id:
         sessions_qs = sessions_qs.filter(employee_id=employee_id)
 
-    # 每個 session 附上其 tasks
+    # 每個 session 附上其 tasks（跳過 0 站的空趟次）
     trips = []
     for session in sessions_qs:
         tasks = list(DeliveryTask.objects.filter(session=session).order_by('order'))
-        total     = len(tasks)
+        total = len(tasks)
+        if total == 0:
+            continue   # 空趟次不顯示
         completed = sum(1 for t in tasks if t.status == 'completed')
         trips.append({
             'session':   session,
             'tasks':     tasks,
             'total':     total,
             'completed': completed,
-            'all_done':  total > 0 and completed == total,
+            'all_done':  completed == total,
         })
 
     # 無 session 的任務（舊資料或直接建立的）另外處理

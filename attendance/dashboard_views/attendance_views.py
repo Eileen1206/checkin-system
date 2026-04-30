@@ -47,21 +47,23 @@ def index(request):
 
     delivery_status = []
     for session in active_sessions:
-        tasks     = list(session.tasks.order_by('order'))
-        total     = len(tasks)
+        tasks = list(session.tasks.order_by('order'))
+        total = len(tasks)
+        if total == 0:
+            continue   # 空趟次不顯示
         completed = sum(1 for t in tasks if t.status == 'completed')
         next_task = next((t for t in tasks if t.status == 'pending'), None)
         last_done = next((t for t in reversed(tasks) if t.status == 'completed'), None)
         delivery_status.append({
-            'employee':    session.employee,
-            'session':     session,
-            'total':       total,
-            'completed':   completed,
-            'next_task':   next_task,
-            'last_done':   last_done,
-            'progress':    int(completed / total * 100) if total else 0,
-            'all_done':    completed == total and total > 0,
-            'is_started':  session.started_at is not None,
+            'employee':   session.employee,
+            'session':    session,
+            'total':      total,
+            'completed':  completed,
+            'next_task':  next_task,
+            'last_done':  last_done,
+            'progress':   int(completed / total * 100) if total else 0,
+            'all_done':   completed == total,
+            'is_started': session.started_at is not None,
         })
 
     # 待處理事項（僅 admin / superuser）
