@@ -64,7 +64,19 @@
             </div>
       </td>
         <td class="px-5 py-3 text-red-500">{{ result.deduction|floatformat:0 }} 元</td>
-        <td class="px-5 py-3 font-semibold text-gray-800" title="{{ result.detail }}">{{ result.total|floatformat:0 }} 元</td>
+        <td class="px-5 py-3 font-semibold text-gray-800">
+          {{ result.total|floatformat:0 }} 元
+          {% if result.day_hours %}
+          <button onclick="this.nextElementSibling.classList.toggle('hidden')"
+            class="ml-2 text-xs text-gray-400 hover:text-gray-600">明細 ▾</button>
+          <div class="hidden mt-2 text-xs text-gray-500 font-normal space-y-0.5 bg-gray-50 rounded-lg p-2">
+            <div class="font-medium text-gray-600 mb-1">時薪 ${{ result.hourly|floatformat:0 }} × {{ result.total_hours|floatformat:1 }}h</div>
+            {% for d, h in result.day_hours %}
+            <div>{{ d }} → <span class="font-medium text-gray-700">{{ h }}h</span></div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </td>
       </tr>
       {% empty %}
       <tr>

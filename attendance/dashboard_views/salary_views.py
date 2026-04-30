@@ -25,11 +25,20 @@ def salary(request):
         else:
             records = AttendanceRecord.objects.filter(
                 employee=emp, timestamp__year=year, timestamp__month=month)
-            total_hours = sum(
-                get_work_hours(emp, d)
-                for d in records.filter(record_type='clock_in').dates('timestamp', 'day'))
+            days = list(records.filter(record_type='clock_in').dates('timestamp', 'day'))
+            day_hours = [(d, get_work_hours(emp, d)) for d in days]
+            total_hours = sum(h for _, h in day_hours)
             hourly = float(emp.hourly_rate) if emp.hourly_rate else 0
-            result['detail'] = f'時薪 ${hourly:.0f} × {total_hours:.1f}小時 = ${int(result["base"]):,}\n保養費：${int(result["maintenance"]):,}\n勞健保扣除：-${int(result["deduction"]):,}'
+            day_detail = '\n'.join(f'  {d} → {h}h' for d, h in day_hours)
+            result['detail'] = (
+                f'時薪 ${hourly:.0f} × {total_hours:.1f}小時 = ${int(result["base"]):,}\n'
+                f'保養費：${int(result["maintenance"]):,}\n'
+                f'勞健保扣除：-${int(result["deduction"]):,}\n'
+                f'--- 每日明細 ---\n{day_detail}'
+            )
+            result['day_hours'] = day_hours
+            result['total_hours'] = total_hours
+            result['hourly'] = hourly
         results.append(result)
 
     return render(request, 'attendance/salary.html', {
