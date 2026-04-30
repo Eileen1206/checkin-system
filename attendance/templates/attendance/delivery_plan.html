@@ -327,7 +327,7 @@ initMap();
                 <form method="post" action="{% url 'dashboard:delivery_push' %}">
                   {% csrf_token %}
                   <input type="hidden" name="employee_id" value="{{ emp.pk }}">
-                  <input type="hidden" name="date" value="{{ today }}">
+                  <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
                   <button type="submit"
                     class="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors">
                     📲 推播給 {{ emp.user.get_full_name|default:emp.user.username }}
