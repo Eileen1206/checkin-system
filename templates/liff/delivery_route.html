@@ -320,9 +320,9 @@ function renderPage() {
 }
 
 function renderStop(task) {
-  const isDone = task.status === 'completed';
+  const isDone   = task.status === 'completed';
   const nextTask = tasks.find(t => t.status !== 'completed');
-  const isNext   = nextTask && nextTask.id === task.id;
+  const isNext   = nextTask && nextTask.id === task.id;   // 建議下一站（僅做視覺提示）
   const cls = isDone ? 'done' : isNext ? 'next' : '';
 
   return `
@@ -331,9 +331,10 @@ function renderStop(task) {
       <div class="stop-num">${isDone ? '✓' : task.order}</div>
       <div class="stop-name">${task.customer_name}</div>
       ${isDone ? '<span class="stop-status">已完成</span>' : ''}
+      ${isNext && !isDone ? '<span class="stop-status">建議下一站</span>' : ''}
     </div>
     <div class="stop-addr">📍 ${task.address}</div>
-    ${isNext ? `
+    ${!isDone ? `
       <button class="arrive-btn" id="btn-${task.id}" onclick="arrive(${task.id})">
         📍 到達確認
       </button>
