@@ -39,12 +39,11 @@ def index(request):
         'absent':  sum(1 for s in status_map.values() if s == 'absent'),
     }
 
-    # 今日正在進行中的送貨趟次（已出發但未完成）
+    # 今日送貨趟次：已推播但尚未完成（含待出發 + 送貨中）
     active_sessions = DeliverySession.objects.filter(
         date=today,
-        started_at__isnull=False,
         finished_at__isnull=True,
-    ).select_related('employee__user')
+    ).select_related('employee__user').order_by('employee', 'trip_number')
 
     delivery_status = []
     for session in active_sessions:
@@ -62,6 +61,7 @@ def index(request):
             'last_done':   last_done,
             'progress':    int(completed / total * 100) if total else 0,
             'all_done':    completed == total and total > 0,
+            'is_started':  session.started_at is not None,
         })
 
     # 待處理事項（僅 admin / superuser）
