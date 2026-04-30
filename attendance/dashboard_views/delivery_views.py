@@ -143,45 +143,13 @@ def delivery_add_task(request):
 
     if employee.line_user_id:
         try:
-            bubble = {
-                "type": "bubble",
-                "body": {
-                    "type": "box",
-                    "layout": "vertical",
-                    "contents": [
-                        {"type": "text", "text": "🆕 臨時加站通知", "weight": "bold", "color": "#e67e22"},
-                        {"type": "text", "text": f"第 {task.order} 站", "weight": "bold", "margin": "md"},
-                        {"type": "text", "text": customer.name},
-                        {"type": "text", "text": f"📍 {customer.address}", "wrap": True, "color": "#888888"},
-                    ]
-                },
-                "footer": {
-                    "type": "box",
-                    "layout": "vertical",
-                    "contents": [{
-                        "type": "button",
-                        "style": "primary",
-                        "color": "#27ACB2",
-                        "action": {
-                            "type": "uri",
-                            "label": "✅ 完成",
-                            "uri": f"https://liff.line.me/{settings.LIFF_DELIVERY_ID}?task_id={task.pk}"
-                        }
-                    }]
-                }
-            }
-            flex_msg = FlexMessage(
-                alt_text=f'臨時加站：{customer.name}',
-                contents=FlexContainer.from_dict(bubble)
-            )
             configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
             with ApiClient(configuration) as api_client:
                 MessagingApi(api_client).push_message(PushMessageRequest(
                     to=employee.line_user_id,
-                    messages=[
-                        TextMessage(text=f'📢 老闆新增了一站！\n客戶：{customer.name}\n地址：{customer.address}\n排在第 {task.order} 站'),
-                        flex_msg,
-                    ]
+                    messages=[TextMessage(
+                        text=f'📢 老闆新增了一站！\n第 {task.order} 站｜{customer.name}\n📍 {customer.address}\n\n請在送貨路線頁查看並完成。'
+                    )]
                 ))
         except Exception:
             pass
