@@ -591,7 +591,7 @@ def get_today_summary(employee):
 def get_monthly_summary(employee):
     from attendance.models import AttendanceRecord
     from django.utils import timezone
-    from attendance.dashboard_views import get_work_hours
+    from django.utils.timezone import localtime
     import calendar
     import datetime
 
@@ -600,12 +600,28 @@ def get_monthly_summary(employee):
     month = now.month
     _, total_days = calendar.monthrange(year, month)
 
-    hours = 0
-    for date in range(1, total_days + 1):
-        date = datetime.date(year, month, date)
-        hours += get_work_hours(employee, date)
+    total_hours = 0.0
+    worked_days = 0
+
+    for day in range(1, total_days + 1):
+        d = datetime.date(year, month, day)
+        records = AttendanceRecord.objects.filter(
+            employee=employee, timestamp__date=d
+        )
+        clock_in    = records.filter(record_type='clock_in').first()
+        clock_out   = records.filter(record_type='clock_out').first()
+        break_start = records.filter(record_type='break_start').first()
+        break_end   = records.filter(record_type='break_end').first()
+
+        if clock_in and clock_out:
+            secs = (clock_out.timestamp - clock_in.timestamp).total_seconds()
+            if break_start and break_end:
+                secs -= (break_end.timestamp - break_start.timestamp).total_seconds()
+            total_hours += round(max(secs, 0) / 3600, 1)
+            worked_days += 1
 
     lines = ['本月出勤紀錄']
-    lines.append(f'本月總工時：{hours}小時')
+    lines.append(f'出勤天數：{worked_days} 天')
+    lines.append(f'本月總工時：{round(total_hours, 1)} 小時')
 
     return '\n'.join(lines)
