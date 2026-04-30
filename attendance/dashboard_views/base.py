@@ -107,7 +107,7 @@ def get_work_hours(employee, date=None):
     if total_seconds < 0:
         total_seconds = 0
 
-    # 扣除實際午休時間
+    # 扣除午休時間（只扣落在計薪區間 [start_time, end_time] 內的部分）
     break_start = AttendanceRecord.objects.filter(
         employee=employee, timestamp__date=date, record_type='break_start'
     ).first()
@@ -115,7 +115,10 @@ def get_work_hours(employee, date=None):
         employee=employee, timestamp__date=date, record_type='break_end'
     ).first()
     if break_start and break_end:
-        total_seconds -= (break_end.timestamp - break_start.timestamp).total_seconds()
+        eff_break_start = max(break_start.timestamp, start_time)
+        eff_break_end   = min(break_end.timestamp,   end_time)
+        if eff_break_end > eff_break_start:
+            total_seconds -= (eff_break_end - eff_break_start).total_seconds()
         if total_seconds < 0:
             total_seconds = 0
 
