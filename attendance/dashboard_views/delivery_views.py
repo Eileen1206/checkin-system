@@ -264,12 +264,16 @@ def delivery_plan(request):
         )
         return redirect('dashboard:delivery_plan')
 
-    # 刪除尚未推播（無 session）或已推播但未出發的 pending 任務
+    # 刪除以下三種 pending 任務：
+    #   1. 尚未推播（無 session）
+    #   2. 已推播但未出發（session.started_at 為空）
+    #   3. 已結束趟次裡殘留的 pending（session.finished_at 有值）
     DeliveryTask.objects.filter(
         employee=employee, date=date, status='pending'
     ).filter(
         models.Q(session__isnull=True) |
-        models.Q(session__started_at__isnull=True)
+        models.Q(session__started_at__isnull=True) |
+        models.Q(session__finished_at__isnull=False)
     ).delete()
     completed_count = DeliveryTask.objects.filter(employee=employee, date=date, status='completed').count()
     for i, customer in enumerate(final_order, start=completed_count + 1):
