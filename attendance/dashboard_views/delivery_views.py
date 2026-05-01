@@ -8,6 +8,7 @@ from django.db import models
 import json
 from ..utils.routing import get_office_coords
 from ..models import Employee, Customer, DeliveryTask, DeliverySession
+from .base import require_group
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,

@@ -39,7 +39,6 @@ def import_customers(request):
 
 
 @login_required
-@require_group('admin', 'finance')
 def search_customer(request):
     """AJAX：搜尋客戶（輸入編號或名稱）"""
     q = request.GET.get('q', '').strip()
