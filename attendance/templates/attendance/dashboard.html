@@ -202,3 +202,10 @@
 </div>
 
 {% endblock %}
+
+{% block extra_scripts %}
+<script>
+// 每 30 秒自動重整，保持送貨狀態即時
+setTimeout(() => location.reload(), 30000);
+</script>
+{% endblock %}

@@ -174,5 +174,8 @@ function toggleTrip(id) {
   const el = document.getElementById(id);
   el.classList.toggle('hidden');
 }
+
+// 每 20 秒自動重整，保持送貨進度即時
+setTimeout(() => location.reload(), 20000);
 </script>
 {% endblock %}

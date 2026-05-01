@@ -226,9 +226,11 @@ const API_START  = "/liff/delivery/start/";
 const API_DONE   = "/liff/delivery/complete/";
 const API_FINISH = "/liff/delivery/finish/";
 
-let lineUserId = null;
-let tasks      = [];
-let sessionId  = null;
+let lineUserId      = null;
+let tasks           = [];
+let sessionId       = null;
+let pollingInterval = null;   // 輪詢計時器
+let isArriving      = false;  // 正在執行到達確認時暫停刷新
 
 /* ────────── 主流程 ────────── */
 async function main() {
@@ -252,7 +254,33 @@ async function main() {
     showStartScreen();
   } else {
     renderPage();
+    startPolling();
   }
+}
+
+/* ────────── 輪詢：每 15 秒靜默更新 ────────── */
+function startPolling() {
+  if (pollingInterval) return;
+  pollingInterval = setInterval(refreshTasks, 15000);
+}
+function stopPolling() {
+  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+}
+async function refreshTasks() {
+  if (isArriving || !lineUserId) return;
+  try {
+    const res  = await fetch(`${API_TASKS}?line_user_id=${lineUserId}`);
+    const data = await res.json();
+    if (!data.ok || !data.tasks.length) return;
+    // 只有任務數量或狀態有變化時才重新渲染（避免閃爍）
+    const newJson = JSON.stringify(data.tasks.map(t => ({ id: t.id, status: t.status })));
+    const oldJson = JSON.stringify(tasks.map(t => ({ id: t.id, status: t.status })));
+    if (newJson !== oldJson) {
+      tasks     = data.tasks;
+      sessionId = data.session_id;
+      renderPage();
+    }
+  } catch (e) { /* 靜默失敗，下次再試 */ }
 }
 
 /* ────────── 出發確認畫面 ────────── */
@@ -345,6 +373,7 @@ function renderStop(task) {
 
 /* ────────── 到達確認 ────────── */
 async function arrive(taskId) {
+  isArriving = true;  // 暫停輪詢，避免操作中被刷新覆蓋
   const btn = document.getElementById(`btn-${taskId}`);
   const msg = document.getElementById(`msg-${taskId}`);
 
@@ -380,8 +409,10 @@ async function arrive(taskId) {
     if (data.ok) {
       const t = tasks.find(t => t.id === taskId);
       if (t) t.status = 'completed';
+      isArriving = false;
       renderPage();
     } else {
+      isArriving = false;
       btn.classList.remove('loading');
       btn.disabled = false;
       btn.textContent = '📍 到達確認';
@@ -389,6 +420,7 @@ async function arrive(taskId) {
       msg.textContent = data.error;
     }
   } catch (e) {
+    isArriving = false;
     btn.classList.remove('loading');
     btn.disabled = false;
     btn.textContent = '📍 到達確認';
@@ -435,6 +467,7 @@ function closeModal() {
 /* ────────── 執行完成 ────────── */
 async function doFinish() {
   closeModal();
+  stopPolling();  // 結束後不再輪詢
 
   try {
     const today = new Date().toISOString().slice(0, 10);
