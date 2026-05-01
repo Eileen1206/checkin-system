@@ -2,7 +2,7 @@
 {% block title %}編輯客戶 - {{ customer.name }}{% endblock %}
 {% block content %}
 
-<div class="max-w-xl">
+<div class="max-w-5xl mx-auto">
 
   <!-- 標題 -->
   <div class="flex items-center justify-between mb-6">
@@ -17,92 +17,95 @@
     {% endfor %}
   {% endif %}
 
-  <!-- 表單 -->
+  <!-- 左右兩欄 -->
   <form method="post">
     {% csrf_token %}
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-      <div>
-        <label class="block text-xs font-semibold text-gray-600 mb-1">客戶編號</label>
-        <input type="text" name="customer_id" value="{{ customer.customer_id }}" required
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
+      <!-- 左欄：表單欄位 -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
 
-      <div>
-        <label class="block text-xs font-semibold text-gray-600 mb-1">客戶名稱</label>
-        <input type="text" name="name" value="{{ customer.name }}" required
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">客戶編號</label>
+          <input type="text" name="customer_id" value="{{ customer.customer_id }}" required
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
 
-      <div>
-        <label class="block text-xs font-semibold text-gray-600 mb-1">地址</label>
-        <input type="text" name="address" value="{{ customer.address }}"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">客戶名稱</label>
+          <input type="text" name="name" value="{{ customer.name }}" required
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
 
-      <div>
-        <label class="block text-xs font-semibold text-gray-600 mb-1">電話</label>
-        <input type="text" name="phone" value="{{ customer.phone }}"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">地址</label>
+          <input type="text" name="address" value="{{ customer.address }}"
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
 
-      <hr class="border-gray-100">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">電話</label>
+          <input type="text" name="phone" value="{{ customer.phone }}"
+            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
 
-      <!-- GPS 區塊 -->
-      <div>
-        <p class="text-xs font-semibold text-gray-600 mb-3">📍 GPS 座標（填入後送貨路線才能優化）</p>
+        <hr class="border-gray-100">
 
-        <!-- 層一：Google Maps 連結解析 -->
-        <div class="mb-3">
-          <label class="block text-xs text-gray-500 mb-1">貼上 Google Maps 連結（自動解析座標）</label>
-          <div class="flex gap-2">
+        <!-- GPS -->
+        <div>
+          <p class="text-xs font-semibold text-gray-600 mb-3">📍 GPS 座標</p>
+
+          <!-- Google Maps 連結解析 -->
+          <label class="block text-xs text-gray-500 mb-1">貼上 Google Maps 連結（自動解析）</label>
+          <div class="flex gap-2 mb-1">
             <input type="text" id="gmapsInput"
-              placeholder="https://maps.app.goo.gl/... 或 https://www.google.com/maps/..."
+              placeholder="https://maps.app.goo.gl/..."
               class="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
             <button type="button" onclick="parseGmaps()"
               class="px-3 py-2 bg-blue-600 text-white rounded-xl text-xs hover:bg-blue-700 whitespace-nowrap">解析</button>
           </div>
-          <p id="gmapsMsg" class="text-xs mt-1 hidden"></p>
+          <p id="gmapsMsg" class="text-xs mb-3 hidden"></p>
+
+          <!-- lat / lng -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">緯度 (lat)</label>
+              <input type="number" step="any" name="lat" id="latInput" value="{{ customer.lat|default:'' }}"
+                placeholder="23.1234" min="-90" max="90"
+                class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                oninput="updateMarkerFromInputs()">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">經度 (lng)</label>
+              <input type="number" step="any" name="lng" id="lngInput" value="{{ customer.lng|default:'' }}"
+                placeholder="120.5678" min="-180" max="180"
+                class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                oninput="updateMarkerFromInputs()">
+            </div>
+          </div>
         </div>
 
-        <!-- 層二：手動 lat/lng + 地圖釘選 -->
-        <div class="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label class="block text-xs font-semibold text-gray-600 mb-1">緯度 (lat)</label>
-            <input type="number" step="any" name="lat" id="latInput" value="{{ customer.lat|default:'' }}"
-              placeholder="例：23.1234" min="-90" max="90"
-              class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-              oninput="updateMarkerFromInputs()">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-600 mb-1">經度 (lng)</label>
-            <input type="number" step="any" name="lng" id="lngInput" value="{{ customer.lng|default:'' }}"
-              placeholder="例：120.5678" min="-180" max="180"
-              class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-              oninput="updateMarkerFromInputs()">
-          </div>
+        <div class="flex items-center gap-2 pt-1">
+          <input type="checkbox" name="is_active" id="is_active" {% if customer.is_active %}checked{% endif %}
+            class="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300">
+          <label for="is_active" class="text-sm text-gray-600">啟用中（取消勾選代表停業）</label>
         </div>
 
-        <!-- 地圖（點擊釘選） -->
-        <div class="rounded-xl overflow-hidden border border-gray-100">
-          <div class="px-3 py-2 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
-            🗺️ 點擊地圖設定精確位置
-          </div>
-          <div id="editMap" style="height: 260px;"></div>
+        <div class="flex gap-2 pt-1">
+          <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">儲存</button>
+          <a href="{% url 'dashboard:customer_list' %}" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">取消</a>
         </div>
+
       </div>
 
-      <div class="flex items-center gap-2">
-        <input type="checkbox" name="is_active" id="is_active" {% if customer.is_active %}checked{% endif %}
-          class="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300">
-        <label for="is_active" class="text-sm text-gray-600">啟用中（取消勾選代表停業）</label>
+      <!-- 右欄：地圖 -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 text-xs text-gray-400">
+          🗺️ 點擊地圖設定精確位置，或拖曳圖釘調整
+        </div>
+        <div id="editMap" style="height: 460px;"></div>
       </div>
 
-    </div>
-
-    <div class="flex gap-2 mt-4">
-      <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">儲存</button>
-      <a href="{% url 'dashboard:customer_list' %}" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">取消</a>
     </div>
   </form>
 
@@ -111,12 +114,10 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ── 初始座標 ── */
-const initLat = parseFloat('{{ customer.lat|default:"23.5" }}') || 23.5;
-const initLng = parseFloat('{{ customer.lng|default:"121.0" }}') || 121.0;
+const initLat  = parseFloat('{{ customer.lat|default:"23.5" }}') || 23.5;
+const initLng  = parseFloat('{{ customer.lng|default:"121.0" }}') || 121.0;
 const hasCoord = {{ customer.lat|yesno:"true,false" }} && {{ customer.lng|yesno:"true,false" }};
 
-/* ── Leaflet 地圖 ── */
 const map = L.map('editMap').setView([initLat, initLng], hasCoord ? 16 : 8);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap contributors © CARTO'
@@ -125,13 +126,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 const marker = L.marker([initLat, initLng], { draggable: true }).addTo(map);
 if (!hasCoord) marker.setOpacity(0);
 
-/* 地圖點擊 → 移動 marker + 填入 input */
-map.on('click', e => {
-  const { lat, lng } = e.latlng;
-  setCoords(lat, lng);
-});
-
-/* Marker 拖曳 → 更新 input */
+map.on('click', e => setCoords(e.latlng.lat, e.latlng.lng));
 marker.on('dragend', e => {
   const { lat, lng } = e.target.getLatLng();
   setCoords(lat, lng);
@@ -144,7 +139,6 @@ function setCoords(lat, lng) {
   marker.setOpacity(1);
 }
 
-/* Input 手動改 → 移動 marker */
 function updateMarkerFromInputs() {
   const lat = parseFloat(document.getElementById('latInput').value);
   const lng = parseFloat(document.getElementById('lngInput').value);
@@ -155,49 +149,41 @@ function updateMarkerFromInputs() {
   }
 }
 
-/* ── 層一：Google Maps 連結解析 ── */
+/* Google Maps 連結解析 */
 async function parseGmaps() {
-  const url   = document.getElementById('gmapsInput').value.trim();
-  const msg   = document.getElementById('gmapsMsg');
+  const url = document.getElementById('gmapsInput').value.trim();
+  const msg = document.getElementById('gmapsMsg');
   if (!url) return;
 
-  msg.className = 'text-xs mt-1 text-gray-400';
+  msg.className = 'text-xs mb-3 text-gray-400';
   msg.textContent = '解析中…';
   msg.classList.remove('hidden');
 
-  /* 純前端可解析的格式 */
   const coords = tryParseUrl(url);
-  if (coords) {
-    applyCoords(coords.lat, coords.lng);
-    return;
-  }
+  if (coords) { applyCoords(coords.lat, coords.lng); return; }
 
-  /* 短網址（maps.app.goo.gl）→ 請後端展開 */
   try {
     const res  = await fetch(`{% url 'dashboard:parse_gmaps_url' %}?url=${encodeURIComponent(url)}`);
     const data = await res.json();
     if (data.lat && data.lng) {
       applyCoords(data.lat, data.lng);
     } else {
-      msg.className = 'text-xs mt-1 text-red-500';
-      msg.textContent = '❌ 無法解析此連結，請直接在地圖上點選';
+      msg.className = 'text-xs mb-3 text-red-500';
+      msg.textContent = '❌ 無法解析，請直接在地圖點選';
     }
-  } catch (e) {
-    msg.className = 'text-xs mt-1 text-red-500';
+  } catch {
+    msg.className = 'text-xs mb-3 text-red-500';
     msg.textContent = '❌ 網路錯誤';
   }
 }
 
 function tryParseUrl(url) {
-  /* 格式：/@lat,lng, */
   let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
-  /* 格式：?q=lat,lng */
+  if (m) return { lat: +m[1], lng: +m[2] };
   m = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
-  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
-  /* 格式：?ll=lat,lng */
+  if (m) return { lat: +m[1], lng: +m[2] };
   m = url.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
-  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  if (m) return { lat: +m[1], lng: +m[2] };
   return null;
 }
 
@@ -205,11 +191,10 @@ function applyCoords(lat, lng) {
   setCoords(lat, lng);
   map.setView([lat, lng], 17);
   const msg = document.getElementById('gmapsMsg');
-  msg.className = 'text-xs mt-1 text-emerald-600';
+  msg.className = 'text-xs mb-3 text-emerald-600';
   msg.textContent = `✓ 座標已填入：${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
-/* Enter 鍵也觸發解析 */
 document.getElementById('gmapsInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); parseGmaps(); }
 });
