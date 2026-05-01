@@ -191,7 +191,7 @@ initMap();
           <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
           <div>
             <div class="text-sm font-medium text-gray-700">搜尋並加入客戶</div>
-            <div class="text-xs text-gray-400 mt-0.5">輸入客戶編號或名稱，最多可加入 5 站</div>
+            <div class="text-xs text-gray-400 mt-0.5">輸入客戶編號或名稱，最多可加入 8 站</div>
           </div>
         </div>
         <div class="flex gap-3">
@@ -240,7 +240,7 @@ initMap();
             placeholder="輸入客戶編號或名稱...">
           <div id="searchResults" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"></div>
         </div>
-        <p class="text-xs text-gray-400 mt-1">最多可加入 5 站</p>
+        <p class="text-xs text-gray-400 mt-1">最多可加入 8 站</p>
       </div>
 
       <div class="mb-5">
@@ -402,7 +402,7 @@ searchInput.addEventListener('input', async function() {
 document.addEventListener('click', e => { if (!searchInput.contains(e.target)) searchResults.classList.add('hidden'); });
 
 function addCustomer(c) {
-  if (selected.length >= 5) { alert('最多只能加 5 站！'); return; }
+  if (selected.length >= 8) { alert('最多只能加 8 站！'); return; }
   if (selected.find(s => s.id === c.id)) { alert('已加入此客戶！'); return; }
   selected.push(c);
   searchInput.value = '';
