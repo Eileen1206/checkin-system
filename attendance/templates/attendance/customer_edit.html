@@ -47,20 +47,48 @@
       </div>
 
       <hr class="border-gray-100">
-      <p class="text-xs text-gray-400">GPS 座標（填入後送貨路線才能優化）</p>
 
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 mb-1">緯度 (lat)</label>
-          <input type="number" step="any" name="lat" value="{{ customer.lat|default:'' }}"
-            placeholder="例：23.1234" min="-90" max="90"
-            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      <!-- GPS 區塊 -->
+      <div>
+        <p class="text-xs font-semibold text-gray-600 mb-3">📍 GPS 座標（填入後送貨路線才能優化）</p>
+
+        <!-- 層一：Google Maps 連結解析 -->
+        <div class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">貼上 Google Maps 連結（自動解析座標）</label>
+          <div class="flex gap-2">
+            <input type="text" id="gmapsInput"
+              placeholder="https://maps.app.goo.gl/... 或 https://www.google.com/maps/..."
+              class="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+            <button type="button" onclick="parseGmaps()"
+              class="px-3 py-2 bg-blue-600 text-white rounded-xl text-xs hover:bg-blue-700 whitespace-nowrap">解析</button>
+          </div>
+          <p id="gmapsMsg" class="text-xs mt-1 hidden"></p>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 mb-1">經度 (lng)</label>
-          <input type="number" step="any" name="lng" value="{{ customer.lng|default:'' }}"
-            placeholder="例：120.5678" min="-180" max="180"
-            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+
+        <!-- 層二：手動 lat/lng + 地圖釘選 -->
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">緯度 (lat)</label>
+            <input type="number" step="any" name="lat" id="latInput" value="{{ customer.lat|default:'' }}"
+              placeholder="例：23.1234" min="-90" max="90"
+              class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+              oninput="updateMarkerFromInputs()">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">經度 (lng)</label>
+            <input type="number" step="any" name="lng" id="lngInput" value="{{ customer.lng|default:'' }}"
+              placeholder="例：120.5678" min="-180" max="180"
+              class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+              oninput="updateMarkerFromInputs()">
+          </div>
+        </div>
+
+        <!-- 地圖（點擊釘選） -->
+        <div class="rounded-xl overflow-hidden border border-gray-100">
+          <div class="px-3 py-2 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+            🗺️ 點擊地圖設定精確位置
+          </div>
+          <div id="editMap" style="height: 260px;"></div>
         </div>
       </div>
 
@@ -79,4 +107,112 @@
   </form>
 
 </div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ── 初始座標 ── */
+const initLat = parseFloat('{{ customer.lat|default:"23.5" }}') || 23.5;
+const initLng = parseFloat('{{ customer.lng|default:"121.0" }}') || 121.0;
+const hasCoord = {{ customer.lat|yesno:"true,false" }} && {{ customer.lng|yesno:"true,false" }};
+
+/* ── Leaflet 地圖 ── */
+const map = L.map('editMap').setView([initLat, initLng], hasCoord ? 16 : 8);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CARTO'
+}).addTo(map);
+
+const marker = L.marker([initLat, initLng], { draggable: true }).addTo(map);
+if (!hasCoord) marker.setOpacity(0);
+
+/* 地圖點擊 → 移動 marker + 填入 input */
+map.on('click', e => {
+  const { lat, lng } = e.latlng;
+  setCoords(lat, lng);
+});
+
+/* Marker 拖曳 → 更新 input */
+marker.on('dragend', e => {
+  const { lat, lng } = e.target.getLatLng();
+  setCoords(lat, lng);
+});
+
+function setCoords(lat, lng) {
+  document.getElementById('latInput').value = lat.toFixed(6);
+  document.getElementById('lngInput').value = lng.toFixed(6);
+  marker.setLatLng([lat, lng]);
+  marker.setOpacity(1);
+}
+
+/* Input 手動改 → 移動 marker */
+function updateMarkerFromInputs() {
+  const lat = parseFloat(document.getElementById('latInput').value);
+  const lng = parseFloat(document.getElementById('lngInput').value);
+  if (!isNaN(lat) && !isNaN(lng)) {
+    marker.setLatLng([lat, lng]);
+    marker.setOpacity(1);
+    map.setView([lat, lng], 16);
+  }
+}
+
+/* ── 層一：Google Maps 連結解析 ── */
+async function parseGmaps() {
+  const url   = document.getElementById('gmapsInput').value.trim();
+  const msg   = document.getElementById('gmapsMsg');
+  if (!url) return;
+
+  msg.className = 'text-xs mt-1 text-gray-400';
+  msg.textContent = '解析中…';
+  msg.classList.remove('hidden');
+
+  /* 純前端可解析的格式 */
+  const coords = tryParseUrl(url);
+  if (coords) {
+    applyCoords(coords.lat, coords.lng);
+    return;
+  }
+
+  /* 短網址（maps.app.goo.gl）→ 請後端展開 */
+  try {
+    const res  = await fetch(`{% url 'dashboard:parse_gmaps_url' %}?url=${encodeURIComponent(url)}`);
+    const data = await res.json();
+    if (data.lat && data.lng) {
+      applyCoords(data.lat, data.lng);
+    } else {
+      msg.className = 'text-xs mt-1 text-red-500';
+      msg.textContent = '❌ 無法解析此連結，請直接在地圖上點選';
+    }
+  } catch (e) {
+    msg.className = 'text-xs mt-1 text-red-500';
+    msg.textContent = '❌ 網路錯誤';
+  }
+}
+
+function tryParseUrl(url) {
+  /* 格式：/@lat,lng, */
+  let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  /* 格式：?q=lat,lng */
+  m = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  /* 格式：?ll=lat,lng */
+  m = url.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  return null;
+}
+
+function applyCoords(lat, lng) {
+  setCoords(lat, lng);
+  map.setView([lat, lng], 17);
+  const msg = document.getElementById('gmapsMsg');
+  msg.className = 'text-xs mt-1 text-emerald-600';
+  msg.textContent = `✓ 座標已填入：${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
+
+/* Enter 鍵也觸發解析 */
+document.getElementById('gmapsInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); parseGmaps(); }
+});
+</script>
+
 {% endblock %}

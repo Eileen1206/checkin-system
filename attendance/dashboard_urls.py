@@ -14,6 +14,7 @@ urlpatterns = [
     path('delivery/delete-task/<int:pk>/', dashboard_views.delivery_delete_task, name='delivery_delete_task'),
     path('customers/', dashboard_views.customer_list, name='customer_list'),
     path('customers/geocode/', dashboard_views.geocode_customers, name='geocode_customers'),
+    path('customers/parse-gmaps/', dashboard_views.parse_gmaps_url, name='parse_gmaps_url'),
     path('customers/<int:pk>/edit/', dashboard_views.customer_edit, name='customer_edit'),
     path('delivery/reorder/', dashboard_views.delivery_reorder, name='delivery_reorder'),
     path('delivery/push/', dashboard_views.delivery_push, name='delivery_push'),

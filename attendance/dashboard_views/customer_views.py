@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.db import models
+import re, urllib.request
 from ..models import Customer
 from .base import require_group
 
@@ -26,13 +27,23 @@ def import_customers(request):
         reader = csv.DictReader(file, delimiter=',')
 
         for row in reader:
+            defaults = {
+                'name': row['客戶名稱'],
+                'address': row['地址'],
+                'phone': row['電話號碼'],
+            }
+            # 可選欄位：緯度 / 經度
+            try:
+                lat_val = row.get('緯度', '').strip()
+                lng_val = row.get('經度', '').strip()
+                if lat_val: defaults['lat'] = float(lat_val)
+                if lng_val: defaults['lng'] = float(lng_val)
+            except (ValueError, KeyError):
+                pass
+
             Customer.objects.update_or_create(
                 customer_id=row['客戶編號'],
-                defaults={
-                    'name': row['客戶名稱'],
-                    'address': row['地址'],
-                    'phone': row['電話號碼']
-                }
+                defaults=defaults,
             )
 
         return redirect('dashboard:index')
@@ -139,3 +150,42 @@ def geocode_customers(request):
 
     messages.success(request, f'成功定位 {count} 筆客戶')
     return redirect('dashboard:customer_list')
+
+
+@login_required
+def parse_gmaps_url(request):
+    """展開 Google Maps 短網址並解析座標（供 customer_edit.html 使用）"""
+    url = request.GET.get('url', '').strip()
+    if not url:
+        return JsonResponse({'error': '缺少 url 參數'}, status=400)
+
+    def extract_coords(s):
+        # /@lat,lng,
+        m = re.search(r'/@(-?\d+\.\d+),(-?\d+\.\d+)', s)
+        if m: return float(m.group(1)), float(m.group(2))
+        # ?q=lat,lng
+        m = re.search(r'[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)', s)
+        if m: return float(m.group(1)), float(m.group(2))
+        # ?ll=lat,lng
+        m = re.search(r'[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)', s)
+        if m: return float(m.group(1)), float(m.group(2))
+        return None
+
+    # 先嘗試直接解析
+    result = extract_coords(url)
+    if result:
+        return JsonResponse({'lat': result[0], 'lng': result[1]})
+
+    # 短網址展開（HEAD request 取 Location）
+    try:
+        req = urllib.request.Request(url, method='HEAD',
+                                     headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            final_url = resp.url
+        result = extract_coords(final_url)
+        if result:
+            return JsonResponse({'lat': result[0], 'lng': result[1]})
+    except Exception:
+        pass
+
+    return JsonResponse({'error': '無法解析座標'})
