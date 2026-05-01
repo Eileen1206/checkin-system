@@ -401,7 +401,7 @@ def handle_location(event):
         return
 
     distance = _haversine_meters(lat, lng, float(cust.lat), float(cust.lng))
-    ALLOWED_METERS = 500
+    ALLOWED_METERS = 100
 
     with ApiClient(configuration) as api_client:
         api = MessagingApi(api_client)
