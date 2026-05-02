@@ -165,6 +165,12 @@ def rfid_checkin(request):
         timestamp__date=today
     ).count()
 
+    # 重複防護：同類型 2 分鐘內已有紀錄 → 直接回傳成功，不重複寫入
+    if count > 0:
+        last = AttendanceRecord.objects.filter(employee=emp, timestamp__date=today).first()
+        if last and (timezone.now() - last.timestamp).total_seconds() < 120:
+            return JsonResponse({'ok': True, 'message': f'{emp.user.get_full_name() or emp.user.username} 打卡已記錄', 'duplicate': True})
+
     if count == 0:
         record_type = 'clock_in'
     elif count == 1:
