@@ -40,31 +40,46 @@ def on_key(event):
         # 用 nonlocal 方式更新 timer
         globals()['timer'] = t
 
+MAX_RETRIES = 3       # 最多重試次數
+RETRY_DELAY = 8      # 每次重試間隔秒數（讓 Railway 有時間喚醒）
+
 def send_checkin(rfid_uid):
-    try:
-        session = requests.Session()
-        session.get(RFID_PAGE_URL, timeout=10)
-        csrf = session.cookies.get('csrftoken', '')
+    title = '❌ 連線失敗'
+    message = '伺服器無回應，請稍後再試'
 
-        resp = session.post(
-            CHECKIN_URL,
-            data={
-                'rfid_uid': rfid_uid,
-                'csrfmiddlewaretoken': csrf,
-            },
-            headers={
-                'X-RFID-API-Key': RFID_API_KEY,
-            },
-            timeout=10,
-        )
-        data = resp.json()
-        message = data.get('message', '打卡完成')
-        title = '✅ 打卡成功' if data.get('ok') else '❌ 打卡失敗'
-    except Exception as e:
-        title = '❌ 連線失敗'
-        message = str(e)  # ← 顯示真正的錯誤原因
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            session = requests.Session()
+            session.get(RFID_PAGE_URL, timeout=15)
+            csrf = session.cookies.get('csrftoken', '')
 
-    print(f'{title}：{message}')  # ← 同時印到 console 方便除錯
+            resp = session.post(
+                CHECKIN_URL,
+                data={
+                    'rfid_uid': rfid_uid,
+                    'csrfmiddlewaretoken': csrf,
+                },
+                headers={
+                    'X-RFID-API-Key': RFID_API_KEY,
+                },
+                timeout=15,
+            )
+            data = resp.json()
+            message = data.get('message', '打卡完成')
+            title = '✅ 打卡成功' if data.get('ok') else '❌ 打卡失敗'
+            break  # 成功就跳出，不再重試
+
+        except Exception as e:
+            message = str(e)
+            if attempt < MAX_RETRIES:
+                print(f'第 {attempt} 次嘗試失敗，{RETRY_DELAY} 秒後重試…（{e}）')
+                import time
+                time.sleep(RETRY_DELAY)
+            else:
+                title = '❌ 連線失敗'
+                message = f'重試 {MAX_RETRIES} 次仍失敗：{e}'
+
+    print(f'{title}：{message}')
     notification.notify(
         title=title,
         message=message,
