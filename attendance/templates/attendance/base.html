@@ -193,12 +193,6 @@
         </main>
     </div>
 
-{% else %}
-{# 未登入：無側邊欄的簡單佈局 #}
-<body class="bg-gray-50 min-h-screen">
-    <main class="{% block login_class %}{% endblock %}">
-        {% block content %}{% endblock %}
-    </main>
 {% endif %}
 
     {% block extra_scripts %}{% endblock %}
