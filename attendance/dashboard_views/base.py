@@ -117,9 +117,9 @@ def get_work_hours(employee, date=None):
     break_end = AttendanceRecord.objects.filter(
         employee=employee, timestamp__date=date, record_type='break_end'
     ).first()
-    if break_start and break_end:
+    if break_start:
         eff_break_start = max(break_start.timestamp, start_time)
-        eff_break_end   = min(break_end.timestamp,   end_time)
+        eff_break_end   = min(break_end.timestamp if break_end else end_time, end_time)
         if eff_break_end > eff_break_start:
             total_seconds -= (eff_break_end - eff_break_start).total_seconds()
         if total_seconds < 0:
