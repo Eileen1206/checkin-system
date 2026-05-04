@@ -298,16 +298,78 @@ def handle_postback(event):
         elif action == 'monthly':
             reply_msg = TextMessage(text=get_monthly_summary(employee))
         elif action == 'rfid_punch':
+            # 第一步：推確認訊息，不直接寫入
             emp_id = params.get('employee_id')
             record_type = params.get('record_type')
             emp = get_object_or_404(Employee, pk=emp_id)
 
-            # 重複防護：同類型 3 分鐘內已有紀錄 → 跳過（防 LINE 重複 postback）
+            # 若要下班但午休未結束 → 拒絕
+            if record_type == 'clock_out':
+                today = timezone.localdate()
+                has_break_start = AttendanceRecord.objects.filter(
+                    employee=emp, record_type='break_start', timestamp__date=today
+                ).exists()
+                has_break_end = AttendanceRecord.objects.filter(
+                    employee=emp, record_type='break_end', timestamp__date=today
+                ).exists()
+                if has_break_start and not has_break_end:
+                    reply_msg = TextMessage(text='⚠️ 請先刷卡結束午休，再下班打卡')
+                    with ApiClient(configuration) as api_client:
+                        MessagingApi(api_client).reply_message(ReplyMessageRequest(
+                            reply_token=event.reply_token, messages=[reply_msg]
+                        ))
+                    return
+
+            label = '午休開始' if record_type == 'break_start' else '直接下班'
+            confirm_flex = {
+                "type": "bubble",
+                "body": {
+                    "type": "box", "layout": "vertical",
+                    "contents": [
+                        {"type": "text", "text": f"確定要【{label}】嗎？",
+                         "weight": "bold", "size": "lg", "wrap": True},
+                        {"type": "text", "text": f"時間：{timezone.localtime().strftime('%H:%M')}",
+                         "size": "sm", "color": "#888888", "margin": "sm"},
+                    ]
+                },
+                "footer": {
+                    "type": "box", "layout": "horizontal", "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "button", "style": "primary",
+                            "color": "#1a1a1a", "height": "sm",
+                            "action": {
+                                "type": "postback", "label": "✅ 確定",
+                                "data": f"action=rfid_confirm&record_type={record_type}&employee_id={emp_id}"
+                            }
+                        },
+                        {
+                            "type": "button", "style": "secondary",
+                            "height": "sm",
+                            "action": {
+                                "type": "postback", "label": "✖ 取消",
+                                "data": "action=rfid_cancel"
+                            }
+                        },
+                    ]
+                }
+            }
+            reply_msg = FlexMessage(
+                alt_text=f'確定要{label}嗎？',
+                contents=FlexContainer.from_dict(confirm_flex)
+            )
+
+        elif action == 'rfid_confirm':
+            # 第二步：員工確認後才寫入
+            emp_id = params.get('employee_id')
+            record_type = params.get('record_type')
+            emp = get_object_or_404(Employee, pk=emp_id)
+
             from datetime import timedelta as _td
             duplicate = AttendanceRecord.objects.filter(
                 employee=emp,
                 record_type=record_type,
-                timestamp__gte=timezone.now() - _td(minutes=3),
+                timestamp__gte=timezone.now() - _td(minutes=5),
             ).exists()
 
             label = '午休開始' if record_type == 'break_start' else '下班打卡'
@@ -316,13 +378,14 @@ def handle_postback(event):
                     employee=emp,
                     record_type=record_type,
                     timestamp=timezone.now(),
-                    latitude=0,
-                    longitude=0,
-                    is_valid=True,
-                    distance_meters=0,
+                    latitude=0, longitude=0,
+                    is_valid=True, distance_meters=0,
                     source='rfid',
                 )
             reply_msg = TextMessage(text=f'✅ {label}成功！\n時間：{timezone.localtime().strftime("%H:%M")}')
+
+        elif action == 'rfid_cancel':
+            reply_msg = TextMessage(text='已取消，打卡紀錄不受影響。')
 
         elif action == 'delivery_done':
             task_id = params.get('task_id')
