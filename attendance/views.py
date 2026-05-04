@@ -302,17 +302,26 @@ def handle_postback(event):
             record_type = params.get('record_type')
             emp = get_object_or_404(Employee, pk=emp_id)
 
-            AttendanceRecord.objects.create(
+            # 重複防護：同類型 3 分鐘內已有紀錄 → 跳過（防 LINE 重複 postback）
+            from datetime import timedelta as _td
+            duplicate = AttendanceRecord.objects.filter(
                 employee=emp,
                 record_type=record_type,
-                timestamp=timezone.now(),
-                latitude=0,
-                longitude=0,
-                is_valid=True,
-                distance_meters=0,
-                source='rfid',
-            )
+                timestamp__gte=timezone.now() - _td(minutes=3),
+            ).exists()
+
             label = '午休開始' if record_type == 'break_start' else '下班打卡'
+            if not duplicate:
+                AttendanceRecord.objects.create(
+                    employee=emp,
+                    record_type=record_type,
+                    timestamp=timezone.now(),
+                    latitude=0,
+                    longitude=0,
+                    is_valid=True,
+                    distance_meters=0,
+                    source='rfid',
+                )
             reply_msg = TextMessage(text=f'✅ {label}成功！\n時間：{timezone.localtime().strftime("%H:%M")}')
 
         elif action == 'delivery_done':

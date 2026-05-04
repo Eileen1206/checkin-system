@@ -158,22 +158,21 @@ def rfid_checkin(request):
     if emp is None:
         return JsonResponse({'ok': False, 'message': '此卡片尚未綁定員工'})
 
-    # 判斷打卡類型（今日第幾次）
+    # 判斷打卡類型（依最後一筆的 record_type 決定，避免重複寫入導致 count 錯誤）
     today = timezone.localdate()
-    count = AttendanceRecord.objects.filter(
-        employee=emp,
-        timestamp__date=today
-    ).count()
+    last = AttendanceRecord.objects.filter(
+        employee=emp, timestamp__date=today
+    ).order_by('-timestamp').first()
 
-    # 重複防護：同類型 2 分鐘內已有紀錄 → 直接回傳成功，不重複寫入
-    if count > 0:
-        last = AttendanceRecord.objects.filter(employee=emp, timestamp__date=today).first()
-        if last and (timezone.now() - last.timestamp).total_seconds() < 120:
-            return JsonResponse({'ok': True, 'message': f'{emp.user.get_full_name() or emp.user.username} 打卡已記錄', 'duplicate': True})
+    # 重複防護：2 分鐘內已有紀錄 → 直接回傳成功
+    if last and (timezone.now() - last.timestamp).total_seconds() < 120:
+        return JsonResponse({'ok': True, 'message': f'{emp.user.get_full_name() or emp.user.username} 打卡已記錄', 'duplicate': True})
 
-    if count == 0:
+    last_type = last.record_type if last else None
+
+    if last_type is None:
         record_type = 'clock_in'
-    elif count == 1:
+    elif last_type == 'clock_in':
         if not emp.line_user_id:
             return JsonResponse({'ok': False, 'message': '該員工未綁定 LINE，無法選擇打卡類型'})
 
@@ -231,9 +230,9 @@ def rfid_checkin(request):
 
         name = emp.user.get_full_name() or emp.user.username
         return JsonResponse({'ok': True, 'message': f'{name} 請用手機選擇打卡類型'})
-    elif count == 2:
+    elif last_type == 'break_start':
         record_type = 'break_end'
-    elif count == 3:
+    elif last_type in ('break_end', 'clock_in'):
         record_type = 'clock_out'
     else:
         return JsonResponse({'ok': False, 'message': '今日打卡已完成'})
