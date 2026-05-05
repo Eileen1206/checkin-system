@@ -57,6 +57,7 @@ def index(request):
         delivery_status.append({
             'employee':   session.employee,
             'session':    session,
+            'tasks':      tasks,
             'total':      total,
             'completed':  completed,
             'next_task':  next_task,
