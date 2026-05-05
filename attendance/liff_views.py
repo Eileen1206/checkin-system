@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from .models import Employee, DeliveryTask, DeliverySession
+from .models import Employee, DeliveryTask, DeliverySession, Customer, LocationCorrectionRequest
 
 
 def _haversine_meters(lat1, lng1, lat2, lng2):
@@ -200,4 +200,43 @@ def liff_delivery_complete(request):
             'ok': False,
             'error': f'❌ 距離客戶 {int(distance)} 公尺，需在 {ALLOWED_METERS} 公尺內',
             'distance': int(distance),
+            'too_far': True,
+            'customer_id': task.customer_id,
         })
+
+
+@csrf_exempt
+def liff_report_location(request):
+    """員工回報客戶座標錯誤"""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    line_user_id = request.POST.get('line_user_id', '').strip()
+    customer_id  = request.POST.get('customer_id', '').strip()
+    new_lat      = request.POST.get('lat', '').strip()
+    new_lng      = request.POST.get('lng', '').strip()
+    note         = request.POST.get('note', '').strip()
+    distance     = request.POST.get('distance', '').strip()
+
+    emp = Employee.objects.filter(line_user_id=line_user_id).first()
+    if not emp:
+        return JsonResponse({'ok': False, 'error': '找不到員工'})
+
+    customer = Customer.objects.filter(customer_id=customer_id).first()
+    if not customer:
+        return JsonResponse({'ok': False, 'error': '找不到客戶'})
+
+    try:
+        LocationCorrectionRequest.objects.create(
+            customer=customer,
+            requested_by=emp,
+            old_lat=customer.lat,
+            old_lng=customer.lng,
+            new_lat=new_lat,
+            new_lng=new_lng,
+            note=note,
+            distance_at_report=int(distance) if distance.isdigit() else None,
+        )
+        return JsonResponse({'ok': True, 'message': '已送出申請，待管理員審核'})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)})

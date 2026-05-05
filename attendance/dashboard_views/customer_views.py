@@ -4,7 +4,9 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.db import models
 import re, urllib.request
-from ..models import Customer
+from ..models import Customer, LocationCorrectionRequest
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 from .base import require_group
 
 
@@ -189,3 +191,39 @@ def parse_gmaps_url(request):
         pass
 
     return JsonResponse({'error': '無法解析座標'})
+
+
+@login_required
+@require_group('admin', 'finance')
+def location_correction_list(request):
+    """座標修正申請列表"""
+    corrections = LocationCorrectionRequest.objects.select_related(
+        'customer', 'requested_by__user', 'reviewed_by'
+    ).all()
+    return render(request, 'attendance/location_correction_list.html', {
+        'corrections': corrections,
+    })
+
+
+@login_required
+@require_group('admin', 'finance')
+@require_POST
+def location_correction_review(request, pk):
+    """核准或拒絕座標修正申請"""
+    correction = get_object_or_404(LocationCorrectionRequest, pk=pk)
+    action = request.POST.get('action')
+
+    if action == 'approve':
+        correction.customer.lat = correction.new_lat
+        correction.customer.lng = correction.new_lng
+        correction.customer.save(update_fields=['lat', 'lng'])
+        correction.status = 'approved'
+        messages.success(request, f'已核准並更新 {correction.customer.name} 的座標')
+    elif action == 'reject':
+        correction.status = 'rejected'
+        messages.info(request, f'已拒絕 {correction.customer.name} 的座標修正申請')
+
+    correction.reviewed_by = request.user
+    correction.reviewed_at = timezone.now()
+    correction.save(update_fields=['status', 'reviewed_by', 'reviewed_at'])
+    return redirect('dashboard:location_correction_list')

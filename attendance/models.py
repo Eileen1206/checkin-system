@@ -281,3 +281,30 @@ class Customer(models.Model):
     is_active   = models.BooleanField('啟用', default=True)
     updated_at  = models.DateTimeField('更新時間', auto_now=True)
 
+
+class LocationCorrectionRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending',  '待審核'),
+        ('approved', '已核准'),
+        ('rejected', '已拒絕'),
+    ]
+    customer           = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='correction_requests', verbose_name='客戶')
+    requested_by       = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='correction_requests', verbose_name='申請員工')
+    requested_at       = models.DateTimeField('申請時間', auto_now_add=True)
+    old_lat            = models.DecimalField('原緯度', max_digits=9, decimal_places=6, null=True, blank=True)
+    old_lng            = models.DecimalField('原經度', max_digits=9, decimal_places=6, null=True, blank=True)
+    new_lat            = models.DecimalField('新緯度', max_digits=9, decimal_places=6)
+    new_lng            = models.DecimalField('新經度', max_digits=9, decimal_places=6)
+    note               = models.TextField('備註', blank=True)
+    distance_at_report = models.IntegerField('回報時距離(公尺)', null=True, blank=True)
+    status             = models.CharField('狀態', max_length=10, choices=STATUS_CHOICES, default='pending')
+    reviewed_by        = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_corrections', verbose_name='審核人')
+    reviewed_at        = models.DateTimeField('審核時間', null=True, blank=True)
+
+    class Meta:
+        ordering = ['-requested_at']
+        verbose_name = '座標修正申請'
+
+    def __str__(self):
+        return f'{self.customer.name} — {self.get_status_display()} ({self.requested_at.date()})'
+

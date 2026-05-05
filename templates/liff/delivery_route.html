@@ -205,6 +205,26 @@
   </div>
 </div>
 
+<!-- 回報座標錯誤 Modal -->
+<div class="modal-overlay hidden" id="report-modal">
+  <div class="modal-sheet">
+    <p class="modal-title">📌 回報座標錯誤</p>
+    <p style="font-size:13px;color:#666;margin-bottom:12px;">目前 GPS 位置將作為建議新座標送出，待管理員審核後更新。</p>
+    <textarea id="report-note" placeholder="備註（可選，例如：正確位置在巷子裡）"
+      style="width:100%;border:1px solid #e5e7eb;border-radius:10px;padding:10px;font-size:14px;resize:none;height:72px;box-sizing:border-box;margin-bottom:10px;"></textarea>
+    <p id="report-result" style="font-size:13px;min-height:18px;margin-bottom:8px;"></p>
+    <input type="hidden" id="report-task-id">
+    <input type="hidden" id="report-customer-id">
+    <input type="hidden" id="report-lat">
+    <input type="hidden" id="report-lng">
+    <input type="hidden" id="report-distance">
+    <div class="modal-btn-row">
+      <button class="modal-cancel" onclick="closeReportModal()">取消</button>
+      <button class="modal-confirm" id="report-submit-btn" onclick="submitReport()" style="background:#f59e0b;">送出申請</button>
+    </div>
+  </div>
+</div>
+
 <!-- 完成確認 Modal -->
 <div class="modal-overlay hidden" id="finish-modal">
   <div class="modal-sheet">
@@ -417,7 +437,15 @@ async function arrive(taskId) {
       btn.disabled = false;
       btn.textContent = '📍 到達確認';
       msg.className = 'msg-box err';
-      msg.textContent = data.error;
+      msg.innerHTML = data.error;
+      // 距離過遠時顯示「回報座標錯誤」按鈕
+      if (data.too_far) {
+        const reportBtn = document.createElement('button');
+        reportBtn.textContent = '📌 回報座標錯誤';
+        reportBtn.style.cssText = 'display:block;width:100%;margin-top:8px;padding:9px;background:#f59e0b;color:white;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;';
+        reportBtn.onclick = () => openReportModal(taskId, data.customer_id, lat, lng, data.distance);
+        msg.appendChild(reportBtn);
+      }
     }
   } catch (e) {
     isArriving = false;
@@ -426,6 +454,53 @@ async function arrive(taskId) {
     btn.textContent = '📍 到達確認';
     msg.className = 'msg-box err';
     msg.textContent = '網路錯誤，請稍後再試';
+  }
+}
+
+/* ────────── 回報座標錯誤 ────────── */
+function openReportModal(taskId, customerId, lat, lng, distance) {
+  document.getElementById('report-task-id').value   = taskId;
+  document.getElementById('report-customer-id').value = customerId;
+  document.getElementById('report-lat').value       = lat;
+  document.getElementById('report-lng').value       = lng;
+  document.getElementById('report-distance').value  = distance;
+  document.getElementById('report-note').value      = '';
+  document.getElementById('report-result').textContent = '';
+  document.getElementById('report-modal').classList.remove('hidden');
+}
+
+function closeReportModal() {
+  document.getElementById('report-modal').classList.add('hidden');
+}
+
+async function submitReport() {
+  const btn = document.getElementById('report-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '送出中…';
+  const form = new FormData();
+  form.append('line_user_id',  lineUserId);
+  form.append('customer_id',   document.getElementById('report-customer-id').value);
+  form.append('lat',           document.getElementById('report-lat').value);
+  form.append('lng',           document.getElementById('report-lng').value);
+  form.append('distance',      document.getElementById('report-distance').value);
+  form.append('note',          document.getElementById('report-note').value);
+  try {
+    const res  = await fetch('/liff/delivery/report-location/', { method: 'POST', body: form });
+    const data = await res.json();
+    const result = document.getElementById('report-result');
+    if (data.ok) {
+      result.style.color = '#16a34a';
+      result.textContent = '✅ ' + data.message;
+      setTimeout(closeReportModal, 1800);
+    } else {
+      result.style.color = '#dc2626';
+      result.textContent = '❌ ' + data.error;
+      btn.disabled = false;
+      btn.textContent = '送出申請';
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '送出申請';
   }
 }
 

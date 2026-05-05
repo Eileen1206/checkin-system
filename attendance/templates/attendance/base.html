@@ -150,6 +150,13 @@
                class="nav-item {% if request.resolver_match.url_name == 'salary' %}active{% endif %}">
                 <span class="text-base">💰</span> 薪資計算
             </a>
+
+            {# 座標修正 #}
+            <p class="nav-section">其他</p>
+            <a href="{% url 'dashboard:location_correction_list' %}"
+               class="nav-item {% if request.resolver_match.url_name == 'location_correction_list' %}active{% endif %}">
+                <span class="text-base">📌</span> 座標修正申請
+            </a>
             {% endif %}
 
         </nav>

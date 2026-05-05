@@ -1,0 +1,128 @@
+{% extends "attendance/base.html" %}
+{% block title %}座標修正申請{% endblock %}
+{% block page_title %}📌 座標修正申請{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  {% if not corrections %}
+  <div class="bg-white rounded-2xl border border-gray-100 px-6 py-12 text-center text-gray-400 text-sm">
+    目前沒有任何座標修正申請
+  </div>
+  {% else %}
+
+  <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+    <div class="divide-y divide-gray-50">
+      {% for c in corrections %}
+      <div class="px-5 py-4">
+        <div class="flex items-start justify-between gap-4">
+
+          {# 左側資訊 #}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="font-semibold text-gray-800 text-sm">{{ c.customer.name }}</span>
+              <span class="text-xs text-gray-400">{{ c.customer.customer_id }}</span>
+              {% if c.status == 'pending' %}
+                <span class="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">待審核</span>
+              {% elif c.status == 'approved' %}
+                <span class="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">已核准</span>
+              {% else %}
+                <span class="text-xs bg-red-100 text-red-400 rounded-full px-2 py-0.5">已拒絕</span>
+              {% endif %}
+            </div>
+            <p class="text-xs text-gray-500 mb-1">
+              申請人：{{ c.requested_by.user.get_full_name|default:c.requested_by.user.username }}
+              &nbsp;·&nbsp; {{ c.requested_at|date:"m/d H:i" }}
+              {% if c.distance_at_report %}&nbsp;·&nbsp; 當時距離 {{ c.distance_at_report }} 公尺{% endif %}
+            </p>
+            {% if c.note %}
+            <p class="text-xs text-gray-400 italic">備註：{{ c.note }}</p>
+            {% endif %}
+            {% if c.reviewed_by %}
+            <p class="text-xs text-gray-400 mt-1">
+              審核：{{ c.reviewed_by.get_full_name|default:c.reviewed_by.username }} · {{ c.reviewed_at|date:"m/d H:i" }}
+            </p>
+            {% endif %}
+          </div>
+
+          {# 右側：地圖 + 按鈕 #}
+          <div class="shrink-0 flex flex-col items-end gap-2">
+
+            {# 小地圖：新舊座標對比 #}
+            {% if c.new_lat and c.new_lng %}
+            <div id="map-{{ c.pk }}" class="w-56 h-36 rounded-xl border border-gray-200 overflow-hidden"></div>
+            {% endif %}
+
+            {# 座標數值 #}
+            <div class="text-xs text-gray-400 text-right">
+              {% if c.old_lat %}舊：{{ c.old_lat }}, {{ c.old_lng }}<br>{% endif %}
+              新：{{ c.new_lat }}, {{ c.new_lng }}
+            </div>
+
+            {# 核准 / 拒絕 #}
+            {% if c.status == 'pending' %}
+            <div class="flex gap-2">
+              <form method="post" action="{% url 'dashboard:location_correction_review' c.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="reject">
+                <button class="px-3 py-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors">
+                  拒絕
+                </button>
+              </form>
+              <form method="post" action="{% url 'dashboard:location_correction_review' c.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="approve">
+                <button class="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors">
+                  ✅ 核准更新
+                </button>
+              </form>
+            </div>
+            {% endif %}
+
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const corrections = [
+  {% for c in corrections %}
+  {% if c.new_lat and c.new_lng %}
+  {
+    pk: {{ c.pk }},
+    oldLat: {{ c.old_lat|default:"null" }},
+    oldLng: {{ c.old_lng|default:"null" }},
+    newLat: {{ c.new_lat }},
+    newLng: {{ c.new_lng }},
+  },
+  {% endif %}
+  {% endfor %}
+];
+
+corrections.forEach(function(c) {
+  const el = document.getElementById('map-' + c.pk);
+  if (!el) return;
+  const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([c.newLat, c.newLng], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  // 新座標（綠）
+  L.circleMarker([c.newLat, c.newLng], { radius: 8, color: '#16a34a', fillColor: '#22c55e', fillOpacity: 0.9 })
+    .addTo(map).bindPopup('建議新位置');
+  // 舊座標（紅）
+  if (c.oldLat && c.oldLng) {
+    L.circleMarker([c.oldLat, c.oldLng], { radius: 8, color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.8 })
+      .addTo(map).bindPopup('原始位置');
+    // 自動調整範圍顯示兩點
+    map.fitBounds([[c.oldLat, c.oldLng], [c.newLat, c.newLng]], { padding: [20, 20] });
+  }
+});
+</script>
+{% endblock %}
