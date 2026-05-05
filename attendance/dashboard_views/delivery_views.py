@@ -256,12 +256,12 @@ def delivery_plan(request):
     normal_sorted = get_optimal_order(normal)
     final_order = urgent + normal_sorted
 
-    # 若有正在送貨中的趟次（已出發但未完成），禁止覆蓋
+    # 若有正在送貨中的趟次（已出發但未完成，且仍有 pending 任務），禁止覆蓋
     active_session = DeliverySession.objects.filter(
         employee=employee, date=date,
         started_at__isnull=False,
         finished_at__isnull=True,
-    ).first()
+    ).filter(tasks__status='pending').distinct().first()
     if active_session:
         messages.error(request,
             f'{employee.user.get_full_name() or employee.user.username} 目前第 {active_session.trip_number} 趟送貨進行中，'
