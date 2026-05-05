@@ -222,7 +222,7 @@ def liff_report_location(request):
     if not emp:
         return JsonResponse({'ok': False, 'error': '找不到員工'})
 
-    customer = Customer.objects.filter(customer_id=customer_id).first()
+    customer = Customer.objects.filter(pk=customer_id).first()
     if not customer:
         return JsonResponse({'ok': False, 'error': '找不到客戶'})
 
