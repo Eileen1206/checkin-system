@@ -1,58 +1,42 @@
 {% extends "attendance/base.html" %}
-{% block title %}今日出勤儀表板{% endblock %}
+{% block title %}今日儀表板{% endblock %}
+{% block page_title %}🏠 今日儀表板{% endblock %}
 {% block content %}
 
-<!-- 標題 -->
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-gray-800">今日出勤狀況</h1>
+<!-- 頁首：日期 -->
+<div class="flex items-center justify-between mb-5">
+  <h1 class="text-xl font-bold text-gray-800">今日總覽</h1>
   <span class="text-sm text-gray-400">{{ today }}</span>
 </div>
 
-<!-- 統計卡片 -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-    <div class="text-4xl font-bold text-emerald-600 mb-1">{{ counts.working }}</div>
-    <div class="text-sm text-gray-500">● 上班中</div>
-  </div>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-    <div class="text-4xl font-bold text-amber-500 mb-1">{{ counts.break }}</div>
-    <div class="text-sm text-gray-500">◐ 午休中</div>
-  </div>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-    <div class="text-4xl font-bold text-gray-400 mb-1">{{ counts.left }}</div>
-    <div class="text-sm text-gray-500">○ 已下班</div>
-  </div>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-    <div class="text-4xl font-bold text-red-500 mb-1">{{ counts.absent }}</div>
-    <div class="text-sm text-gray-500">✕ 未打卡</div>
-  </div>
+<!-- ═══════════════════════════════════
+     區塊一：送貨狀況
+     ═══════════════════════════════════ -->
+<div class="mb-2">
+  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">🚚 送貨狀況</p>
 </div>
 
-<!-- 今日送貨 + 遲到摘要 -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+<!-- 送貨摘要卡片 -->
+<div class="grid grid-cols-3 gap-3 mb-5">
   <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
     <p class="text-2xl font-bold text-blue-500">{{ today_trips_total }}</p>
-    <p class="text-xs text-gray-400 mt-0.5">今日送貨趟數</p>
+    <p class="text-xs text-gray-400 mt-0.5">今日趟數</p>
   </div>
   <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
     <p class="text-2xl font-bold text-emerald-500">{{ today_trips_finished }}</p>
-    <p class="text-xs text-gray-400 mt-0.5">已完成趟次</p>
+    <p class="text-xs text-gray-400 mt-0.5">已完成</p>
   </div>
   <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
     <p class="text-2xl font-bold text-amber-500">{{ today_trips_active }}</p>
-    <p class="text-xs text-gray-400 mt-0.5">送貨中趟次</p>
-  </div>
-  <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center {% if late_count %}border-orange-200 bg-orange-50{% endif %}">
-    <p class="text-2xl font-bold text-orange-500">{{ late_count }}</p>
-    <p class="text-xs text-gray-400 mt-0.5">今日遲到人數</p>
+    <p class="text-xs text-gray-400 mt-0.5">送貨中</p>
   </div>
 </div>
 
-<!-- 今日送貨狀況（時間軸） -->
+<!-- 進行中趟次時間軸 -->
 {% if delivery_status %}
-<div class="mb-6">
+<div class="mb-8">
   <div class="flex items-center justify-between mb-3">
-    <h2 class="text-base font-semibold text-gray-700">🚚 今日送貨狀況</h2>
+    <h2 class="text-sm font-semibold text-gray-600">進行中趟次</h2>
     <a href="{% url 'dashboard:delivery_today' %}" class="text-xs text-blue-500 hover:underline">查看全部 →</a>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -86,16 +70,12 @@
 
           {# 軸線 + 節點 #}
           <div class="flex flex-col items-center w-5 shrink-0">
-            {# 上方連線 #}
             {% if not forloop.first %}
-            <div class="w-px flex-none h-2
-              {% if task.status == 'completed' %}bg-emerald-300{% else %}bg-gray-200{% endif %}">
-            </div>
+            <div class="w-px flex-none h-2 {% if task.status == 'completed' %}bg-emerald-300{% else %}bg-gray-200{% endif %}"></div>
             {% else %}
             <div class="h-2"></div>
             {% endif %}
 
-            {# 節點圓圈 #}
             {% if task.status == 'completed' %}
               <div class="w-4 h-4 rounded-full bg-emerald-400 flex items-center justify-center shrink-0">
                 <svg class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
@@ -108,11 +88,8 @@
               <div class="w-4 h-4 rounded-full border-2 border-gray-200 bg-white shrink-0"></div>
             {% endif %}
 
-            {# 下方連線 #}
             {% if not forloop.last %}
-            <div class="w-px flex-1 min-h-2
-              {% if task.status == 'completed' %}bg-emerald-300{% else %}bg-gray-200{% endif %}">
-            </div>
+            <div class="w-px flex-1 min-h-2 {% if task.status == 'completed' %}bg-emerald-300{% else %}bg-gray-200{% endif %}"></div>
             {% endif %}
           </div>
 
@@ -147,14 +124,45 @@
     {% endfor %}
   </div>
 </div>
+{% else %}
+<div class="mb-8 bg-white rounded-2xl border border-gray-100 px-5 py-8 text-center text-sm text-gray-400">
+  今日尚無進行中的送貨趟次
+</div>
 {% endif %}
+
+<!-- ═══════════════════════════════════
+     區塊二：出勤狀況
+     ═══════════════════════════════════ -->
+<div class="mb-2">
+  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">📋 出勤狀況</p>
+</div>
+
+<!-- 出勤統計卡片 -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
+    <div class="text-4xl font-bold text-emerald-600 mb-1">{{ counts.working }}</div>
+    <div class="text-sm text-gray-500">● 上班中</div>
+  </div>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
+    <div class="text-4xl font-bold text-amber-500 mb-1">{{ counts.break }}</div>
+    <div class="text-sm text-gray-500">◐ 午休中</div>
+  </div>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
+    <div class="text-4xl font-bold text-gray-400 mb-1">{{ counts.left }}</div>
+    <div class="text-sm text-gray-500">○ 已下班</div>
+  </div>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center {% if late_count %}border-orange-200 bg-orange-50{% endif %}">
+    <div class="text-4xl font-bold text-orange-500 mb-1">{{ late_count }}</div>
+    <div class="text-sm text-gray-500">⚠ 今日遲到</div>
+  </div>
+</div>
 
 <!-- 待處理事項（管理員限定） -->
 {% if is_admin_or_finance %}
-<div class="mb-6">
+<div class="mb-5">
   <div class="flex items-center justify-between mb-3">
-    <h2 class="text-base font-semibold text-gray-700">
-      📋 待處理事項
+    <h2 class="text-sm font-semibold text-gray-600">
+      待處理事項
       {% if pending_leaves %}
       <span class="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-red-500 text-white rounded-full">{{ pending_leaves|length }}</span>
       {% endif %}
@@ -183,15 +191,13 @@
       <div class="flex gap-2 shrink-0 mt-0.5">
         <form method="post" action="{% url 'dashboard:leave_request_approve' req.pk %}">
           {% csrf_token %}
-          <button type="submit"
-            class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition">
+          <button type="submit" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition">
             ✅ 核准
           </button>
         </form>
         <form method="post" action="{% url 'dashboard:leave_request_deny' req.pk %}">
           {% csrf_token %}
-          <button type="submit"
-            class="px-3 py-1.5 bg-red-400 hover:bg-red-500 text-white text-xs font-medium rounded-lg transition">
+          <button type="submit" class="px-3 py-1.5 bg-red-400 hover:bg-red-500 text-white text-xs font-medium rounded-lg transition">
             ❌ 拒絕
           </button>
         </form>
@@ -200,17 +206,18 @@
     {% endfor %}
   </div>
   {% else %}
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-8 text-center text-sm text-gray-400">
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-6 text-center text-sm text-gray-400">
     ✓ 目前無待處理事項
   </div>
   {% endif %}
 </div>
 {% endif %}
 
-<!-- 員工明細 -->
+<!-- 員工出勤明細 -->
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-  <div class="px-5 py-4 border-b border-gray-100">
+  <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
     <h2 class="text-sm font-semibold text-gray-700">員工出勤明細</h2>
+    <span class="text-xs text-gray-400">共 {{ employee_list|length }} 人</span>
   </div>
   <table class="w-full text-sm">
     <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
