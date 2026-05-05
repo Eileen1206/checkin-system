@@ -19,9 +19,19 @@
     </script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', sans-serif; }
-        .nav-item { @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/10 transition-all duration-150; }
-        .nav-item.active { @apply text-white bg-white/15 font-medium; }
-        .nav-section { @apply text-xs font-semibold text-gray-600 uppercase tracking-wider px-3 mb-1 mt-5; }
+        .nav-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 7px 12px; border-radius: 8px;
+            font-size: 0.875rem; color: #9ca3af;
+            text-decoration: none; transition: all 0.15s ease;
+        }
+        .nav-item:hover { color: #fff; background: rgba(255,255,255,0.1); }
+        .nav-item.active { color: #fff; background: rgba(255,255,255,0.15); font-weight: 500; }
+        .nav-section {
+            display: block; font-size: 0.7rem; font-weight: 600;
+            color: #4b5563; text-transform: uppercase; letter-spacing: 0.08em;
+            padding: 0 12px; margin: 20px 0 4px;
+        }
 
         /* 頁面淡入 */
         main { animation: fadeInUp 0.18s ease-out; }
