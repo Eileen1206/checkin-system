@@ -165,6 +165,21 @@
                 <span class="text-base">💰</span> 薪資計算
             </a>
 
+            {# 分析 #}
+            <p class="nav-section">分析</p>
+            <a href="{% url 'dashboard:analytics_attendance' %}"
+               class="nav-item {% if request.resolver_match.url_name == 'analytics_attendance' %}active{% endif %}">
+                <span class="text-base">📈</span> 出勤分析
+            </a>
+            <a href="{% url 'dashboard:analytics_delivery' %}"
+               class="nav-item {% if request.resolver_match.url_name == 'analytics_delivery' %}active{% endif %}">
+                <span class="text-base">🚚</span> 送貨分析
+            </a>
+            <a href="{% url 'dashboard:analytics_customer' %}"
+               class="nav-item {% if request.resolver_match.url_name == 'analytics_customer' %}active{% endif %}">
+                <span class="text-base">🏪</span> 客戶分析
+            </a>
+
             {# 座標修正 #}
             <p class="nav-section">其他</p>
             <a href="{% url 'dashboard:location_correction_list' %}"

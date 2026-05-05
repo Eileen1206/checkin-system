@@ -38,4 +38,7 @@ urlpatterns = [
     path('leave/requests/<int:pk>/deny/', dashboard_views.leave_request_deny, name='leave_request_deny'),
     path('location-corrections/', dashboard_views.location_correction_list, name='location_correction_list'),
     path('location-corrections/<int:pk>/review/', dashboard_views.location_correction_review, name='location_correction_review'),
+    path('analytics/attendance/', dashboard_views.analytics_attendance, name='analytics_attendance'),
+    path('analytics/delivery/', dashboard_views.analytics_delivery, name='analytics_delivery'),
+    path('analytics/customer/', dashboard_views.analytics_customer, name='analytics_customer'),
 ]

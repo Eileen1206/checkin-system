@@ -21,6 +21,9 @@ from .leave_views import (
     leave_calendar, leave_add_api, leave_delete_api, leave_add, leave_delete,
     leave_request_list, leave_request_approve, leave_request_deny,
 )
+from .analytics_views import (
+    analytics_attendance, analytics_delivery, analytics_customer,
+)
 
 __all__ = [
     'require_group', 'get_today_status', 'get_work_hours', 'WORK_DAY_CHOICES', 'calculate_salary',
@@ -32,4 +35,5 @@ __all__ = [
     'salary', 'add_allowance', 'export_salary_excel',
     'leave_calendar', 'leave_add_api', 'leave_delete_api', 'leave_add', 'leave_delete',
     'leave_request_list', 'leave_request_approve', 'leave_request_deny',
+    'analytics_attendance', 'analytics_delivery', 'analytics_customer',
 ]

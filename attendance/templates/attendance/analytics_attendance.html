@@ -1,0 +1,92 @@
+{% extends "attendance/base.html" %}
+{% block title %}出勤分析{% endblock %}
+{% block page_title %}📈 出勤分析{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- 近 6 個月遲到 / 曠職趨勢 -->
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">📅 近 6 個月遲到 &amp; 曠職次數（全員合計）</h2>
+    <div class="relative h-64">
+      <canvas id="chartLateAbsent"></canvas>
+    </div>
+  </div>
+
+  <!-- 本月各員工工時 -->
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">🕐 本月各員工累積工時（小時）</h2>
+    <div class="relative h-72">
+      <canvas id="chartEmpHours"></canvas>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const labels      = {{ labels|safe }};
+const lateData    = {{ late_data|safe }};
+const absentData  = {{ absent_data|safe }};
+const empLabels   = {{ emp_labels|safe }};
+const empHours    = {{ emp_hours|safe }};
+
+// 近 6 個月遲到 / 曠職
+new Chart(document.getElementById('chartLateAbsent'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: '遲到次數',
+        data: lateData,
+        backgroundColor: '#f59e0b',
+        borderRadius: 6,
+      },
+      {
+        label: '曠職次數',
+        data: absentData,
+        backgroundColor: '#ef4444',
+        borderRadius: 6,
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position: 'top' } },
+    scales: {
+      y: { beginAtZero: true, ticks: { stepSize: 1 } },
+    },
+  },
+});
+
+// 本月工時長條圖
+new Chart(document.getElementById('chartEmpHours'), {
+  type: 'bar',
+  data: {
+    labels: empLabels,
+    datasets: [{
+      label: '工時（小時）',
+      data: empHours,
+      backgroundColor: '#3b82f6',
+      borderRadius: 6,
+    }],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { beginAtZero: true },
+    },
+  },
+});
+</script>
+{% endblock %}

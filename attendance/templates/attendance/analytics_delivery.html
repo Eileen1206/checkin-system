@@ -1,0 +1,102 @@
+{% extends "attendance/base.html" %}
+{% block title %}送貨分析{% endblock %}
+{% block page_title %}🚚 送貨分析{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- 近 30 天送貨趟次 / 完成趟次 -->
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">📦 近 30 天每日送貨趟次</h2>
+    <div class="relative h-64">
+      <canvas id="chartTrips"></canvas>
+    </div>
+  </div>
+
+  <!-- 本月各員工送貨績效 -->
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">👤 本月各員工送貨趟數 &amp; 完成站點數</h2>
+    <div class="relative h-72">
+      <canvas id="chartEmpDelivery"></canvas>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const labels       = {{ labels|safe }};
+const tripCounts   = {{ trip_counts|safe }};
+const finishCounts = {{ finish_counts|safe }};
+const empLabels    = {{ emp_labels|safe }};
+const empTrips     = {{ emp_trips|safe }};
+const empStations  = {{ emp_stations|safe }};
+
+// 30 天趟次折線圖
+new Chart(document.getElementById('chartTrips'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: '總趟次',
+        data: tripCounts,
+        borderColor: '#3b82f6',
+        backgroundColor: '#3b82f622',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 3,
+      },
+      {
+        label: '已完成',
+        data: finishCounts,
+        borderColor: '#10b981',
+        backgroundColor: '#10b98122',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 3,
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position: 'top' } },
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+  },
+});
+
+// 員工送貨績效
+new Chart(document.getElementById('chartEmpDelivery'), {
+  type: 'bar',
+  data: {
+    labels: empLabels,
+    datasets: [
+      {
+        label: '送貨趟數',
+        data: empTrips,
+        backgroundColor: '#3b82f6',
+        borderRadius: 6,
+      },
+      {
+        label: '完成站點',
+        data: empStations,
+        backgroundColor: '#10b981',
+        borderRadius: 6,
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position: 'top' } },
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+  },
+});
+</script>
+{% endblock %}
