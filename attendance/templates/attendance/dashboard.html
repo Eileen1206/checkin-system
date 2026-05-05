@@ -28,6 +28,26 @@
   </div>
 </div>
 
+<!-- 今日送貨 + 遲到摘要 -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+  <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+    <p class="text-2xl font-bold text-blue-500">{{ today_trips_total }}</p>
+    <p class="text-xs text-gray-400 mt-0.5">今日送貨趟數</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+    <p class="text-2xl font-bold text-emerald-500">{{ today_trips_finished }}</p>
+    <p class="text-xs text-gray-400 mt-0.5">已完成趟次</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+    <p class="text-2xl font-bold text-amber-500">{{ today_trips_active }}</p>
+    <p class="text-xs text-gray-400 mt-0.5">送貨中趟次</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center {% if late_count %}border-orange-200 bg-orange-50{% endif %}">
+    <p class="text-2xl font-bold text-orange-500">{{ late_count }}</p>
+    <p class="text-xs text-gray-400 mt-0.5">今日遲到人數</p>
+  </div>
+</div>
+
 <!-- 今日送貨狀況 -->
 {% if delivery_status %}
 <div class="mb-6">

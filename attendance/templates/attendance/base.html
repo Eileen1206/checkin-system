@@ -156,6 +156,9 @@
             <a href="{% url 'dashboard:leave_request_list' %}"
                class="nav-item {% if request.resolver_match.url_name == 'leave_request_list' %}active{% endif %}">
                 <span class="text-base">📋</span> 請假審核
+                {% if pending_counts.leave_requests %}
+                <span style="margin-left:auto;background:#ef4444;color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;min-width:20px;text-align:center;">{{ pending_counts.leave_requests }}</span>
+                {% endif %}
             </a>
             <a href="{% url 'dashboard:salary' %}"
                class="nav-item {% if request.resolver_match.url_name == 'salary' %}active{% endif %}">
@@ -167,6 +170,9 @@
             <a href="{% url 'dashboard:location_correction_list' %}"
                class="nav-item {% if request.resolver_match.url_name == 'location_correction_list' %}active{% endif %}">
                 <span class="text-base">📌</span> 座標修正申請
+                {% if pending_counts.location_corrections %}
+                <span style="margin-left:auto;background:#ef4444;color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;min-width:20px;text-align:center;">{{ pending_counts.location_corrections }}</span>
+                {% endif %}
             </a>
             {% endif %}
 

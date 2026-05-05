@@ -66,6 +66,29 @@ def index(request):
             'is_started': session.started_at is not None,
         })
 
+    # 今日送貨統計
+    today_trips_total     = DeliverySession.objects.filter(date=today).count()
+    today_trips_finished  = DeliverySession.objects.filter(date=today, finished_at__isnull=False).count()
+    today_trips_active    = DeliverySession.objects.filter(date=today, started_at__isnull=False, finished_at__isnull=True).count()
+
+    # 今日遲到人數
+    from datetime import datetime as dt
+    late_count = 0
+    for emp_data in employee_list:
+        emp = emp_data['employee']
+        if emp_data['status'] != 'absent' and emp.work_start_time:
+            from attendance.models import AttendanceRecord
+            clock_in = AttendanceRecord.objects.filter(
+                employee=emp, timestamp__date=today, record_type='clock_in'
+            ).first()
+            if clock_in:
+                from django.utils.timezone import localtime
+                ci_time = localtime(clock_in.timestamp).time()
+                scheduled = dt.combine(today, emp.work_start_time)
+                actual    = dt.combine(today, ci_time)
+                if (actual - scheduled).total_seconds() > 600:
+                    late_count += 1
+
     # 待處理事項（僅 admin / superuser）
     is_admin = (
         request.user.is_superuser or
@@ -79,11 +102,15 @@ def index(request):
     ) if is_admin else []
 
     return render(request, 'attendance/dashboard.html', {
-        'employee_list':   employee_list,
-        'counts':          counts,
-        'today':           today,
-        'delivery_status': delivery_status,
-        'pending_leaves':  pending_leaves,
+        'employee_list':        employee_list,
+        'counts':               counts,
+        'today':                today,
+        'delivery_status':      delivery_status,
+        'pending_leaves':       pending_leaves,
+        'today_trips_total':    today_trips_total,
+        'today_trips_finished': today_trips_finished,
+        'today_trips_active':   today_trips_active,
+        'late_count':           late_count,
     })
 
 
