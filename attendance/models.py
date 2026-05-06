@@ -252,6 +252,7 @@ class DeliverySession(models.Model):
     pushed_at   = models.DateTimeField('推播時間', null=True, blank=True)
     started_at  = models.DateTimeField('出發時間', null=True, blank=True)
     finished_at = models.DateTimeField('完成時間', null=True, blank=True)
+    auto_closed = models.BooleanField('系統自動關閉', default=False)
 
     class Meta:
         verbose_name        = '送貨行程'

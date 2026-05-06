@@ -112,25 +112,36 @@ def analytics_delivery(request):
         trip_counts.append(total)
         finish_counts.append(finished)
 
+    # 近 30 天每日「未按完成」次數
+    auto_closed_counts = [
+        DeliverySession.objects.filter(date=d, auto_closed=True).count()
+        for d in days
+    ]
+
     # 各員工本月送貨趟數
-    emp_labels    = []
-    emp_trips     = []
-    emp_stations  = []
+    emp_labels      = []
+    emp_trips       = []
+    emp_stations    = []
+    emp_auto_closed = []
     employees = Employee.objects.select_related('user').order_by('employee_id')
     for emp in employees:
-        trips    = DeliverySession.objects.filter(employee=emp, date__year=today.year, date__month=today.month).count()
-        stations = DeliveryTask.objects.filter(employee=emp, date__year=today.year, date__month=today.month, status='completed').count()
+        trips       = DeliverySession.objects.filter(employee=emp, date__year=today.year, date__month=today.month).count()
+        stations    = DeliveryTask.objects.filter(employee=emp, date__year=today.year, date__month=today.month, status='completed').count()
+        auto_closed = DeliverySession.objects.filter(employee=emp, date__year=today.year, date__month=today.month, auto_closed=True).count()
         emp_labels.append(emp.user.get_full_name() or emp.user.username)
         emp_trips.append(trips)
         emp_stations.append(stations)
+        emp_auto_closed.append(auto_closed)
 
     return render(request, 'attendance/analytics_delivery.html', {
-        'labels':        json.dumps(labels, ensure_ascii=False),
-        'trip_counts':   json.dumps(trip_counts),
-        'finish_counts': json.dumps(finish_counts),
-        'emp_labels':    json.dumps(emp_labels, ensure_ascii=False),
-        'emp_trips':     json.dumps(emp_trips),
-        'emp_stations':  json.dumps(emp_stations),
+        'labels':             json.dumps(labels, ensure_ascii=False),
+        'trip_counts':        json.dumps(trip_counts),
+        'finish_counts':      json.dumps(finish_counts),
+        'auto_closed_counts': json.dumps(auto_closed_counts),
+        'emp_labels':         json.dumps(emp_labels, ensure_ascii=False),
+        'emp_trips':          json.dumps(emp_trips),
+        'emp_stations':       json.dumps(emp_stations),
+        'emp_auto_closed':    json.dumps(emp_auto_closed),
     })
 
 

@@ -30,14 +30,16 @@
 
 {% block extra_scripts %}
 <script>
-const labels       = {{ labels|safe }};
-const tripCounts   = {{ trip_counts|safe }};
-const finishCounts = {{ finish_counts|safe }};
-const empLabels    = {{ emp_labels|safe }};
-const empTrips     = {{ emp_trips|safe }};
-const empStations  = {{ emp_stations|safe }};
+const labels           = {{ labels|safe }};
+const tripCounts       = {{ trip_counts|safe }};
+const finishCounts     = {{ finish_counts|safe }};
+const autoClosedCounts = {{ auto_closed_counts|safe }};
+const empLabels        = {{ emp_labels|safe }};
+const empTrips         = {{ emp_trips|safe }};
+const empStations      = {{ emp_stations|safe }};
+const empAutoClosed    = {{ emp_auto_closed|safe }};
 
-// 30 天趟次折線圖
+// 30 天趟次折線圖（含未按完成）
 new Chart(document.getElementById('chartTrips'), {
   type: 'line',
   data: {
@@ -61,6 +63,16 @@ new Chart(document.getElementById('chartTrips'), {
         fill: true,
         pointRadius: 3,
       },
+      {
+        label: '未按完成',
+        data: autoClosedCounts,
+        borderColor: '#f97316',
+        backgroundColor: '#f9731622',
+        tension: 0.4,
+        fill: false,
+        pointRadius: 3,
+        borderDash: [4, 4],
+      },
     ],
   },
   options: {
@@ -71,7 +83,7 @@ new Chart(document.getElementById('chartTrips'), {
   },
 });
 
-// 員工送貨績效
+// 員工送貨績效（含未按完成）
 new Chart(document.getElementById('chartEmpDelivery'), {
   type: 'bar',
   data: {
@@ -87,6 +99,12 @@ new Chart(document.getElementById('chartEmpDelivery'), {
         label: '完成站點',
         data: empStations,
         backgroundColor: '#10b981',
+        borderRadius: 6,
+      },
+      {
+        label: '未按完成',
+        data: empAutoClosed,
+        backgroundColor: '#f97316',
         borderRadius: 6,
       },
     ],

@@ -39,6 +39,19 @@ def delivery_push(request):
         messages.error(request, '目前沒有待送的任務，無法推播')
         return redirect('dashboard:delivery_plan')
 
+    # 派新趟前，自動關閉該員工尚未結束的舊趟次（員工忘記按完成）
+    unclosed = DeliverySession.objects.filter(
+        employee=employee, finished_at__isnull=True
+    ).exclude(started_at__isnull=True)
+    for old_session in unclosed:
+        last_task = old_session.tasks.filter(
+            status='completed'
+        ).order_by('-completed_at').first()
+        close_time = last_task.completed_at if last_task else timezone.now()
+        old_session.finished_at = close_time
+        old_session.auto_closed = True
+        old_session.save(update_fields=['finished_at', 'auto_closed'])
+
     # 建立本趟 DeliverySession
     trip_number = DeliverySession.objects.filter(
         employee=employee, date=date
