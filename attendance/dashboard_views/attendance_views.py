@@ -212,7 +212,8 @@ def rfid_checkin(request):
         if not emp.line_user_id:
             return JsonResponse({'ok': False, 'message': '該員工未綁定 LINE，無法選擇打卡類型'})
 
-        # 推播 Flex Message 給員工選擇
+        # 推播 Flex Message 給員工選擇（帶入刷卡時間，供 rfid_confirm 做時效驗證）
+        swipe_ts = int(timezone.now().timestamp())
         flex = {
             "type": "bubble",
             "body": {
@@ -220,6 +221,8 @@ def rfid_checkin(request):
                 "layout": "vertical",
                 "contents": [
                     {"type": "text", "text": "請選擇打卡類型", "weight": "bold", "size": "xl"},
+                    {"type": "text", "text": "請在 10 分鐘內選擇，逾時需重新刷卡",
+                     "size": "xs", "color": "#9ca3af", "margin": "sm", "wrap": True},
                 ]
             },
             "footer": {
@@ -235,7 +238,7 @@ def rfid_checkin(request):
                         "action": {
                             "type": "postback",
                             "label": "🍱 午休開始",
-                            "data": f"action=rfid_punch&record_type=break_start&employee_id={emp.pk}"
+                            "data": f"action=rfid_punch&record_type=break_start&employee_id={emp.pk}&swipe_ts={swipe_ts}"
                         }
                     },
                     {
@@ -246,7 +249,7 @@ def rfid_checkin(request):
                         "action": {
                             "type": "postback",
                             "label": "🏠 直接下班",
-                            "data": f"action=rfid_punch&record_type=clock_out&employee_id={emp.pk}"
+                            "data": f"action=rfid_punch&record_type=clock_out&employee_id={emp.pk}&swipe_ts={swipe_ts}"
                         }
                     }
                 ]

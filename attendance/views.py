@@ -301,7 +301,18 @@ def handle_postback(event):
             # 第一步：推確認訊息，不直接寫入
             emp_id = params.get('employee_id')
             record_type = params.get('record_type')
+            swipe_ts = params.get('swipe_ts', '0')
             emp = get_object_or_404(Employee, pk=emp_id)
+
+            # 時效檢查：超過 10 分鐘拒絕
+            import time as _time
+            if _time.time() - float(swipe_ts) > 600:
+                reply_msg = TextMessage(text='⚠️ 此打卡確認已逾時（超過 10 分鐘），請重新刷卡。')
+                with ApiClient(configuration) as api_client:
+                    MessagingApi(api_client).reply_message(ReplyMessageRequest(
+                        reply_token=event.reply_token, messages=[reply_msg]
+                    ))
+                return
 
             # 若要下班但午休未結束 → 拒絕
             if record_type == 'clock_out':
@@ -340,7 +351,7 @@ def handle_postback(event):
                             "color": "#1a1a1a", "height": "sm",
                             "action": {
                                 "type": "postback", "label": "✅ 確定",
-                                "data": f"action=rfid_confirm&record_type={record_type}&employee_id={emp_id}"
+                                "data": f"action=rfid_confirm&record_type={record_type}&employee_id={emp_id}&swipe_ts={swipe_ts}"
                             }
                         },
                         {
@@ -363,7 +374,18 @@ def handle_postback(event):
             # 第二步：員工確認後才寫入
             emp_id = params.get('employee_id')
             record_type = params.get('record_type')
+            swipe_ts = params.get('swipe_ts', '0')
             emp = get_object_or_404(Employee, pk=emp_id)
+
+            # 時效雙重驗證
+            import time as _time
+            if _time.time() - float(swipe_ts) > 600:
+                reply_msg = TextMessage(text='⚠️ 此打卡確認已逾時（超過 10 分鐘），請重新刷卡。')
+                with ApiClient(configuration) as api_client:
+                    MessagingApi(api_client).reply_message(ReplyMessageRequest(
+                        reply_token=event.reply_token, messages=[reply_msg]
+                    ))
+                return
 
             from datetime import timedelta as _td
             duplicate = AttendanceRecord.objects.filter(
