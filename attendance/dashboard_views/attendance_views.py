@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime
 from django.conf import settings
-from ..models import Employee, AttendanceRecord, DeliveryTask, DeliverySession, LeaveRequest
+from ..models import Employee, AttendanceRecord, DeliveryTask, DeliverySession, LeaveRequest, LocationCorrectionRequest
 from collections import defaultdict
 from linebot.v3.messaging import (
     Configuration,
@@ -102,12 +102,20 @@ def index(request):
         .order_by('requested_at')
     ) if is_admin else []
 
+    pending_corrections = (
+        LocationCorrectionRequest.objects
+        .filter(status='pending')
+        .select_related('customer', 'requested_by__user')
+        .order_by('requested_at')
+    ) if is_admin else []
+
     return render(request, 'attendance/dashboard.html', {
         'employee_list':        employee_list,
         'counts':               counts,
         'today':                today,
         'delivery_status':      delivery_status,
         'pending_leaves':       pending_leaves,
+        'pending_corrections':  pending_corrections,
         'today_trips_total':    today_trips_total,
         'today_trips_finished': today_trips_finished,
         'today_trips_active':   today_trips_active,
