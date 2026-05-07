@@ -66,8 +66,9 @@ class AttendanceRecord(models.Model):
         ('clock_out', '下班打卡'),
     ]
     SOURCE_CHOICES = [
-        ('line', 'LINE Bot'),
-        ('rfid', 'RFID'),
+        ('line',  'LINE Bot'),
+        ('rfid',  'RFID'),
+        ('admin', '管理員確認'),
     ]
 
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='records', verbose_name='員工')

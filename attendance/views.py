@@ -268,7 +268,7 @@ def handle_postback(event):
             AttendanceRecord.objects.create(
                 employee=emp,
                 record_type='clock_out',
-                source='line',
+                source='admin',
                 timestamp=timestamp,
             )
             reply_msg = TextMessage(text=f'✅ 已記錄 {emp.user.get_full_name()} {time_str} 下班')
