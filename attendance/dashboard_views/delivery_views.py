@@ -24,7 +24,7 @@ from linebot.v3.messaging import (
 def delivery_push(request):
     """將今日路線以 LINE 訊息推播給指定員工"""
     employee_id = request.POST.get('employee_id')
-    date = request.POST.get('date', str(timezone.localdate()))
+    date = request.POST.get('date') or str(timezone.localdate())
     employee = get_object_or_404(Employee, pk=employee_id)
 
     if not employee.line_user_id:
