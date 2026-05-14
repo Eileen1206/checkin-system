@@ -34,11 +34,11 @@
             padding: 0 12px; margin: 20px 0 4px;
         }
 
-        /* 頁面淡入 */
-        main { animation: fadeInUp 0.18s ease-out; }
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(6px); }
-            to   { opacity: 1; transform: translateY(0); }
+        /* 頁面淡入（iOS 感：scale + fade） */
+        main { animation: pageEnter 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+        @keyframes pageEnter {
+            from { opacity: 0; transform: scale(0.99) translateY(8px); }
+            to   { opacity: 1; transform: scale(1)    translateY(0); }
         }
 
         /* 通知訊息滑入 */
@@ -76,6 +76,29 @@
         }
         #sidebar-overlay {
             transition: opacity 0.25s ease;
+        }
+        /* FOUC 防護：確保 sidebar 在 Tailwind 載入前即已隱藏（手機） */
+        @media (max-width: 1023px) {
+            #sidebar { transform: translateX(-100%); }
+        }
+
+        /* D: 手機版表單觸控優化（iOS 防縮放 + 44px 最低觸控高度） */
+        @media (max-width: 1023px) {
+            input[type="text"], input[type="date"], input[type="time"],
+            input[type="email"], input[type="number"], input[type="password"],
+            input[type="search"], select, textarea {
+                font-size: 16px !important; /* 防止 iOS Safari 自動放大 */
+                min-height: 44px;
+                padding-top: 0.6rem;
+                padding-bottom: 0.6rem;
+            }
+            textarea { min-height: 80px; }
+            button:not(.bottom-nav-item),
+            [type="submit"],
+            [type="button"] {
+                min-height: 44px;
+            }
+            label { font-size: 0.9rem; }
         }
 
         /* 底部導覽列（手機版，桌面完全不影響） */
@@ -332,6 +355,16 @@
         document.querySelectorAll('#sidebar .nav-item').forEach(el => {
             el.addEventListener('click', () => {
                 if (window.innerWidth < 1024) toggleSidebar();
+            });
+        });
+
+        // 底部 nav 點擊回彈動畫（B：tab 切換 App 感）
+        document.querySelectorAll('.bottom-nav-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                this.animate(
+                    [{ transform: 'scale(1)' }, { transform: 'scale(0.82)' }, { transform: 'scale(1)' }],
+                    { duration: 220, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+                );
             });
         });
     </script>
