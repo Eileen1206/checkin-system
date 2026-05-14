@@ -269,16 +269,16 @@ def delivery_plan(request):
     normal_sorted = get_optimal_order(normal)
     final_order = urgent + normal_sorted
 
-    # 若有正在送貨中的趟次（已出發但未完成，且仍有 pending 任務），禁止覆蓋
+    # 若員工正在送貨中（已出發但尚未結束），禁止推播新路線
     active_session = DeliverySession.objects.filter(
-        employee=employee, date=date,
+        employee=employee,
         started_at__isnull=False,
         finished_at__isnull=True,
-    ).filter(tasks__status='pending').distinct().first()
+    ).first()
     if active_session:
         messages.error(request,
-            f'{employee.user.get_full_name() or employee.user.username} 目前第 {active_session.trip_number} 趟送貨進行中，'
-            '請等送貨員完成後再重新規劃。'
+            f'{employee.user.get_full_name() or employee.user.username} 目前第 {active_session.trip_number} 趟仍在送貨中，'
+            '請等送貨員按下完成後再推播新路線。'
         )
         return redirect('dashboard:delivery_plan')
 
