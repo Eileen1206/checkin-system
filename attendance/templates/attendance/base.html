@@ -72,15 +72,28 @@
 
         /* Sidebar 滑入/滑出 */
         #sidebar {
-            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
         }
         #sidebar-overlay {
             transition: opacity 0.25s ease;
         }
-        /* FOUC 防護：確保 sidebar 在 Tailwind 載入前即已隱藏（手機） */
+        /* 手機版：sidebar 預設收起，.sidebar-open 才展開（純 CSS 控制，不依賴 Tailwind class） */
         @media (max-width: 1023px) {
-            #sidebar { transform: translateX(-100%); }
+            #sidebar            { transform: translateX(-100%); }
+            #sidebar.sidebar-open { transform: translateX(0); }
         }
+
+        /* 漢堡按鈕三條線動畫 */
+        .hb-line {
+            display: block; width: 20px; height: 2px;
+            background: #6b7280; border-radius: 2px;
+            transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity   0.18s ease;
+            transform-origin: center;
+        }
+        #hamburger.open .hb-line:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        #hamburger.open .hb-line:nth-child(2) { opacity: 0; transform: scaleX(0); }
+        #hamburger.open .hb-line:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
         /* D: 手機版表單觸控優化（iOS 防縮放 + 44px 最低觸控高度） */
         @media (max-width: 1023px) {
@@ -132,7 +145,7 @@
     <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-30 hidden lg:hidden" onclick="toggleSidebar()"></div>
 
     {# ── 側邊欄 ── #}
-    <aside id="sidebar" class="w-56 bg-gray-900 fixed inset-y-0 left-0 flex flex-col z-40 -translate-x-full lg:translate-x-0">
+    <aside id="sidebar" class="w-56 bg-gray-900 fixed inset-y-0 left-0 flex flex-col z-40">
 
         {# 品牌 Logo #}
         <div class="px-4 py-5 border-b border-white/10">
@@ -265,10 +278,11 @@
         <header class="bg-white border-b border-gray-100 px-4 py-3.5 flex items-center justify-between sticky top-0 z-30">
             <div class="flex items-center gap-3">
                 {# 漢堡選單（手機版才顯示）#}
-                <button onclick="toggleSidebar()" class="lg:hidden p-1.5 rounded-lg text-gray-500 hover:bg-gray-100">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
-                    </svg>
+                <button id="hamburger" onclick="toggleSidebar()"
+                    class="lg:hidden flex flex-col items-center justify-center gap-[5px] w-9 h-9 rounded-lg hover:bg-gray-100 transition-colors shrink-0">
+                    <span class="hb-line"></span>
+                    <span class="hb-line"></span>
+                    <span class="hb-line"></span>
                 </button>
                 <h1 class="text-sm font-semibold text-gray-700">{% block page_title %}{% endblock %}</h1>
             </div>
@@ -340,15 +354,18 @@
     {% block extra_scripts %}{% endblock %}
     <script>
         function toggleSidebar() {
-            const sidebar  = document.getElementById('sidebar');
-            const overlay  = document.getElementById('sidebar-overlay');
-            const isOpen   = !sidebar.classList.contains('-translate-x-full');
+            const sidebar   = document.getElementById('sidebar');
+            const overlay   = document.getElementById('sidebar-overlay');
+            const hamburger = document.getElementById('hamburger');
+            const isOpen    = sidebar.classList.contains('sidebar-open');
             if (isOpen) {
-                sidebar.classList.add('-translate-x-full');
+                sidebar.classList.remove('sidebar-open');
                 overlay.classList.add('hidden');
+                hamburger && hamburger.classList.remove('open');
             } else {
-                sidebar.classList.remove('-translate-x-full');
+                sidebar.classList.add('sidebar-open');
                 overlay.classList.remove('hidden');
+                hamburger && hamburger.classList.add('open');
             }
         }
         // 點選導覽連結後自動收合（手機版）
