@@ -269,9 +269,10 @@ def delivery_plan(request):
     normal_sorted = get_optimal_order(normal)
     final_order = urgent + normal_sorted
 
-    # 若員工正在送貨中（已出發但尚未結束），禁止推播新路線
+    # 若員工今日正在送貨中（已出發但尚未結束），禁止推播新路線
     active_session = DeliverySession.objects.filter(
         employee=employee,
+        date=date,
         started_at__isnull=False,
         finished_at__isnull=True,
     ).first()
