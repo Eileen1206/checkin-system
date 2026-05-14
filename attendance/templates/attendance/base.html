@@ -339,13 +339,6 @@
             <span>送貨</span>
         </a>
 
-        {# 出勤報表 #}
-        <a href="{% url 'reports:report' %}"
-           class="bottom-nav-item {% if 'report' in request.resolver_match.url_name %}active{% endif %}">
-            <i class="fa-solid fa-chart-bar"></i>
-            <span>出勤報表</span>
-        </a>
-
     </nav>
     {% endif %}
 
