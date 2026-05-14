@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}管理後台{% endblock %} — 政旭汽車材料行</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script>
         tailwind.config = {
             theme: {
@@ -75,6 +76,27 @@
         }
         #sidebar-overlay {
             transition: opacity 0.25s ease;
+        }
+
+        /* 底部導覽列（手機版，桌面完全不影響） */
+        .bottom-nav-item {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; flex: 1; padding: 10px 4px 8px;
+            color: #9ca3af; text-decoration: none; position: relative;
+            transition: color 0.15s ease; font-size: 0.65rem; gap: 3px;
+        }
+        .bottom-nav-item.active { color: #111827; }
+        .bottom-nav-item.active::after {
+            content: ''; position: absolute; top: 0; left: 20%; right: 20%;
+            height: 2px; background: #111827; border-radius: 0 0 2px 2px;
+        }
+        .bottom-nav-item:active { transform: scale(0.9); }
+        .bottom-nav-item i { font-size: 1.15rem; line-height: 1; }
+        .bottom-nav-badge {
+            position: absolute; top: 6px; right: calc(50% - 18px);
+            background: #ef4444; color: #fff; font-size: 10px; font-weight: 700;
+            border-radius: 999px; padding: 1px 5px; min-width: 16px;
+            text-align: center; line-height: 1.4;
         }
     </style>
     {% block extra_head %}{% endblock %}
@@ -245,10 +267,50 @@
         {% endif %}
 
         {# 頁面內容 #}
-        <main class="flex-1 px-6 py-5">
+        <main class="flex-1 px-6 py-5 pb-24 lg:pb-5">
             {% block content %}{% endblock %}
         </main>
     </div>
+
+    {# ── 手機版底部導覽列 ── #}
+    {% if request.user.is_authenticated %}
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 lg:hidden z-40 flex" style="padding-bottom: env(safe-area-inset-bottom);">
+
+        {# 儀表板 #}
+        <a href="{% url 'dashboard:index' %}"
+           class="bottom-nav-item {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
+            <i class="fa-solid fa-house"></i>
+            <span>儀表板</span>
+        </a>
+
+        {# 待處理 #}
+        {% if is_admin_or_finance %}
+        <a href="{% url 'dashboard:leave_request_list' %}"
+           class="bottom-nav-item {% if 'leave_request' in request.resolver_match.url_name or 'location_correction' in request.resolver_match.url_name %}active{% endif %}">
+            {% if pending_counts.total %}
+            <span class="bottom-nav-badge">{{ pending_counts.total }}</span>
+            {% endif %}
+            <i class="fa-solid fa-clipboard-list"></i>
+            <span>待處理</span>
+        </a>
+        {% endif %}
+
+        {# 送貨規劃 #}
+        <a href="{% url 'dashboard:delivery_plan' %}"
+           class="bottom-nav-item {% if 'delivery' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="fa-solid fa-truck"></i>
+            <span>送貨</span>
+        </a>
+
+        {# 出勤報表 #}
+        <a href="{% url 'reports:report' %}"
+           class="bottom-nav-item {% if 'report' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="fa-solid fa-chart-bar"></i>
+            <span>出勤報表</span>
+        </a>
+
+    </nav>
+    {% endif %}
 
 {% endif %}
 
