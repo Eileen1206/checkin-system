@@ -308,8 +308,8 @@
 
         {# 待處理 #}
         {% if is_admin_or_finance %}
-        <a href="{% url 'dashboard:leave_request_list' %}"
-           class="bottom-nav-item {% if 'leave_request' in request.resolver_match.url_name or 'location_correction' in request.resolver_match.url_name %}active{% endif %}">
+        <a href="{% url 'dashboard:pending_items' %}"
+           class="bottom-nav-item {% if request.resolver_match.url_name == 'pending_items' or 'leave_request' in request.resolver_match.url_name or 'location_correction' in request.resolver_match.url_name %}active{% endif %}">
             {% if pending_counts.total %}
             <span class="bottom-nav-badge">{{ pending_counts.total }}</span>
             {% endif %}

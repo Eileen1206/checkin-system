@@ -20,6 +20,7 @@ from .salary_views import (
 from .leave_views import (
     leave_calendar, leave_add_api, leave_delete_api, leave_add, leave_delete,
     leave_request_list, leave_request_approve, leave_request_deny,
+    pending_items,
 )
 from .analytics_views import (
     analytics_attendance, analytics_delivery, analytics_customer,
@@ -34,6 +35,6 @@ __all__ = [
     'delivery_push', 'delivery_add_task', 'delivery_delete_task', 'delivery_reorder', 'delivery_plan', 'delivery_today',
     'salary', 'add_allowance', 'export_salary_excel',
     'leave_calendar', 'leave_add_api', 'leave_delete_api', 'leave_add', 'leave_delete',
-    'leave_request_list', 'leave_request_approve', 'leave_request_deny',
+    'leave_request_list', 'leave_request_approve', 'leave_request_deny', 'pending_items',
     'analytics_attendance', 'analytics_delivery', 'analytics_customer',
 ]

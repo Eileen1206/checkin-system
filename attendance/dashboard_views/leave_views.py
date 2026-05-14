@@ -6,8 +6,30 @@ from django.utils import timezone
 from django.urls import reverse
 from datetime import datetime
 import json
-from ..models import Employee, LeaveRecord, LeaveRequest
+from ..models import Employee, LeaveRecord, LeaveRequest, LocationCorrectionRequest
 from .base import require_group
+
+
+@login_required
+@require_group('admin', 'finance')
+def pending_items(request):
+    """待處理彙整頁：請假申請 + 座標修正申請"""
+    pending_leaves = (
+        LeaveRequest.objects
+        .filter(status='pending')
+        .select_related('employee__user')
+        .order_by('requested_at')
+    )
+    pending_corrections = (
+        LocationCorrectionRequest.objects
+        .filter(status='pending')
+        .select_related('customer', 'requested_by__user')
+        .order_by('requested_at')
+    )
+    return render(request, 'attendance/pending_items.html', {
+        'pending_leaves':      pending_leaves,
+        'pending_corrections': pending_corrections,
+    })
 
 
 @login_required
