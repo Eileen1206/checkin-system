@@ -430,9 +430,19 @@ def handle_postback(event):
                 )
 
         elif action == 'delivery_clockout_request':
-            wt = employee.work_end_time
-            base = datetime.combine(date_type.today(), wt or time(18, 0))
-            times = [(base + timedelta(minutes=m)).strftime('%H:%M') for m in [-30, 0, 30, 60]]
+            # 以申請當下時間為基準，無條件捨去到最近的半小時，再取前後共 4 個選項
+            now_local   = timezone.localtime()
+            total_mins  = now_local.hour * 60 + now_local.minute
+            slot_mins   = (total_mins // 30) * 30   # 向下取整到最近的 :00 或 :30
+            slot_base   = now_local.replace(
+                hour=slot_mins // 60, minute=slot_mins % 60,
+                second=0, microsecond=0
+            )
+            times = [
+                (slot_base + timedelta(minutes=d)).strftime('%H:%M')
+                for d in (-30, 0, 30, 60)
+                if (slot_base + timedelta(minutes=d)).date() == now_local.date()
+            ]
 
             if AttendanceRecord.objects.filter(employee=employee, timestamp__date=date_type.today(), record_type='clock_out').exists():
                 reply_msg = TextMessage(text='⚠️ 已經記錄過下班時間了')
