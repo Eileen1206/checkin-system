@@ -1,20 +1,21 @@
 {% extends "attendance/base.html" %}
 {% block title %}出勤報表{% endblock %}
+{% block page_title %}📊 出勤報表{% endblock %}
 
 {% block content %}
 <div class="space-y-5">
 
   {# ── 頂部：選員工 + 月份導覽 ── #}
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <h1 class="text-xl font-bold text-gray-800">📊 出勤報表</h1>
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <h1 class="text-xl font-bold text-gray-800 hidden sm:block">📊 出勤報表</h1>
 
-    <div class="flex items-center gap-2 flex-wrap">
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
       {# 員工下拉 #}
       <form method="get" id="emp-form">
         <input type="hidden" name="year"  value="{{ year }}">
         <input type="hidden" name="month" value="{{ month }}">
         <select name="employee_id" onchange="document.getElementById('emp-form').submit()"
-                class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                class="w-full sm:w-auto px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300">
           {% for emp in employees %}
           <option value="{{ emp.pk }}" {% if emp == selected %}selected{% endif %}>
             {{ emp.employee_id }} {{ emp.user.get_full_name|default:emp.user.username }}
@@ -24,7 +25,7 @@
       </form>
 
       {# 月份導覽 #}
-      <div class="flex items-center gap-1 bg-white rounded-xl border border-gray-200 px-1">
+      <div class="flex items-center gap-1 bg-white rounded-xl border border-gray-200 px-1 self-center sm:self-auto">
         <a href="?employee_id={{ selected.pk }}&year={{ prev_year }}&month={{ prev_month }}"
            class="px-3 py-2 text-gray-500 hover:text-gray-800 text-sm">‹</a>
         <span class="px-2 py-2 text-sm font-semibold text-gray-800 min-w-[80px] text-center">
@@ -39,7 +40,7 @@
   {% if selected %}
 
   {# ── 統計卡片 ── #}
-  <div class="grid grid-cols-5 gap-3">
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
     <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-emerald-500">{{ stats.worked }}</p>
       <p class="text-xs text-gray-400 mt-0.5">出勤天數</p>
@@ -57,14 +58,14 @@
       <p class="text-2xl font-bold text-amber-500">{{ stats.anomaly }}</p>
       <p class="text-xs text-gray-400 mt-0.5">⚠️ 異常筆數</p>
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+    <div class="col-span-2 sm:col-span-1 bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-blue-400">{{ stats.total_hours }}</p>
       <p class="text-xs text-gray-400 mt-0.5">總工時（時）</p>
     </div>
   </div>
 
-  {# ── 主體：左邊日誌 + 右邊月曆 ── #}
-  <div class="flex gap-4 items-start">
+  {# ── 主體：左邊日誌 + 右邊月曆（手機垂直堆疊、桌面並排） ── #}
+  <div class="flex flex-col lg:flex-row gap-4 items-start">
 
     {# ──── 左側：日誌清單 ──── #}
     <div class="flex-1 min-w-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -73,7 +74,7 @@
       </div>
       <div class="divide-y divide-gray-50">
         {% for day in month_data %}
-        <div class="flex items-center px-5 py-2.5 gap-3
+        <div class="flex flex-wrap items-center px-4 py-2.5 gap-x-3 gap-y-1.5
           {% if day.status == 'missing_clockout' or day.status == 'missing_breakend' %}bg-amber-50
           {% elif day.is_today %}bg-blue-50
           {% elif day.is_weekend %}opacity-40{% endif %}">
@@ -163,8 +164,8 @@
       </div>
     </div>
 
-    {# ──── 右側：月曆格子 ──── #}
-    <div class="w-72 shrink-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+    {# ──── 右側：月曆格子（手機全寬、桌面固定 288px） ──── #}
+    <div class="w-full lg:w-72 lg:shrink-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-100">
         <h2 class="text-sm font-semibold text-gray-600 tracking-wide">月 曆</h2>
       </div>
