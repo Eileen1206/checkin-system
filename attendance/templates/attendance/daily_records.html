@@ -1,0 +1,139 @@
+{% extends "attendance/base.html" %}
+{% block title %}補打卡 — 單日紀錄{% endblock %}
+{% block page_title %}✏️ 補打卡{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto space-y-4">
+
+  {% if messages %}
+  <div class="space-y-2">
+    {% for msg in messages %}
+    <div class="px-4 py-3 rounded-xl text-sm font-medium
+      {% if 'success' in msg.tags %}bg-emerald-50 text-emerald-700 border border-emerald-200
+      {% elif 'info' in msg.tags %}bg-blue-50 text-blue-700 border border-blue-200
+      {% else %}bg-red-50 text-red-600 border border-red-200{% endif %}">
+      {{ msg }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── 步驟一：選員工 + 日期（GET 表單） ── #}
+  <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-700">選擇員工與日期</h2>
+    </div>
+    <form method="get" class="px-5 py-4 flex flex-col sm:flex-row gap-3">
+      <select name="employee_id" required
+              class="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800
+                     focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
+        <option value="">請選擇員工…</option>
+        {% for emp in employees %}
+        <option value="{{ emp.pk }}"
+          {% if employee and emp.pk == employee.pk %}selected{% endif %}>
+          {{ emp.employee_id }}　{{ emp.user.get_full_name|default:emp.user.username }}
+        </option>
+        {% endfor %}
+      </select>
+      <input type="date" name="date" value="{{ date_str }}" required
+             class="sm:w-40 px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800
+                    focus:outline-none focus:ring-2 focus:ring-gray-300">
+      <button type="submit"
+              class="px-5 py-2.5 bg-gray-900 hover:bg-gray-700 text-white text-sm font-medium rounded-xl transition-colors">
+        載入
+      </button>
+    </form>
+  </div>
+
+  {# ── 步驟二：顯示 4 種打卡現況並可補填 ── #}
+  {% if employee %}
+  <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-semibold text-gray-800">
+          {{ employee.user.get_full_name|default:employee.user.username }}
+        </h2>
+        <p class="text-xs text-gray-400 mt-0.5">{{ target_date|date:"Y年m月d日（D）" }}</p>
+      </div>
+      {# 狀態摘要 #}
+      <span class="text-xs text-gray-400">
+        {% for s in slots %}{% if s.exists %}✓ {% endif %}{% endfor %}
+      </span>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="employee_id" value="{{ employee.pk }}">
+      <input type="hidden" name="date" value="{{ date_str }}">
+
+      <div class="divide-y divide-gray-50">
+        {% for slot in slots %}
+        <div class="flex items-center gap-4 px-5 py-4
+          {% if slot.exists %}bg-white{% else %}bg-amber-50/40{% endif %}">
+
+          {# 狀態點 #}
+          <div class="shrink-0 w-2 h-2 rounded-full
+            {% if slot.exists %}bg-emerald-400{% else %}bg-amber-300{% endif %}">
+          </div>
+
+          {# 標籤 #}
+          <div class="w-28 shrink-0">
+            <p class="text-sm font-medium text-gray-700">{{ slot.label }}</p>
+            {% if slot.exists %}
+            <p class="text-xs text-emerald-600 mt-0.5">已有紀錄</p>
+            {% else %}
+            <p class="text-xs text-amber-500 mt-0.5">尚未打卡</p>
+            {% endif %}
+          </div>
+
+          {# 時間輸入 #}
+          <div class="flex-1">
+            <input type="time" name="time_{{ slot.type }}"
+                   value="{{ slot.time_value }}"
+                   class="w-full px-3 py-2 rounded-xl border text-sm text-gray-800
+                          focus:outline-none focus:ring-2 focus:ring-gray-300
+                          {% if slot.exists %}border-emerald-200 bg-emerald-50 text-emerald-800
+                          {% else %}border-amber-200 bg-white{% endif %}">
+          </div>
+
+          {# 既有紀錄來源 badge #}
+          {% if slot.exists %}
+          <span class="shrink-0 text-xs text-gray-300">
+            {% if slot.record.source == 'manual' %}手動{% elif slot.record.source == 'rfid' %}RFID{% else %}LINE{% endif %}
+          </span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      {# 提示 #}
+      <div class="px-5 py-3 bg-gray-50 border-t border-gray-100">
+        <p class="text-xs text-gray-400">
+          ● 綠色為已有紀錄（修改時間後儲存即更新）；橘色為缺打卡（填入時間後儲存即新增）；留空則不處理。
+        </p>
+      </div>
+
+      {# 按鈕 #}
+      <div class="px-5 py-4 flex gap-2">
+        <button type="submit"
+                class="flex-1 bg-gray-900 hover:bg-gray-700 text-white font-medium
+                       py-2.5 rounded-xl transition-colors text-sm">
+          確認儲存
+        </button>
+        <a href="{% url 'dashboard:index' %}"
+           class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium
+                  py-2.5 rounded-xl transition-colors text-sm text-center">
+          返回儀表板
+        </a>
+      </div>
+    </form>
+  </div>
+
+  {% else %}
+  <div class="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-10 text-center text-sm text-gray-400">
+    請選擇員工與日期以載入打卡紀錄
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

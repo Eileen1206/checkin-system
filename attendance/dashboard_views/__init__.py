@@ -2,7 +2,7 @@ from .base import (
     require_group, get_today_status, get_work_hours, WORK_DAY_CHOICES, calculate_salary,
 )
 from .attendance_views import (
-    index, add_record, rfid_page, rfid_checkin,
+    index, add_record, daily_records, dismiss_anomaly, rfid_page, rfid_checkin,
 )
 from .employee_views import (
     binding_list, generate_token, employee_list, employee_add, employee_edit,
@@ -28,7 +28,7 @@ from .analytics_views import (
 
 __all__ = [
     'require_group', 'get_today_status', 'get_work_hours', 'WORK_DAY_CHOICES', 'calculate_salary',
-    'index', 'add_record', 'rfid_page', 'rfid_checkin',
+    'index', 'add_record', 'daily_records', 'dismiss_anomaly', 'rfid_page', 'rfid_checkin',
     'binding_list', 'generate_token', 'employee_list', 'employee_add', 'employee_edit',
     'import_customers', 'search_customer', 'customer_list', 'customer_edit', 'geocode_customers', 'parse_gmaps_url',
     'location_correction_list', 'location_correction_review',

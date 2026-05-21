@@ -310,3 +310,30 @@ class LocationCorrectionRequest(models.Model):
     def __str__(self):
         return f'{self.customer.name} — {self.get_status_display()} ({self.requested_at.date()})'
 
+
+class AttendanceAnomalyDismissal(models.Model):
+    """
+    管理員標記某員工某天某類型的異常為「正常，不需補打卡」。
+    被標記後，該筆異常不再出現在儀表板提醒中。
+    """
+    ANOMALY_TYPE_CHOICES = [
+        ('clock_out',   '缺下班打卡'),
+        ('break_start', '缺午休紀錄'),
+        ('break_end',   '缺午休結束'),
+    ]
+    employee     = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                     related_name='anomaly_dismissals', verbose_name='員工')
+    date         = models.DateField('日期')
+    anomaly_type = models.CharField('異常類型', max_length=20, choices=ANOMALY_TYPE_CHOICES)
+    dismissed_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL,
+                                     null=True, verbose_name='標記人')
+    dismissed_at = models.DateTimeField('標記時間', auto_now_add=True)
+    note         = models.CharField('備註', max_length=100, blank=True)
+
+    class Meta:
+        unique_together = ('employee', 'date', 'anomaly_type')
+        ordering = ['-dismissed_at']
+        verbose_name = '出勤異常標記'
+
+    def __str__(self):
+        return f'{self.employee} {self.date} {self.get_anomaly_type_display()}'

@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime
 from django.conf import settings
-from ..models import Employee, AttendanceRecord, DeliveryTask, DeliverySession, LeaveRequest, LocationCorrectionRequest
+from ..models import Employee, AttendanceRecord, DeliveryTask, DeliverySession, LeaveRequest, LocationCorrectionRequest, AttendanceAnomalyDismissal
 from collections import defaultdict
 from linebot.v3.messaging import (
     Configuration,
@@ -111,7 +111,8 @@ def index(request):
         .order_by('requested_at')
     ) if is_admin else []
 
-    # 補打卡提醒：最近 14 天有上班打卡但缺下班（或缺午休結束）的日期
+    # 補打卡提醒：最近 14 天有上班打卡，但有缺打卡的日期
+    # 偵測情境：缺下班、缺午休結束、有上下班但完全沒有午休紀錄
     attendance_anomalies = []
     if is_admin:
         from datetime import timedelta
@@ -143,19 +144,53 @@ def index(request):
             has_be  = AttendanceRecord.objects.filter(
                 employee=emp, record_type='break_end', timestamp__date=ci_date
             ).exists()
+
             if not has_out:
+                # 優先標記缺下班；若同時有午休開始但缺午休結束，先提示那個
                 missing = 'break_end' if (has_bs and not has_be) else 'clock_out'
                 attendance_anomalies.append({
                     'employee': emp,
                     'date':     ci_date,
                     'missing':  missing,
                 })
-            elif has_bs and not has_be:
-                attendance_anomalies.append({
-                    'employee': emp,
-                    'date':     ci_date,
-                    'missing':  'break_end',
-                })
+            else:
+                # 有上下班的情況下，檢查午休紀錄
+                if has_bs and not has_be:
+                    # 有午休開始但缺午休結束
+                    attendance_anomalies.append({
+                        'employee': emp,
+                        'date':     ci_date,
+                        'missing':  'break_end',
+                    })
+                elif not has_bs:
+                    # 完全沒有午休紀錄
+                    # 只在「早上來、下午才走」的情況下提醒（真的跨越了午餐時段）
+                    # 例：08:00 → 12:30 不提醒；08:00 → 13:00 以後才提醒
+                    co_rec = AttendanceRecord.objects.filter(
+                        employee=emp, record_type='clock_out', timestamp__date=ci_date
+                    ).first()
+                    from django.utils.timezone import localtime as ltime
+                    from datetime import time as dtime
+                    ci_time  = ltime(ci.timestamp).time()
+                    co_time  = ltime(co_rec.timestamp).time()
+                    # 上班在中午前，下班在下午一點後 → 確實跨越午餐時段
+                    if ci_time < dtime(12, 0) and co_time >= dtime(13, 0):
+                        attendance_anomalies.append({
+                            'employee': emp,
+                            'date':     ci_date,
+                            'missing':  'break_start',
+                        })
+
+        # 過濾掉已被標記為「正常」的異常
+        dismissed = set(
+            AttendanceAnomalyDismissal.objects
+            .filter(date__gte=period_start)
+            .values_list('employee_id', 'date', 'anomaly_type')
+        )
+        attendance_anomalies = [
+            a for a in attendance_anomalies
+            if (a['employee'].pk, a['date'], a['missing']) not in dismissed
+        ]
 
     return render(request, 'attendance/dashboard.html', {
         'employee_list':          employee_list,
@@ -241,6 +276,144 @@ def add_record(request):
         'valid_types':   VALID_TYPES,
         'next_url':      next_url,
     })
+
+
+@login_required
+def daily_records(request):
+    """
+    檢視並一次性補齊某員工某天的全部打卡紀錄。
+    GET：顯示當天 4 種打卡的現況（已有的預帶入、沒有的空白）。
+    POST：整批 upsert（有紀錄→更新時間，無紀錄→新增）。
+    """
+    SLOTS = [
+        ('clock_in',    '▶ 上班打卡'),
+        ('break_start', '⏸ 午休開始'),
+        ('break_end',   '▶ 午休結束'),
+        ('clock_out',   '■ 下班打卡'),
+    ]
+    employees = Employee.objects.select_related('user').order_by('employee_id')
+
+    # 讀取員工 / 日期（GET 或 POST 都可能帶）
+    employee_id = (request.POST.get('employee_id') or request.GET.get('employee_id', '')).strip()
+    date_str    = (request.POST.get('date') or request.GET.get('date') or
+                   timezone.localdate().strftime('%Y-%m-%d')).strip()
+
+    # 解析日期
+    try:
+        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        target_date = timezone.localdate()
+        date_str    = target_date.strftime('%Y-%m-%d')
+
+    # 載入員工與當天既有紀錄
+    employee    = None
+    records_map = {}   # record_type → AttendanceRecord
+    if employee_id:
+        try:
+            employee = Employee.objects.select_related('user').get(pk=employee_id)
+            for rec in AttendanceRecord.objects.filter(
+                employee=employee, timestamp__date=target_date
+            ).order_by('timestamp'):
+                # 同類型只取第一筆（理論上不應有重複）
+                if rec.record_type not in records_map:
+                    records_map[rec.record_type] = rec
+        except Employee.DoesNotExist:
+            pass
+
+    # ── POST：整批儲存 ────────────────────────────────────
+    if request.method == 'POST' and employee:
+        saved_labels  = []
+        error_labels  = []
+
+        for rtype, label in SLOTS:
+            time_str = request.POST.get(f'time_{rtype}', '').strip()
+            if not time_str:
+                continue  # 空白 → 不處理
+
+            try:
+                naive_dt = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M')
+                aware_dt = timezone.make_aware(naive_dt)
+
+                existing = records_map.get(rtype)
+                if existing:
+                    # 只有時間真的改了才寫入
+                    old_time = timezone.localtime(existing.timestamp).strftime('%H:%M')
+                    if old_time != time_str:
+                        existing.timestamp = aware_dt
+                        existing.save(update_fields=['timestamp'])
+                        saved_labels.append(f'{label}（更新）')
+                else:
+                    AttendanceRecord.objects.create(
+                        employee=employee,
+                        record_type=rtype,
+                        timestamp=aware_dt,
+                        source='manual',
+                        is_valid=True,
+                    )
+                    saved_labels.append(f'{label}（新增）')
+            except (ValueError, Exception) as e:
+                error_labels.append(f'{label}：{e}')
+
+        name = employee.user.get_full_name() or employee.user.username
+        if saved_labels:
+            messages.success(request, f'✅ {name} {target_date} 已儲存：{"、".join(saved_labels)}')
+        elif not error_labels:
+            messages.info(request, '沒有異動（時間未改變或均空白）')
+        if error_labels:
+            messages.error(request, f'部分失敗：{"、".join(error_labels)}')
+
+        # 重新 GET 同頁以反映最新紀錄
+        return redirect(f"{request.path}?employee_id={employee.pk}&date={date_str}")
+
+    # ── GET：組裝 slots 給模板 ────────────────────────────
+    slots = []
+    for rtype, label in SLOTS:
+        rec = records_map.get(rtype)
+        slots.append({
+            'type':       rtype,
+            'label':      label,
+            'record':     rec,
+            'time_value': timezone.localtime(rec.timestamp).strftime('%H:%M') if rec else '',
+            'exists':     rec is not None,
+        })
+
+    return render(request, 'attendance/daily_records.html', {
+        'employees':   employees,
+        'employee':    employee,
+        'date_str':    date_str,
+        'slots':       slots,
+        'target_date': target_date,
+    })
+
+
+@login_required
+def dismiss_anomaly(request):
+    """AJAX POST：將某筆出勤異常標記為「正常，不需補打卡」"""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    employee_id  = request.POST.get('employee_id', '').strip()
+    date_str     = request.POST.get('date', '').strip()
+    anomaly_type = request.POST.get('anomaly_type', '').strip()
+
+    VALID_TYPES = {'clock_out', 'break_start', 'break_end'}
+    if anomaly_type not in VALID_TYPES:
+        return JsonResponse({'ok': False, 'error': '不合法的異常類型'}, status=400)
+
+    try:
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'ok': False, 'error': '日期格式錯誤'}, status=400)
+
+    employee = get_object_or_404(Employee, pk=employee_id)
+
+    AttendanceAnomalyDismissal.objects.get_or_create(
+        employee=employee,
+        date=date,
+        anomaly_type=anomaly_type,
+        defaults={'dismissed_by': request.user},
+    )
+    return JsonResponse({'ok': True})
 
 
 def rfid_page(request):

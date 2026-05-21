@@ -169,12 +169,15 @@
       ✏️ 補打卡提醒
       <span class="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-amber-500 text-white rounded-full">{{ attendance_anomalies|length }}</span>
     </h2>
-    <a href="{% url 'dashboard:add_record' %}"
+    <a href="{% url 'dashboard:daily_records' %}"
        class="text-xs text-amber-600 hover:underline font-medium">+ 新增補打卡</a>
   </div>
   <div class="bg-white rounded-2xl shadow-sm border border-amber-100 divide-y divide-gray-50 overflow-hidden">
     {% for item in attendance_anomalies %}
-    <div class="flex items-center justify-between px-5 py-3 gap-3">
+    <div class="anomaly-row flex items-center justify-between px-5 py-3 gap-3 transition-opacity"
+         data-employee="{{ item.employee.pk }}"
+         data-date="{{ item.date|date:'Y-m-d' }}"
+         data-type="{{ item.missing }}">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-sm font-semibold text-gray-800">
@@ -183,15 +186,23 @@
           <span class="text-xs text-gray-400">{{ item.date|date:"m/d（D）" }}</span>
           {% if item.missing == 'clock_out' %}
           <span class="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">缺下班打卡</span>
-          {% else %}
+          {% elif item.missing == 'break_end' %}
           <span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-600 rounded-full font-medium">缺午休結束</span>
+          {% else %}
+          <span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium">缺午休紀錄</span>
           {% endif %}
         </div>
       </div>
-      <a href="{% url 'dashboard:add_record' %}?employee_id={{ item.employee.pk }}&date={{ item.date|date:'Y-m-d' }}&type={{ item.missing }}&next=/"
-         class="shrink-0 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-white text-xs font-medium rounded-lg transition-colors">
-        補打卡
-      </a>
+      <div class="flex items-center gap-2 shrink-0">
+        <button onclick="dismissAnomaly(this)"
+                class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-500 text-xs font-medium rounded-lg transition-colors">
+          ✓ 正常
+        </button>
+        <a href="{% url 'dashboard:daily_records' %}?employee_id={{ item.employee.pk }}&date={{ item.date|date:'Y-m-d' }}"
+           class="px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-white text-xs font-medium rounded-lg transition-colors">
+          補打卡
+        </a>
+      </div>
     </div>
     {% endfor %}
   </div>
@@ -342,6 +353,45 @@
 <script>
 // 每 30 秒自動重整，保持送貨狀態即時
 setTimeout(() => location.reload(), 30000);
+
+// ── 補打卡異常標記為正常 ───────────────────────────────
+async function dismissAnomaly(btn) {
+  const row  = btn.closest('.anomaly-row');
+  const data = new URLSearchParams({
+    employee_id:  row.dataset.employee,
+    date:         row.dataset.date,
+    anomaly_type: row.dataset.type,
+    csrfmiddlewaretoken: '{{ csrf_token }}',
+  });
+
+  btn.disabled = true;
+  btn.textContent = '處理中…';
+
+  const res = await fetch('{% url "dashboard:dismiss_anomaly" %}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: data,
+  });
+  const json = await res.json();
+
+  if (json.ok) {
+    // 淡出並移除該列
+    row.style.transition = 'opacity 0.3s ease, max-height 0.3s ease';
+    row.style.opacity = '0';
+    row.style.overflow = 'hidden';
+    row.style.maxHeight = row.offsetHeight + 'px';
+    setTimeout(() => {
+      row.style.maxHeight = '0';
+      row.style.paddingTop = '0';
+      row.style.paddingBottom = '0';
+    }, 50);
+    setTimeout(() => row.remove(), 350);
+  } else {
+    btn.disabled = false;
+    btn.textContent = '✓ 正常';
+    alert(json.error || '標記失敗，請重試');
+  }
+}
 
 // ── 出勤卡片篩選 ──────────────────────────────────────────
 let activeFilter = null;
