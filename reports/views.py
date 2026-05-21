@@ -1,14 +1,15 @@
 import calendar
+import csv
 from datetime import date, datetime, timedelta
 
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
 from django.utils.timezone import localtime
 from django.views.decorators.http import require_POST
 
-from attendance.models import AttendanceRecord, Employee
+from attendance.models import AttendanceRecord, Employee, LeaveRecord
 
 
 def _build_day(employee, d):
@@ -145,6 +146,106 @@ def report(request):
         'weekday_names':   ['一', '二', '三', '四', '五', '六', '日'],
         'is_admin':        is_admin,
     })
+
+
+@login_required
+def export_attendance_csv(request):
+    """
+    匯出出勤記錄 CSV（勞基法 5 年保存備份用）。
+    GET 參數：
+      employee_id  — 指定員工（留空 = 全員）
+      year_from / month_from  — 起始年月（預設當年1月）
+      year_to   / month_to    — 結束年月（預設當月）
+    格式：員工工號, 姓名, 部門, 日期, 星期, 上班, 下班, 午休開始, 午休結束, 工時(h), 狀態, 請假類型
+    """
+    is_admin = (
+        request.user.is_superuser or
+        request.user.groups.filter(name__in=['admin', 'finance']).exists()
+    )
+    if not is_admin:
+        return HttpResponse('無權限', status=403)
+
+    today = timezone.localdate()
+
+    # ── 參數解析 ──────────────────────────────────────────
+    try:
+        year_from  = int(request.GET.get('year_from',  today.year))
+        month_from = int(request.GET.get('month_from', 1))
+        year_to    = int(request.GET.get('year_to',    today.year))
+        month_to   = int(request.GET.get('month_to',   today.month))
+    except ValueError:
+        return HttpResponse('日期參數錯誤', status=400)
+
+    employee_id = request.GET.get('employee_id', '').strip()
+    employees = Employee.objects.select_related('user').order_by('employee_id')
+    if employee_id:
+        employees = employees.filter(pk=employee_id)
+
+    # ── 建立日期範圍（月份清單）──────────────────────────
+    def iter_months(y_from, m_from, y_to, m_to):
+        y, m = y_from, m_from
+        while (y, m) <= (y_to, m_to):
+            yield y, m
+            m += 1
+            if m > 12:
+                m, y = 1, y + 1
+
+    WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日']
+    STATUS_LABELS = {
+        'normal':           '正常',
+        'late':             '遲到',
+        'absent':           '缺勤',
+        'missing_clockout': '缺下班打卡',
+        'missing_breakend': '缺午休結束',
+        'weekend':          '假日',
+    }
+
+    # ── 建立 CSV 回應 ──────────────────────────────────────
+    filename = f'attendance_{year_from}{month_from:02d}-{year_to}{month_to:02d}.csv'
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        '工號', '姓名', '部門',
+        '日期', '星期',
+        '上班打卡', '下班打卡', '午休開始', '午休結束',
+        '工時(h)', '狀態', '請假類型',
+    ])
+
+    for emp in employees:
+        name = emp.user.get_full_name() or emp.user.username
+
+        for year, month in iter_months(year_from, month_from, year_to, month_to):
+            _, days_in_month = calendar.monthrange(year, month)
+
+            for day_num in range(1, days_in_month + 1):
+                d = date(year, month, day_num)
+                if d > today:
+                    break   # 未來日期不輸出
+
+                day_data = _build_day(emp, d)
+
+                # 請假類型
+                leave = LeaveRecord.objects.filter(employee=emp, date=d).first()
+                leave_type = leave.get_leave_type_display() if leave else '—'
+
+                writer.writerow([
+                    emp.employee_id,
+                    name,
+                    emp.department,
+                    d.strftime('%Y-%m-%d'),
+                    WEEKDAY_NAMES[d.weekday()],
+                    day_data.get('clock_in')    or '',
+                    day_data.get('clock_out')   or '',
+                    day_data.get('break_start') or '',
+                    day_data.get('break_end')   or '',
+                    day_data.get('hours')       or '',
+                    STATUS_LABELS.get(day_data['status'], day_data['status']),
+                    leave_type,
+                ])
+
+    return response
 
 
 @login_required

@@ -64,6 +64,63 @@
     </div>
   </div>
 
+  {% if is_admin %}
+  {# ── 匯出 CSV（管理員專用） ── #}
+  <details class="bg-white rounded-2xl border border-gray-100 px-5 py-4">
+    <summary class="cursor-pointer text-sm font-semibold text-gray-600 select-none flex items-center gap-2">
+      ⬇️ 匯出出勤記錄 CSV
+      <span class="text-xs font-normal text-gray-400 ml-1">（勞基法 5 年保存）</span>
+    </summary>
+
+    <form method="get" action="{% url 'reports:export_attendance_csv' %}"
+          class="mt-4 flex flex-wrap items-end gap-3">
+
+      {# 員工選擇 #}
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-gray-500">員工</label>
+        <select name="employee_id"
+                class="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-300">
+          <option value="">── 全員 ──</option>
+          {% for emp in employees %}
+          <option value="{{ emp.pk }}" {% if emp == selected %}selected{% endif %}>
+            {{ emp.employee_id }} {{ emp.user.get_full_name|default:emp.user.username }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {# 起始年月 #}
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-gray-500">起始年月</label>
+        <div class="flex gap-1">
+          <input type="number" name="year_from" value="{{ year }}" min="2020" max="2099"
+                 class="w-20 px-2 py-2 rounded-xl border border-gray-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-300">
+          <input type="number" name="month_from" value="1" min="1" max="12"
+                 class="w-14 px-2 py-2 rounded-xl border border-gray-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+      </div>
+
+      <span class="text-gray-400 text-sm pb-2">→</span>
+
+      {# 結束年月 #}
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-gray-500">結束年月</label>
+        <div class="flex gap-1">
+          <input type="number" name="year_to" value="{{ year }}" min="2020" max="2099"
+                 class="w-20 px-2 py-2 rounded-xl border border-gray-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-300">
+          <input type="number" name="month_to" value="{{ month }}" min="1" max="12"
+                 class="w-14 px-2 py-2 rounded-xl border border-gray-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+      </div>
+
+      <button type="submit"
+              class="px-5 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 transition-colors">
+        下載 CSV
+      </button>
+    </form>
+  </details>
+  {% endif %}
+
   {# ── 主體：左邊日誌 + 右邊月曆（手機垂直堆疊、桌面並排） ── #}
   <div class="flex flex-col lg:flex-row gap-4 items-start">
 

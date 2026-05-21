@@ -19,5 +19,7 @@ urlpatterns = [
     path('liff/delivery/start/',  liff_views.liff_delivery_start,  name='liff_delivery_start'),
     path('liff/delivery/finish/', liff_views.liff_delivery_finish, name='liff_delivery_finish'),
     path('liff/delivery/report-location/', liff_views.liff_report_location, name='liff_report_location'),
+    path('liff/gps/check-consent/',  liff_views.liff_check_consent, name='liff_check_consent'),
+    path('liff/gps/consent/',        liff_views.liff_gps_consent,   name='liff_gps_consent'),
     path('', RedirectView.as_view(url='/dashboard/', permanent=False)),
 ]

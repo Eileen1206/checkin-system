@@ -25,6 +25,18 @@ else:
     ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
     CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 
+    # ── Production HTTPS 安全設定 ──────────────────────────
+    # Railway 在 load balancer 層做 SSL termination，需信任 X-Forwarded-Proto
+    SECURE_PROXY_SSL_HEADER      = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT          = True          # HTTP → HTTPS 自動跳轉
+    SESSION_COOKIE_SECURE        = True          # Session cookie 只走 HTTPS
+    CSRF_COOKIE_SECURE           = True          # CSRF cookie 只走 HTTPS
+    SECURE_HSTS_SECONDS          = 31536000      # 1 年，告知瀏覽器只信任 HTTPS
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD          = True
+    SECURE_CONTENT_TYPE_NOSNIFF  = True          # 防止 MIME type sniffing
+    X_FRAME_OPTIONS              = 'DENY'        # 禁止 iframe 嵌入（防點擊劫持）
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -135,5 +147,8 @@ ORS_API_KEY = env('ORS_API_KEY', default='')
 
 LIFF_DELIVERY_ID       = env('LIFF_DELIVERY_ID', default='')
 LIFF_DELIVERY_ROUTE_ID = env('LIFF_DELIVERY_ROUTE_ID', default='')
+
+# GPS 同意書版本號：條款改版時請遞增，員工將被要求重新同意
+GPS_CONSENT_VERSION = 'v1.0'
 
 

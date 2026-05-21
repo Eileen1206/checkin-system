@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from .models import Employee, DeliveryTask, DeliverySession, Customer, LocationCorrectionRequest
+from .models import Employee, DeliveryTask, DeliverySession, Customer, LocationCorrectionRequest, GpsConsentLog
 
 
 def _haversine_meters(lat1, lng1, lat2, lng2):
@@ -240,3 +240,68 @@ def liff_report_location(request):
         return JsonResponse({'ok': True, 'message': '已送出申請，待管理員審核'})
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)})
+
+
+def liff_check_consent(request):
+    """
+    GET API：確認員工是否已同意目前版本的 GPS 使用條款。
+    回傳 { consented: true/false, version: "v1.0" }
+    """
+    from django.conf import settings
+    line_user_id = request.GET.get('line_user_id', '').strip()
+    version      = settings.GPS_CONSENT_VERSION
+
+    if not line_user_id:
+        return JsonResponse({'ok': False, 'error': '缺少 line_user_id'}, status=400)
+
+    emp = Employee.objects.filter(line_user_id=line_user_id).first()
+    if not emp:
+        return JsonResponse({'ok': False, 'error': '找不到對應員工'}, status=404)
+
+    consented = GpsConsentLog.objects.filter(
+        employee=emp, consent_version=version
+    ).exists()
+
+    return JsonResponse({'ok': True, 'consented': consented, 'version': version})
+
+
+@csrf_exempt
+def liff_gps_consent(request):
+    """
+    POST API：員工按下「我同意」，寫入同意紀錄。
+    Body JSON: { line_user_id, device_info (optional) }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'ok': False}, status=405)
+
+    from django.conf import settings
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'ok': False, 'error': '格式錯誤'}, status=400)
+
+    line_user_id = data.get('line_user_id', '').strip()
+    device_info  = data.get('device_info', '').strip()[:255]
+    version      = settings.GPS_CONSENT_VERSION
+
+    if not line_user_id:
+        return JsonResponse({'ok': False, 'error': '缺少 line_user_id'}, status=400)
+
+    emp = Employee.objects.filter(line_user_id=line_user_id).first()
+    if not emp:
+        return JsonResponse({'ok': False, 'error': '找不到對應員工'}, status=404)
+
+    # 取得 IP（考慮 proxy）
+    ip = (request.META.get('HTTP_X_FORWARDED_FOR', '') or '').split(',')[0].strip() \
+         or request.META.get('REMOTE_ADDR')
+
+    GpsConsentLog.objects.get_or_create(
+        employee=emp,
+        consent_version=version,
+        defaults={
+            'ip_address':  ip or None,
+            'device_info': device_info,
+        }
+    )
+
+    return JsonResponse({'ok': True, 'version': version})

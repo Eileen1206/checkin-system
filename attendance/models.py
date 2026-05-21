@@ -337,3 +337,25 @@ class AttendanceAnomalyDismissal(models.Model):
 
     def __str__(self):
         return f'{self.employee} {self.date} {self.get_anomaly_type_display()}'
+
+
+class GpsConsentLog(models.Model):
+    """
+    員工對 GPS 定位使用說明的同意紀錄。
+    每次條款改版（consent_version 遞增）時，員工需重新同意。
+    """
+    employee        = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                        related_name='gps_consents', verbose_name='員工')
+    consented_at    = models.DateTimeField('同意時間', auto_now_add=True)
+    consent_version = models.CharField('條款版本', max_length=20)   # 例：'v1.0'
+    ip_address      = models.GenericIPAddressField('IP 位址', null=True, blank=True)
+    device_info     = models.CharField('裝置資訊', max_length=255, blank=True)
+
+    class Meta:
+        # 一位員工對同一版本只需同意一次
+        unique_together = ('employee', 'consent_version')
+        ordering = ['-consented_at']
+        verbose_name = 'GPS 同意紀錄'
+
+    def __str__(self):
+        return f'{self.employee} 同意 {self.consent_version} @ {self.consented_at.strftime("%Y-%m-%d %H:%M")}'

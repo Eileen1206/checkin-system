@@ -205,6 +205,68 @@
   </div>
 </div>
 
+<!-- GPS 同意書 Modal（首次開啟或條款改版時顯示） -->
+<div id="consent-modal" style="
+  display: none;
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+">
+  <div style="
+    background: #fff;
+    border-radius: 24px 24px 0 0;
+    padding: 28px 24px 40px;
+    width: 100%;
+    max-width: 480px;
+    animation: slideUp 0.3s ease;
+  ">
+    <div style="text-align:center; font-size: 36px; margin-bottom: 12px;">📍</div>
+    <h2 style="font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 16px; text-align:center;">
+      定位使用說明
+    </h2>
+    <div style="
+      background: #f5f5f5;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #333;
+      margin-bottom: 20px;
+    ">
+      本系統僅在您按下「確認送達」時，<br>
+      擷取您當下的 GPS 座標<strong>一次</strong>，<br>
+      用於驗證配送完成。<br><br>
+      <span style="color:#666;">✗ 不會持續追蹤您的位置</span><br>
+      <span style="color:#666;">✗ 不會記錄您的移動路徑</span>
+    </div>
+    <p style="font-size: 12px; color: #999; text-align: center; margin-bottom: 20px;">
+      點擊「我同意」即表示您了解並同意上述使用方式
+    </p>
+    <button id="consent-agree-btn" style="
+      width: 100%;
+      padding: 16px;
+      background: #27ACB2;
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    ">
+      我同意
+    </button>
+  </div>
+</div>
+
+<style>
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+</style>
+
 <!-- 回報座標錯誤 Modal -->
 <div class="modal-overlay hidden" id="report-modal">
   <div class="modal-sheet">
@@ -252,6 +314,58 @@ let sessionId       = null;
 let pollingInterval = null;   // 輪詢計時器
 let isArriving      = false;  // 正在執行到達確認時暫停刷新
 
+/* ────────── GPS 同意書 ────────── */
+const API_CHECK_CONSENT = '/liff/gps/check-consent/';
+const API_GPS_CONSENT   = '/liff/gps/consent/';
+
+/**
+ * 確認員工是否已同意目前版本條款。
+ * 未同意 → 顯示同意書 Modal，等待按下同意後 resolve。
+ */
+function ensureConsent(uid, deviceInfo) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const res  = await fetch(`${API_CHECK_CONSENT}?line_user_id=${uid}`);
+      const data = await res.json();
+      if (!data.ok) { reject(new Error(data.error)); return; }
+
+      if (data.consented) { resolve(); return; }   // 已同意，直接通過
+
+      // 顯示同意書 Modal
+      const modal = document.getElementById('consent-modal');
+      modal.style.display = 'flex';
+
+      document.getElementById('consent-agree-btn').onclick = async () => {
+        const btn = document.getElementById('consent-agree-btn');
+        btn.disabled = true;
+        btn.textContent = '記錄中…';
+        try {
+          const r = await fetch(API_GPS_CONSENT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ line_user_id: uid, device_info: deviceInfo }),
+          });
+          const d = await r.json();
+          if (d.ok) {
+            modal.style.display = 'none';
+            resolve();
+          } else {
+            btn.disabled = false;
+            btn.textContent = '我同意';
+            alert('記錄失敗，請再試一次');
+          }
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = '我同意';
+          reject(e);
+        }
+      };
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 /* ────────── 主流程 ────────── */
 async function main() {
   await liff.init({ liffId: LIFF_ID });
@@ -259,6 +373,10 @@ async function main() {
 
   const profile = await liff.getProfile();
   lineUserId = profile.userId;
+
+  // ── GPS 同意書確認（首次或改版時彈出）──
+  const deviceInfo = navigator.userAgent.slice(0, 255);
+  await ensureConsent(lineUserId, deviceInfo);
 
   const res  = await fetch(`${API_TASKS}?line_user_id=${lineUserId}`);
   const data = await res.json();
