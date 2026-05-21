@@ -192,6 +192,60 @@ def index(request):
             if (a['employee'].pk, a['date'], a['missing']) not in dismissed
         ]
 
+    # ── 新手引導（管理員專用，5 步驟）─────────────────────────
+    onboarding_steps = []
+    if is_admin:
+        from django.urls import reverse
+        has_employees  = Employee.objects.exists()
+        has_schedule   = Employee.objects.filter(work_start_time__isnull=False).exists()
+        has_line       = Employee.objects.filter(
+            line_user_id__isnull=False
+        ).exclude(line_user_id='').exists()
+        has_delivery   = DeliveryTask.objects.exists()
+        has_attendance = AttendanceRecord.objects.exists()
+
+        onboarding_steps = [
+            {
+                'step':  1,
+                'label': '建立員工名單',
+                'desc':  '新增員工姓名、職稱與薪資結構',
+                'done':  has_employees,
+                'url':   reverse('dashboard:employee_add'),
+            },
+            {
+                'step':  2,
+                'label': '設定班次規則',
+                'desc':  '設定每位員工的上班時間',
+                'done':  has_schedule,
+                'url':   reverse('dashboard:employee_list'),
+            },
+            {
+                'step':  3,
+                'label': '員工綁定 LINE',
+                'desc':  '讓員工掃 QR Code 完成綁定',
+                'done':  has_line,
+                'url':   reverse('dashboard:binding_list'),
+            },
+            {
+                'step':  4,
+                'label': '建立第一筆配送任務',
+                'desc':  '測試配送推播與送達流程',
+                'done':  has_delivery,
+                'url':   reverse('dashboard:delivery_plan'),
+            },
+            {
+                'step':  5,
+                'label': '確認打卡與薪資計算',
+                'desc':  '確認出勤記錄與薪資數字正確',
+                'done':  has_attendance,
+                'url':   reverse('dashboard:salary'),
+            },
+        ]
+
+    onboarding_done       = all(s['done'] for s in onboarding_steps)
+    onboarding_done_count = sum(1 for s in onboarding_steps if s['done'])
+    onboarding_total      = len(onboarding_steps)
+
     return render(request, 'attendance/dashboard.html', {
         'employee_list':          employee_list,
         'counts':                 counts,
@@ -205,6 +259,10 @@ def index(request):
         'late_count':             late_count,
         'attendance_anomalies':   attendance_anomalies,
         'is_admin':               is_admin,
+        'onboarding_steps':       onboarding_steps,
+        'onboarding_done':        onboarding_done,
+        'onboarding_done_count':  onboarding_done_count,
+        'onboarding_total':       onboarding_total,
     })
 
 
