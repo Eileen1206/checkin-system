@@ -21,17 +21,18 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', sans-serif; }
         .nav-item {
-            display: flex; align-items: center; gap: 10px;
-            padding: 7px 12px; border-radius: 8px;
-            font-size: 0.875rem; color: #9ca3af;
+            display: flex; align-items: center; gap: 9px;
+            padding: 6px 10px; border-radius: 10px;
+            font-size: 0.8rem; color: #6b7280;
             text-decoration: none; transition: all 0.15s ease;
         }
-        .nav-item:hover { color: #fff; background: rgba(255,255,255,0.1); }
-        .nav-item.active { color: #fff; background: rgba(255,255,255,0.15); font-weight: 500; }
+        .nav-item:hover { color: #e5e7eb; background: rgba(255,255,255,0.07); }
+        .nav-item.active { color: #fff; background: rgba(255,255,255,0.13); font-weight: 500; }
+        .nav-item i { width: 16px; text-align: center; font-size: 0.8rem; flex-shrink: 0; }
         .nav-section {
-            display: block; font-size: 0.7rem; font-weight: 600;
-            color: #4b5563; text-transform: uppercase; letter-spacing: 0.08em;
-            padding: 0 12px; margin: 20px 0 4px;
+            display: block; font-size: 0.6rem; font-weight: 700;
+            color: #374151; text-transform: uppercase; letter-spacing: 0.1em;
+            padding: 0 10px; margin: 16px 0 3px;
         }
 
         /* 頁面淡入（iOS 感：scale + fade） */
@@ -79,7 +80,7 @@
         }
         /* 手機版：sidebar 預設收起，.sidebar-open 才展開（純 CSS 控制，不依賴 Tailwind class） */
         @media (max-width: 1023px) {
-            #sidebar            { transform: translateX(-100%); }
+            #sidebar              { transform: translateX(-110%); }
             #sidebar.sidebar-open { transform: translateX(0); }
         }
 
@@ -145,44 +146,44 @@
     <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-30 hidden lg:hidden" onclick="toggleSidebar()"></div>
 
     {# ── 側邊欄 ── #}
-    <aside id="sidebar" class="w-56 bg-gray-900 fixed inset-y-0 left-0 flex flex-col z-40">
+    <aside id="sidebar" class="w-48 bg-black fixed top-3 bottom-3 left-3 flex flex-col z-40 rounded-2xl overflow-hidden">
 
         {# 品牌 Logo #}
-        <div class="px-4 py-5 border-b border-white/10">
+        <div class="px-4 py-4 border-b border-white/[0.06]">
             <div class="flex items-center gap-2.5">
-                <div class="w-8 h-8 bg-amber-400 rounded-lg flex items-center justify-center text-gray-900 font-bold text-sm shrink-0">政</div>
-                <div>
-                    <p class="text-white font-semibold text-sm leading-tight">政旭汽車材料行</p>
-                    <p class="text-gray-500 text-xs">管理後台</p>
+                <div class="w-7 h-7 bg-white rounded-lg flex items-center justify-center text-black font-bold text-xs shrink-0">政</div>
+                <div class="min-w-0">
+                    <p class="text-white font-semibold text-xs leading-tight truncate">政旭汽車材料行</p>
+                    <p class="text-gray-600 text-[10px] mt-0.5">管理後台</p>
                 </div>
             </div>
         </div>
 
         {# 導覽選單 #}
-        <nav class="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+        <nav class="flex-1 overflow-y-auto px-2 py-2 space-y-px">
 
             {# 首頁 #}
             <a href="{% url 'dashboard:index' %}"
                class="nav-item {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
-                <span class="text-base">🏠</span> 儀表板
+                <i class="fa-solid fa-house"></i> 儀表板
             </a>
 
             {# 出勤 #}
             <p class="nav-section">出勤</p>
             <a href="{% url 'reports:report' %}"
                class="nav-item {% if 'report' in request.resolver_match.url_name %}active{% endif %}">
-                <span class="text-base">📊</span> 出勤報表
+                <i class="fa-solid fa-chart-bar"></i> 出勤報表
             </a>
 
             {# 送貨 #}
             <p class="nav-section">送貨</p>
             <a href="{% url 'dashboard:delivery_plan' %}"
                class="nav-item {% if request.resolver_match.url_name == 'delivery_plan' %}active{% endif %}">
-                <span class="text-base">🗺️</span> 路線規劃
+                <i class="fa-solid fa-route"></i> 路線規劃
             </a>
             <a href="{% url 'dashboard:delivery_today' %}"
                class="nav-item {% if request.resolver_match.url_name == 'delivery_today' %}active{% endif %}">
-                <span class="text-base">📦</span> 今日送貨
+                <i class="fa-solid fa-box"></i> 今日送貨
             </a>
 
             {% if is_admin_or_finance %}
@@ -190,61 +191,61 @@
             <p class="nav-section">客戶</p>
             <a href="{% url 'dashboard:customer_list' %}"
                class="nav-item {% if request.resolver_match.url_name == 'customer_list' %}active{% endif %}">
-                <span class="text-base">🏪</span> 客戶列表
+                <i class="fa-solid fa-store"></i> 客戶列表
             </a>
             <a href="{% url 'dashboard:import_customers' %}"
                class="nav-item {% if request.resolver_match.url_name == 'import_customers' %}active{% endif %}">
-                <span class="text-base">📥</span> 匯入客戶
+                <i class="fa-solid fa-file-import"></i> 匯入客戶
             </a>
 
             {# 員工 #}
             <p class="nav-section">員工</p>
             <a href="{% url 'dashboard:employee_list' %}"
                class="nav-item {% if request.resolver_match.url_name == 'employee_list' %}active{% endif %}">
-                <span class="text-base">👥</span> 員工列表
+                <i class="fa-solid fa-users"></i> 員工列表
             </a>
             <a href="{% url 'dashboard:binding_list' %}"
                class="nav-item {% if request.resolver_match.url_name == 'binding_list' %}active{% endif %}">
-                <span class="text-base">🔗</span> LINE 綁定
+                <i class="fa-solid fa-link"></i> LINE 綁定
             </a>
             <a href="{% url 'dashboard:leave_calendar' %}"
                class="nav-item {% if request.resolver_match.url_name == 'leave_calendar' %}active{% endif %}">
-                <span class="text-base">📅</span> 請假管理
+                <i class="fa-solid fa-calendar-days"></i> 請假管理
             </a>
             <a href="{% url 'dashboard:leave_request_list' %}"
                class="nav-item {% if request.resolver_match.url_name == 'leave_request_list' %}active{% endif %}">
-                <span class="text-base">📋</span> 請假審核
+                <i class="fa-solid fa-clipboard-list"></i> 請假審核
                 {% if pending_counts.leave_requests %}
-                <span style="margin-left:auto;background:#ef4444;color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;min-width:20px;text-align:center;">{{ pending_counts.leave_requests }}</span>
+                <span style="margin-left:auto;background:#ef4444;color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;min-width:18px;text-align:center;">{{ pending_counts.leave_requests }}</span>
                 {% endif %}
             </a>
             <a href="{% url 'dashboard:salary' %}"
                class="nav-item {% if request.resolver_match.url_name == 'salary' %}active{% endif %}">
-                <span class="text-base">💰</span> 薪資計算
+                <i class="fa-solid fa-coins"></i> 薪資計算
             </a>
 
             {# 分析 #}
             <p class="nav-section">分析</p>
             <a href="{% url 'dashboard:analytics_attendance' %}"
                class="nav-item {% if request.resolver_match.url_name == 'analytics_attendance' %}active{% endif %}">
-                <span class="text-base">📈</span> 出勤分析
+                <i class="fa-solid fa-chart-line"></i> 出勤分析
             </a>
             <a href="{% url 'dashboard:analytics_delivery' %}"
                class="nav-item {% if request.resolver_match.url_name == 'analytics_delivery' %}active{% endif %}">
-                <span class="text-base">🚚</span> 送貨分析
+                <i class="fa-solid fa-truck"></i> 送貨分析
             </a>
             <a href="{% url 'dashboard:analytics_customer' %}"
                class="nav-item {% if request.resolver_match.url_name == 'analytics_customer' %}active{% endif %}">
-                <span class="text-base">🏪</span> 客戶分析
+                <i class="fa-solid fa-chart-pie"></i> 客戶分析
             </a>
 
-            {# 座標修正 #}
+            {# 其他 #}
             <p class="nav-section">其他</p>
             <a href="{% url 'dashboard:location_correction_list' %}"
                class="nav-item {% if request.resolver_match.url_name == 'location_correction_list' %}active{% endif %}">
-                <span class="text-base">📌</span> 座標修正申請
+                <i class="fa-solid fa-location-dot"></i> 座標修正
                 {% if pending_counts.location_corrections %}
-                <span style="margin-left:auto;background:#ef4444;color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;min-width:20px;text-align:center;">{{ pending_counts.location_corrections }}</span>
+                <span style="margin-left:auto;background:#ef4444;color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;min-width:18px;text-align:center;">{{ pending_counts.location_corrections }}</span>
                 {% endif %}
             </a>
             {% endif %}
@@ -252,27 +253,27 @@
         </nav>
 
         {# 使用者區塊 #}
-        <div class="px-2 py-3 border-t border-white/10">
-            <div class="flex items-center gap-2 px-3 py-2 mb-1">
-                <div class="w-7 h-7 bg-gray-600 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0">
+        <div class="px-2 py-2 border-t border-white/[0.06]">
+            <div class="flex items-center gap-2 px-2.5 py-2 mb-1">
+                <div class="w-6 h-6 bg-gray-700 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0">
                     {{ request.user.get_full_name|default:request.user.username|first|upper }}
                 </div>
-                <span class="text-gray-300 text-sm truncate">{{ request.user.get_full_name|default:request.user.username }}</span>
+                <span class="text-gray-400 text-xs truncate">{{ request.user.get_full_name|default:request.user.username }}</span>
             </div>
-            <a href="{% url 'password_change' %}" class="nav-item text-xs">
-                <span>🔑</span> 修改密碼
+            <a href="{% url 'password_change' %}" class="nav-item">
+                <i class="fa-solid fa-key"></i> 修改密碼
             </a>
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
-                <button type="submit" class="nav-item w-full text-left text-red-400 hover:text-red-300 hover:bg-red-500/10">
-                    <span>🚪</span> 登出
+                <button type="submit" class="nav-item w-full text-left" style="color:#f87171;">
+                    <i class="fa-solid fa-right-from-bracket"></i> 登出
                 </button>
             </form>
         </div>
     </aside>
 
     {# ── 主要內容區 ── #}
-    <div class="lg:ml-56 flex-1 flex flex-col min-h-screen">
+    <div class="lg:ml-[216px] flex-1 flex flex-col min-h-screen">
 
         {# 頂部欄 #}
         <header class="bg-white border-b border-gray-100 px-4 py-3.5 flex items-center justify-between sticky top-0 z-30">
