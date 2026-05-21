@@ -72,11 +72,12 @@ def index(request):
     today_trips_finished  = DeliverySession.objects.filter(date=today, finished_at__isnull=False).count()
     today_trips_active    = DeliverySession.objects.filter(date=today, started_at__isnull=False, finished_at__isnull=True).count()
 
-    # 今日遲到人數
+    # 今日遲到人數（同時標記每位員工的 is_late 旗標供前端篩選用）
     from datetime import datetime as dt
     late_count = 0
     for emp_data in employee_list:
         emp = emp_data['employee']
+        emp_data['is_late'] = False
         if emp_data['status'] != 'absent' and emp.work_start_time:
             from attendance.models import AttendanceRecord
             clock_in = AttendanceRecord.objects.filter(
@@ -89,6 +90,7 @@ def index(request):
                 actual    = dt.combine(today, ci_time)
                 if (actual - scheduled).total_seconds() > 600:
                     late_count += 1
+                    emp_data['is_late'] = True
 
     # 待處理事項（僅 admin / superuser）
     is_admin = (
@@ -109,45 +111,95 @@ def index(request):
         .order_by('requested_at')
     ) if is_admin else []
 
+    # 補打卡提醒：最近 14 天有上班打卡但缺下班（或缺午休結束）的日期
+    attendance_anomalies = []
+    if is_admin:
+        from datetime import timedelta
+        period_start = today - timedelta(days=14)
+        # 取期間內所有 clock_in（不含今天，今天還在工作中不算異常）
+        ci_records = (
+            AttendanceRecord.objects
+            .filter(record_type='clock_in',
+                    timestamp__date__gte=period_start,
+                    timestamp__date__lt=today)
+            .select_related('employee__user')
+            .order_by('-timestamp__date', 'employee')
+        )
+        seen = set()  # 避免同一 employee+date 重複
+        for ci in ci_records:
+            from django.utils.timezone import localtime as ltime
+            ci_date = ltime(ci.timestamp).date()
+            key = (ci.employee_id, ci_date)
+            if key in seen:
+                continue
+            seen.add(key)
+            emp = ci.employee
+            has_out = AttendanceRecord.objects.filter(
+                employee=emp, record_type='clock_out', timestamp__date=ci_date
+            ).exists()
+            has_bs  = AttendanceRecord.objects.filter(
+                employee=emp, record_type='break_start', timestamp__date=ci_date
+            ).exists()
+            has_be  = AttendanceRecord.objects.filter(
+                employee=emp, record_type='break_end', timestamp__date=ci_date
+            ).exists()
+            if not has_out:
+                missing = 'break_end' if (has_bs and not has_be) else 'clock_out'
+                attendance_anomalies.append({
+                    'employee': emp,
+                    'date':     ci_date,
+                    'missing':  missing,
+                })
+            elif has_bs and not has_be:
+                attendance_anomalies.append({
+                    'employee': emp,
+                    'date':     ci_date,
+                    'missing':  'break_end',
+                })
+
     return render(request, 'attendance/dashboard.html', {
-        'employee_list':        employee_list,
-        'counts':               counts,
-        'today':                today,
-        'delivery_status':      delivery_status,
-        'pending_leaves':       pending_leaves,
-        'pending_corrections':  pending_corrections,
-        'today_trips_total':    today_trips_total,
-        'today_trips_finished': today_trips_finished,
-        'today_trips_active':   today_trips_active,
-        'late_count':           late_count,
+        'employee_list':          employee_list,
+        'counts':                 counts,
+        'today':                  today,
+        'delivery_status':        delivery_status,
+        'pending_leaves':         pending_leaves,
+        'pending_corrections':    pending_corrections,
+        'today_trips_total':      today_trips_total,
+        'today_trips_finished':   today_trips_finished,
+        'today_trips_active':     today_trips_active,
+        'late_count':             late_count,
+        'attendance_anomalies':   attendance_anomalies,
+        'is_admin':               is_admin,
     })
 
 
 @login_required
 def add_record(request):
     """管理員補打卡（新增一筆 AttendanceRecord）"""
-    employee_id = request.GET.get('employee_id') or request.POST.get('employee_id')
-    date_str    = request.GET.get('date')        or request.POST.get('date')
-    record_type = request.GET.get('type')        or request.POST.get('record_type')
-    next_url    = request.GET.get('next')        or request.POST.get('next') or '/reports/'
-
-    # 驗證 date_str 格式
-    try:
-        datetime.strptime(date_str or '', '%Y-%m-%d')
-    except ValueError:
-        messages.error(request, '日期格式錯誤')
-        return redirect(request.GET.get('next') or '/reports/')
-
-    # 驗證 record_type 白名單
     VALID_TYPES = dict(AttendanceRecord.RECORD_TYPE_CHOICES)
-    if record_type not in VALID_TYPES:
-        messages.error(request, '打卡類型不合法')
-        return redirect(request.GET.get('next') or '/reports/')
+    employees   = Employee.objects.select_related('user').order_by('employee_id')
 
-    employee = get_object_or_404(Employee, pk=employee_id)
-
+    # ── POST 處理（表單送出）──────────────────────────────
     if request.method == 'POST':
-        time_str = request.POST.get('time', '').strip()
+        employee_id = request.POST.get('employee_id', '').strip()
+        date_str    = request.POST.get('date', '').strip()
+        record_type = request.POST.get('record_type', '').strip()
+        time_str    = request.POST.get('time', '').strip()
+        next_url    = request.POST.get('next') or '/'
+
+        # 驗證
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            messages.error(request, '日期格式錯誤')
+            return redirect(request.path)
+
+        if record_type not in VALID_TYPES:
+            messages.error(request, '打卡類型不合法')
+            return redirect(request.path)
+
+        employee = get_object_or_404(Employee, pk=employee_id)
+
         try:
             naive_dt = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M')
             aware_dt = timezone.make_aware(naive_dt)
@@ -155,20 +207,39 @@ def add_record(request):
                 employee=employee,
                 record_type=record_type,
                 timestamp=aware_dt,
-                source='line',
+                source='manual',
                 is_valid=True,
             )
-            messages.success(request, f'已為 {employee} 補打卡：{VALID_TYPES.get(record_type, record_type)} {time_str}')
+            label = VALID_TYPES.get(record_type, record_type)
+            name  = employee.user.get_full_name() or employee.user.username
+            messages.success(request, f'✅ 已為 {name} 補打卡：{label} {time_str}')
         except (ValueError, Exception) as e:
             messages.error(request, f'補打卡失敗：{e}')
+
         return redirect(next_url)
 
+    # ── GET：顯示表單 ─────────────────────────────────────
+    # 如果 URL 帶了預填參數（從報表頁跳來），就預帶入
+    employee_id = request.GET.get('employee_id', '')
+    date_str    = request.GET.get('date') or timezone.localdate().strftime('%Y-%m-%d')
+    record_type = request.GET.get('type', '')
+    next_url    = request.GET.get('next') or '/'
+
+    # 嘗試預選員工
+    pre_employee = None
+    if employee_id:
+        try:
+            pre_employee = Employee.objects.get(pk=employee_id)
+        except Employee.DoesNotExist:
+            pass
+
     return render(request, 'attendance/add_record.html', {
-        'employee':    employee,
-        'date_str':    date_str,
-        'record_type': record_type,
-        'type_label':  VALID_TYPES.get(record_type, record_type),
-        'next_url':    next_url,
+        'employees':     employees,
+        'pre_employee':  pre_employee,
+        'date_str':      date_str,
+        'record_type':   record_type,
+        'valid_types':   VALID_TYPES,
+        'next_url':      next_url,
     })
 
 

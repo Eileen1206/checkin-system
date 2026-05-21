@@ -76,7 +76,11 @@ def get_work_hours(employee, date=None):
         )
         end_time = clock_out.timestamp + (rounded_naive - co_naive)
     else:
-        end_time = timezone.now()
+        # 今天還沒下班 → 用現在時間估算；過去日期缺下班紀錄 → 異常，不計工時
+        if date == timezone.localdate():
+            end_time = timezone.now()
+        else:
+            return 0
 
     # 計算計薪起始時間（考慮遲到）
     clock_in_local = clock_in.timestamp.astimezone()
