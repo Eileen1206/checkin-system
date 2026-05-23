@@ -197,14 +197,27 @@ def delivery_add_task(request):
 
 @login_required
 def delivery_delete_task(request, pk):
-    """刪除送貨任務"""
+    """刪除送貨任務；若刪除後 Session 變空則自動清除"""
     if request.method != 'POST':
         return redirect('dashboard:delivery_plan')
 
     task = get_object_or_404(DeliveryTask, pk=pk)
     emp_name = task.employee.user.get_full_name() or task.employee.user.username
     customer_name = task.customer_name
+    session = task.session   # 先記下，刪除後就拿不到了
     task.delete()
+
+    # ── 刪除後若 session 變成空的，自動清理 ──────────────────────
+    if session and not session.tasks.exists():
+        if session.started_at is None:
+            # 從未出發 → 直接刪除空趟次，讓下次可以重新推播
+            session.delete()
+        else:
+            # 已出發但任務全被清除 → 標記為完成，解除鎖定
+            session.finished_at = timezone.now()
+            session.auto_closed = True
+            session.save(update_fields=['finished_at', 'auto_closed'])
+
     messages.success(request, f'已刪除「{customer_name}」的送貨任務（{emp_name}）')
     return redirect('dashboard:delivery_plan')
 
@@ -269,13 +282,13 @@ def delivery_plan(request):
     normal_sorted = get_optimal_order(normal)
     final_order = urgent + normal_sorted
 
-    # 若員工今日正在送貨中（已出發但尚未結束），禁止推播新路線
+    # 若員工今日正在送貨中（已出發、未結束、且還有任務）才阻擋
     active_session = DeliverySession.objects.filter(
         employee=employee,
         date=date,
         started_at__isnull=False,
         finished_at__isnull=True,
-    ).first()
+    ).annotate(task_count=models.Count('tasks')).filter(task_count__gt=0).first()
     if active_session:
         messages.error(request,
             f'{employee.user.get_full_name() or employee.user.username} 目前第 {active_session.trip_number} 趟仍在送貨中，'
@@ -294,6 +307,11 @@ def delivery_plan(request):
         models.Q(session__started_at__isnull=True) |
         models.Q(session__finished_at__isnull=False)
     ).delete()
+
+    # 清除因任務全刪而變空的未出發 session（避免殘留空趟次干擾下次推播）
+    DeliverySession.objects.filter(
+        employee=employee, date=date, started_at__isnull=True
+    ).annotate(task_count=models.Count('tasks')).filter(task_count=0).delete()
     completed_count = DeliveryTask.objects.filter(employee=employee, date=date, status='completed').count()
     for i, customer in enumerate(final_order, start=completed_count + 1):
         DeliveryTask.objects.create(
