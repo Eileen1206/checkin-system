@@ -52,10 +52,10 @@ def delivery_push(request):
         old_session.auto_closed = True
         old_session.save(update_fields=['finished_at', 'auto_closed'])
 
-    # 建立本趟 DeliverySession
+    # 建立本趟 DeliverySession（只計算有任務的趟次，排除空殘留）
     trip_number = DeliverySession.objects.filter(
         employee=employee, date=date
-    ).count() + 1
+    ).annotate(task_count=models.Count('tasks')).filter(task_count__gt=0).count() + 1
     session = DeliverySession.objects.create(
         employee=employee,
         date=date,
