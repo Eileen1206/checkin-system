@@ -52,10 +52,12 @@ def delivery_push(request):
         old_session.auto_closed = True
         old_session.save(update_fields=['finished_at', 'auto_closed'])
 
-    # 建立本趟 DeliverySession（只計算有任務的趟次，排除空殘留）
-    trip_number = DeliverySession.objects.filter(
+    # 建立本趟 DeliverySession（用 max+1 避免與殘留空趟次的 trip_number 衝突）
+    from django.db.models import Max
+    max_trip = DeliverySession.objects.filter(
         employee=employee, date=date
-    ).annotate(task_count=models.Count('tasks')).filter(task_count__gt=0).count() + 1
+    ).aggregate(m=Max('trip_number'))['m'] or 0
+    trip_number = max_trip + 1
     session = DeliverySession.objects.create(
         employee=employee,
         date=date,
