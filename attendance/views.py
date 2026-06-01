@@ -446,6 +446,9 @@ def handle_postback(event):
 
             if AttendanceRecord.objects.filter(employee=employee, timestamp__date=date_type.today(), record_type='clock_out').exists():
                 reply_msg = TextMessage(text='⚠️ 已經記錄過下班時間了')
+            elif cache.get(f'clockout_req_{employee.pk}'):
+                # 5 分鐘內已送過申請，不重複推播給老闆
+                reply_msg = TextMessage(text='⏳ 已送出申請，請等待管理員確認，勿重複按。')
             else:
                 template_msg = TemplateMessage(
                     alt_text='確認下班時間',
@@ -463,6 +466,7 @@ def handle_postback(event):
                         to=settings.MANAGER_LINE_USER_ID,
                         messages=[template_msg]
                     ))
+                cache.set(f'clockout_req_{employee.pk}', True, 300)  # 5 分鐘冷卻
                 reply_msg = TextMessage(text='✅ 申請已送出，等待管理員確認')
 
         else:
