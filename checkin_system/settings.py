@@ -148,6 +148,9 @@ ORS_API_KEY = env('ORS_API_KEY', default='')
 LIFF_DELIVERY_ID       = env('LIFF_DELIVERY_ID', default='')
 LIFF_DELIVERY_ROUTE_ID = env('LIFF_DELIVERY_ROUTE_ID', default='')
 
+# 系統對外網址（用於 LINE push 連結）
+SITE_URL = env('SITE_URL', default='http://localhost:8000')
+
 # GPS 同意書版本號：條款改版時請遞增，員工將被要求重新同意
 GPS_CONSENT_VERSION = 'v1.0'
 

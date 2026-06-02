@@ -430,43 +430,66 @@ def handle_postback(event):
                 )
 
         elif action == 'delivery_clockout_request':
-            # 以申請當下時間為基準，無條件捨去到最近的半小時，再取前後共 4 個選項
-            now_local   = timezone.localtime()
-            total_mins  = now_local.hour * 60 + now_local.minute
-            slot_mins   = (total_mins // 30) * 30   # 向下取整到最近的 :00 或 :30
-            slot_base   = now_local.replace(
-                hour=slot_mins // 60, minute=slot_mins % 60,
-                second=0, microsecond=0
-            )
-            times = [
-                (slot_base + timedelta(minutes=d)).strftime('%H:%M')
-                for d in (-30, 0, 30, 60)
-                if (slot_base + timedelta(minutes=d)).date() == now_local.date()
-            ]
+            import uuid as _uuid
+            now_local = timezone.localtime()
+            today_str = now_local.strftime('%Y-%m-%d')
+            day_key   = f'clockout_req_{employee.pk}_{today_str}'
 
             if AttendanceRecord.objects.filter(employee=employee, timestamp__date=date_type.today(), record_type='clock_out').exists():
                 reply_msg = TextMessage(text='⚠️ 已經記錄過下班時間了')
-            elif cache.get(f'clockout_req_{employee.pk}'):
-                # 5 分鐘內已送過申請，不重複推播給老闆
-                reply_msg = TextMessage(text='⏳ 已送出申請，請等待管理員確認，勿重複按。')
+            elif cache.get(day_key):
+                reply_msg = TextMessage(text='⏳ 今天已送出申請，請等待管理員確認。')
             else:
-                template_msg = TemplateMessage(
-                    alt_text='確認下班時間',
-                    template=ButtonsTemplate(
-                        text=f'{employee.user.get_full_name()} 申請送貨接下班，請選擇下班時間：',
-                        actions=[
-                            PostbackAction(label=t, data=f'action=approve_clockout&employee_id={employee.pk}&time={t}')
-                            for t in times
-                        ]
-                    )
+                # 建立 token，老闆點連結後可自由選時間
+                token = str(_uuid.uuid4())
+                cache.set(f'clockout_token_{token}', {
+                    'employee_id': employee.pk,
+                    'date': today_str,
+                    'request_time': now_local.strftime('%H:%M'),
+                }, 86400)
+
+                approve_url = (
+                    f"{settings.SITE_URL}/dashboard/delivery/approve-clockout/"
+                    f"?token={token}"
                 )
+                flex_body = {
+                    "type": "bubble",
+                    "body": {
+                        "type": "box", "layout": "vertical", "spacing": "sm",
+                        "contents": [
+                            {"type": "text", "text": "送貨接下班申請",
+                             "weight": "bold", "size": "lg", "color": "#111827"},
+                            {"type": "text",
+                             "text": employee.user.get_full_name() or employee.user.username,
+                             "size": "md", "color": "#374151", "margin": "sm"},
+                            {"type": "text",
+                             "text": f"申請時間：{now_local.strftime('%H:%M')}",
+                             "size": "sm", "color": "#9ca3af", "margin": "xs"},
+                        ],
+                    },
+                    "footer": {
+                        "type": "box", "layout": "vertical",
+                        "contents": [{
+                            "type": "button", "style": "primary",
+                            "color": "#111827", "height": "md",
+                            "action": {
+                                "type": "uri",
+                                "label": "選擇下班時間 →",
+                                "uri": approve_url,
+                            }
+                        }],
+                    }
+                }
                 with ApiClient(configuration) as api_client:
                     api = MessagingApi(api_client)
                     api.push_message(PushMessageRequest(
                         to=settings.MANAGER_LINE_USER_ID,
-                        messages=[template_msg]
+                        messages=[FlexMessage(
+                            alt_text=f'{employee.user.get_full_name()} 申請送貨接下班，請點選確認',
+                            contents=FlexContainer.from_dict(flex_body)
+                        )]
                     ))
-                cache.set(f'clockout_req_{employee.pk}', True, 300)  # 5 分鐘冷卻
+                cache.set(day_key, True, 86400)  # 當天只能申請一次
                 reply_msg = TextMessage(text='✅ 申請已送出，等待管理員確認')
 
         else:

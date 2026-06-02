@@ -19,6 +19,7 @@ urlpatterns = [
     path('delivery/reorder/', dashboard_views.delivery_reorder, name='delivery_reorder'),
     path('delivery/push/', dashboard_views.delivery_push, name='delivery_push'),
     path('delivery/today/', dashboard_views.delivery_today, name='delivery_today'),
+    path('delivery/approve-clockout/', dashboard_views.approve_clockout, name='approve_clockout'),
     path('salary/', dashboard_views.salary, name='salary'),
     path('salary/allowance/add/', dashboard_views.add_allowance, name='add_allowance'),
     path('employees/', dashboard_views.employee_list, name='employee_list'),

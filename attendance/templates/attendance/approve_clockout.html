@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>確認下班時間</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans TC', sans-serif; }
+    input[type="time"] {
+      font-size: 2rem;
+      font-weight: 600;
+      text-align: center;
+      letter-spacing: 0.05em;
+      color: #111827;
+    }
+    /* iOS time picker 顯示完整時鐘轉盤 */
+    input[type="time"]::-webkit-datetime-edit { padding: 0; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-5">
+<div class="w-full max-w-sm">
+
+  {% if error %}
+  {# ── 錯誤狀態 ── #}
+  <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center">
+    <div class="text-5xl mb-4">⚠️</div>
+    <p class="text-gray-800 font-semibold mb-2">無法處理</p>
+    <p class="text-gray-500 text-sm">{{ error }}</p>
+  </div>
+
+  {% elif success %}
+  {# ── 成功狀態 ── #}
+  <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center">
+    <div class="text-5xl mb-4">✅</div>
+    <p class="text-gray-800 font-bold text-lg mb-1">已確認</p>
+    <p class="text-gray-600 mt-2">
+      {{ employee_name }}<br>
+      下班時間：<span class="font-semibold text-gray-900">{{ time_str }}</span>
+    </p>
+    <p class="text-xs text-gray-400 mt-4">已通知員工</p>
+  </div>
+
+  {% else %}
+  {# ── 選時間表單 ── #}
+  <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+
+    {# 標題區 #}
+    <div class="bg-black px-6 py-5">
+      <p class="text-gray-400 text-xs font-medium tracking-widest uppercase mb-1">送貨接下班</p>
+      <p class="text-white font-bold text-xl">
+        {{ employee.user.get_full_name|default:employee.user.username }}
+      </p>
+      <p class="text-gray-500 text-sm mt-0.5">
+        {{ date }}
+        {% if request_time %}・申請於 {{ request_time }}{% endif %}
+      </p>
+    </div>
+
+    {# 表單 #}
+    <form method="post" class="px-6 py-6">
+      {% csrf_token %}
+      <input type="hidden" name="token" value="{{ token }}">
+
+      <label class="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+        選擇下班時間
+      </label>
+
+      {# 時間輸入（手機上觸發時鐘轉盤） #}
+      <input type="time" name="time" required
+        value="{{ suggested }}"
+        class="w-full px-4 py-5 bg-gray-50 border-2 border-gray-100 rounded-2xl
+               focus:outline-none focus:border-gray-900 transition-colors mb-2">
+
+      <p class="text-xs text-gray-400 text-center mb-6">
+        手機點擊時間欄位會開啟時鐘選盤
+      </p>
+
+      <button type="submit"
+        class="w-full bg-black text-white py-4 rounded-2xl font-semibold text-base
+               active:scale-95 transition-transform">
+        確認送出
+      </button>
+    </form>
+  </div>
+
+  <p class="text-center text-xs text-gray-400 mt-4">此頁面確認後即失效</p>
+  {% endif %}
+
+</div>
+</body>
+</html>

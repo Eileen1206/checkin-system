@@ -4,10 +4,12 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.utils import timezone
 from django.conf import settings
+from django.core.cache import cache
 from django.db import models
+from datetime import datetime
 import json
 from ..utils.routing import get_office_coords
-from ..models import Employee, Customer, DeliveryTask, DeliverySession
+from ..models import Employee, Customer, DeliveryTask, DeliverySession, AttendanceRecord
 from .base import require_group
 from linebot.v3.messaging import (
     Configuration,
@@ -386,3 +388,79 @@ def delivery_today(request):
         'delivery_employees':   delivery_employees,
         'selected_employee_id': employee_id,
     })
+
+
+def approve_clockout(request):
+    """老闆確認員工送貨接下班時間（token 驗證，不需登入，供 LINE 點擊開啟）"""
+    from linebot.v3.messaging import (
+        Configuration, ApiClient, MessagingApi,
+        PushMessageRequest, TextMessage,
+    )
+
+    token    = request.GET.get('token', '').strip()
+    data     = cache.get(f'clockout_token_{token}')
+    ctx      = {'token': token}
+
+    if not data:
+        ctx['error'] = '此連結已失效或已使用過，請請員工重新申請。'
+        return render(request, 'attendance/approve_clockout.html', ctx)
+
+    employee = get_object_or_404(Employee, pk=data['employee_id'])
+    ctx.update({
+        'employee':     employee,
+        'date':         data['date'],
+        'request_time': data.get('request_time', ''),
+        'suggested':    data.get('request_time', ''),
+    })
+
+    if request.method == 'POST':
+        time_str = request.POST.get('time', '').strip()
+        try:
+            date_obj = datetime.strptime(data['date'], '%Y-%m-%d').date()
+            naive_dt = datetime.combine(date_obj, datetime.strptime(time_str, '%H:%M').time())
+            aware_dt = timezone.make_aware(naive_dt)
+
+            # 防止重複打卡
+            if AttendanceRecord.objects.filter(
+                employee=employee, timestamp__date=date_obj, record_type='clock_out'
+            ).exists():
+                ctx['error'] = f'{employee.user.get_full_name()} 今天已有下班記錄，無需重複確認。'
+                return render(request, 'attendance/approve_clockout.html', ctx)
+
+            AttendanceRecord.objects.create(
+                employee=employee,
+                record_type='clock_out',
+                timestamp=aware_dt,
+                source='line_approval',
+                is_valid=True,
+            )
+
+            # 通知員工
+            if employee.line_user_id:
+                try:
+                    cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
+                    with ApiClient(cfg) as api_client:
+                        MessagingApi(api_client).push_message(PushMessageRequest(
+                            to=employee.line_user_id,
+                            messages=[TextMessage(
+                                text=f'✅ 管理員已確認下班時間：{time_str}\n感謝你今天的辛勞！'
+                            )]
+                        ))
+                except Exception:
+                    pass
+
+            # 用完即刪 token
+            cache.delete(f'clockout_token_{token}')
+
+            return render(request, 'attendance/approve_clockout.html', {
+                'success':       True,
+                'employee_name': employee.user.get_full_name() or employee.user.username,
+                'time_str':      time_str,
+                'date':          data['date'],
+            })
+
+        except Exception as e:
+            ctx['error'] = f'格式錯誤：{e}'
+            return render(request, 'attendance/approve_clockout.html', ctx)
+
+    return render(request, 'attendance/approve_clockout.html', ctx)
