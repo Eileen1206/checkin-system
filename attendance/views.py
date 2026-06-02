@@ -430,67 +430,68 @@ def handle_postback(event):
                 )
 
         elif action == 'delivery_clockout_request':
-            import uuid as _uuid
-            now_local = timezone.localtime()
-            today_str = now_local.strftime('%Y-%m-%d')
-            day_key   = f'clockout_req_{employee.pk}_{today_str}'
+            try:
+                import uuid as _uuid
+                now_local = timezone.localtime()
+                today_str = now_local.strftime('%Y-%m-%d')
+                day_key   = f'clockout_req_{employee.pk}_{today_str}'
 
-            if AttendanceRecord.objects.filter(employee=employee, timestamp__date=date_type.today(), record_type='clock_out').exists():
-                reply_msg = TextMessage(text='⚠️ 已經記錄過下班時間了')
-            elif cache.get(day_key):
-                reply_msg = TextMessage(text='⏳ 今天已送出申請，請等待管理員確認。')
-            else:
-                # 建立 token，老闆點連結後可自由選時間
-                token = str(_uuid.uuid4())
-                cache.set(f'clockout_token_{token}', {
-                    'employee_id': employee.pk,
-                    'date': today_str,
-                    'request_time': now_local.strftime('%H:%M'),
-                }, 86400)
+                if AttendanceRecord.objects.filter(employee=employee, timestamp__date=date_type.today(), record_type='clock_out').exists():
+                    reply_msg = TextMessage(text='⚠️ 已經記錄過下班時間了')
+                elif cache.get(day_key):
+                    reply_msg = TextMessage(text='⏳ 今天已送出申請，請等待管理員確認。')
+                else:
+                    token = str(_uuid.uuid4())
+                    cache.set(f'clockout_token_{token}', {
+                        'employee_id': employee.pk,
+                        'date': today_str,
+                        'request_time': now_local.strftime('%H:%M'),
+                    }, 86400)
 
-                approve_url = (
-                    f"{settings.SITE_URL}/dashboard/delivery/approve-clockout/"
-                    f"?token={token}"
-                )
-                flex_body = {
-                    "type": "bubble",
-                    "body": {
-                        "type": "box", "layout": "vertical", "spacing": "sm",
-                        "contents": [
-                            {"type": "text", "text": "送貨接下班申請",
-                             "weight": "bold", "size": "lg", "color": "#111827"},
-                            {"type": "text",
-                             "text": employee.user.get_full_name() or employee.user.username,
-                             "size": "md", "color": "#374151", "margin": "sm"},
-                            {"type": "text",
-                             "text": f"申請時間：{now_local.strftime('%H:%M')}",
-                             "size": "sm", "color": "#9ca3af", "margin": "xs"},
-                        ],
-                    },
-                    "footer": {
-                        "type": "box", "layout": "vertical",
-                        "contents": [{
-                            "type": "button", "style": "primary",
-                            "color": "#111827", "height": "md",
-                            "action": {
-                                "type": "uri",
-                                "label": "選擇下班時間 →",
-                                "uri": approve_url,
-                            }
-                        }],
+                    site_url = getattr(settings, 'SITE_URL', '').rstrip('/')
+                    approve_url = f"{site_url}/dashboard/delivery/approve-clockout/?token={token}"
+
+                    flex_body = {
+                        "type": "bubble",
+                        "body": {
+                            "type": "box", "layout": "vertical", "spacing": "sm",
+                            "contents": [
+                                {"type": "text", "text": "送貨接下班申請",
+                                 "weight": "bold", "size": "lg", "color": "#111827"},
+                                {"type": "text",
+                                 "text": employee.user.get_full_name() or employee.user.username,
+                                 "size": "md", "color": "#374151", "margin": "sm"},
+                                {"type": "text",
+                                 "text": f"申請時間：{now_local.strftime('%H:%M')}",
+                                 "size": "sm", "color": "#9ca3af", "margin": "xs"},
+                            ],
+                        },
+                        "footer": {
+                            "type": "box", "layout": "vertical",
+                            "contents": [{
+                                "type": "button", "style": "primary",
+                                "color": "#111827", "height": "md",
+                                "action": {
+                                    "type": "uri",
+                                    "label": "選擇下班時間 →",
+                                    "uri": approve_url,
+                                }
+                            }],
+                        }
                     }
-                }
-                with ApiClient(configuration) as api_client:
-                    api = MessagingApi(api_client)
-                    api.push_message(PushMessageRequest(
-                        to=settings.MANAGER_LINE_USER_ID,
-                        messages=[FlexMessage(
-                            alt_text=f'{employee.user.get_full_name()} 申請送貨接下班，請點選確認',
-                            contents=FlexContainer.from_dict(flex_body)
-                        )]
-                    ))
-                cache.set(day_key, True, 86400)  # 當天只能申請一次
-                reply_msg = TextMessage(text='✅ 申請已送出，等待管理員確認')
+                    with ApiClient(configuration) as api_client:
+                        MessagingApi(api_client).push_message(PushMessageRequest(
+                            to=settings.MANAGER_LINE_USER_ID,
+                            messages=[FlexMessage(
+                                alt_text=f'{employee.user.get_full_name() or employee.user.username} 申請送貨接下班，請點選確認',
+                                contents=FlexContainer.from_dict(flex_body)
+                            )]
+                        ))
+                    cache.set(day_key, True, 86400)
+                    reply_msg = TextMessage(text='✅ 申請已送出，等待管理員確認')
+            except Exception as _e:
+                print(f'[delivery_clockout_request error] {_e}')
+                reply_msg = TextMessage(text='⚠️ 申請失敗，請稍後再試。')
 
         else:
             reply_msg = TextMessage(text='收到！')
