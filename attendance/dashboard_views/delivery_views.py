@@ -431,7 +431,7 @@ def approve_clockout(request):
                 employee=employee,
                 record_type='clock_out',
                 timestamp=aware_dt,
-                source='line_approval',
+                source='admin',
                 is_valid=True,
             )
 
