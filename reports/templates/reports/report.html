@@ -212,7 +212,7 @@
               <span class="text-xs text-amber-600 bg-amber-100 rounded-lg px-2 py-0.5">缺午休結束</span>
             {% endif %}
 
-            {% if is_admin and not day.is_weekend %}
+            {% if is_admin %}
               <button type="button"
                 onclick="openAdd('{{ day.date|date:'Y-m-d' }}')"
                 class="text-xs text-white bg-gray-400 hover:bg-gray-600 rounded-lg px-2 py-0.5 transition-colors leading-none font-bold"
