@@ -329,6 +329,10 @@ initMap();
       </div>
       {# 操作按鈕 #}
       <div class="px-4 py-3 bg-white border-t border-gray-50 space-y-2">
+        <a href="{% url 'dashboard:delivery_plan' %}?edit={{ item.emp.pk }}&date={{ today|date:'Y-m-d' }}"
+          class="block w-full py-2.5 text-center bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">
+          ✏️ 編輯整體路線
+        </a>
         <form method="post" action="{% url 'dashboard:delivery_push' %}">
           {% csrf_token %}
           <input type="hidden" name="employee_id" value="{{ item.emp.pk }}">
@@ -407,6 +411,10 @@ initMap();
                   🕐 預計 {{ item.predicted }} 分鐘（行車 {{ item.drive }} 分 + 每站 {{ item.avg_stop }} 分）
                 </span>
                 {% endif %}
+                <a href="{% url 'dashboard:delivery_plan' %}?edit={{ item.emp.pk }}&date={{ today|date:'Y-m-d' }}"
+                  class="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs hover:bg-gray-200 transition-colors">
+                  ✏️ 編輯整體路線
+                </a>
                 <form method="post" action="{% url 'dashboard:delivery_push' %}">
                   {% csrf_token %}
                   <input type="hidden" name="employee_id" value="{{ item.emp.pk }}">

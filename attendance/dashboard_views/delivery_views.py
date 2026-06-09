@@ -329,6 +329,23 @@ def delivery_plan(request):
             'pending_list': pending_list,
         })
 
+    # GET ?edit=<employee_id>：顯示現有任務的拖曳編輯頁
+    edit_emp_id = request.GET.get('edit')
+    if edit_emp_id:
+        edit_date = request.GET.get('date', str(timezone.localdate()))
+        emp       = get_object_or_404(Employee, pk=edit_emp_id)
+        tasks_qs  = DeliveryTask.objects.filter(
+            employee=emp, date=edit_date, status='pending'
+        ).select_related('customer').order_by('order')
+        office    = get_office_coords()
+        return render(request, 'attendance/delivery_plan.html', {
+            'success':   True,
+            'employee':  emp,
+            'tasks':     tasks_qs,
+            'office_lat': office[0] if office else None,
+            'office_lng': office[1] if office else None,
+        })
+
     # POST：計算路線並建立任務
     employee_id  = request.POST.get('employee_id')
     customer_ids = list(dict.fromkeys(request.POST.getlist('customer_ids')))  # 保持順序去重
