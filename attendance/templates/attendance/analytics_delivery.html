@@ -1,6 +1,6 @@
 {% extends "attendance/base.html" %}
 {% block title %}送貨分析{% endblock %}
-{% block page_title %}🚚 送貨分析{% endblock %}
+{% block page_title %}送貨分析{% endblock %}
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -11,7 +11,7 @@
 
   <!-- 近 30 天送貨趟次 / 完成趟次 -->
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h2 class="text-sm font-semibold text-gray-700 mb-4">📦 近 30 天每日送貨趟次</h2>
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">近 30 天每日送貨趟次</h2>
     <div class="relative h-64">
       <canvas id="chartTrips"></canvas>
     </div>
@@ -19,7 +19,7 @@
 
   <!-- 本月各員工送貨績效 -->
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h2 class="text-sm font-semibold text-gray-700 mb-4">👤 本月各員工送貨趟數 &amp; 完成站點數</h2>
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">本月各員工送貨趟數 &amp; 完成站點數</h2>
     <div class="relative h-72">
       <canvas id="chartEmpDelivery"></canvas>
     </div>

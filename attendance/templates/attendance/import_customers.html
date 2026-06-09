@@ -1,6 +1,6 @@
 {% extends "attendance/base.html" %}
 {% block title %}匯入客戶資料{% endblock %}
-{% block page_title %}📥 匯入客戶資料{% endblock %}
+{% block page_title %}匯入客戶資料{% endblock %}
 {% block content %}
 
 <div class="max-w-lg mx-auto">
@@ -17,7 +17,7 @@
     <code class="inline-block bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 mb-3">客戶編號　客戶名稱　地址　電話號碼</code>
     <p class="text-sm text-gray-500 mb-1">可加入選填的 GPS 欄位（有填則直接存入，省去逐筆定位）：</p>
     <code class="inline-block bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 mb-4">緯度　經度</code>
-    <p class="text-xs text-gray-400 mb-4">💡 在 Google Maps 找到客戶店家後，分享連結貼到客戶編輯頁即可取得座標。</p>
+    <p class="text-xs text-gray-400 mb-4">在 Google Maps 找到客戶店家後，分享連結貼到客戶編輯頁即可取得座標。</p>
 
     <form method="post" enctype="multipart/form-data" class="space-y-4">
       {% csrf_token %}

@@ -1,13 +1,13 @@
 {% extends "attendance/base.html" %}
 {% block title %}送貨路線規劃{% endblock %}
-{% block page_title %}🗺️ 送貨路線規劃{% endblock %}
+{% block page_title %}送貨路線規劃{% endblock %}
 
 {% block content %}
 
 {% if success %}
 <!-- ── 路線結果頁 ── -->
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-gray-800">🚚 送貨路線規劃</h1>
+  <h1 class="text-2xl font-bold text-gray-800">送貨路線規劃</h1>
   <a href="{% url 'dashboard:delivery_plan' %}" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">重新規劃</a>
 </div>
 
@@ -21,7 +21,7 @@
   <div class="lg:col-span-2 flex flex-col gap-4">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <span class="font-semibold text-gray-700">📋 {{ employee }} 今日路線</span>
+        <span class="font-semibold text-gray-700">{{ employee }} 今日路線</span>
         <span class="text-xs text-gray-400">☰ 可拖曳調整</span>
       </div>
       <table class="w-full text-sm">
@@ -84,7 +84,7 @@
   <div class="lg:col-span-3">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div class="px-5 py-4 border-b border-gray-100">
-        <span class="font-semibold text-gray-700">🗺️ 路線地圖</span>
+        <span class="font-semibold text-gray-700">路線地圖</span>
       </div>
       <div id="map" class="w-full" style="height: 460px;"></div>
     </div>
@@ -108,7 +108,7 @@ function initMap() {
 
   const points = [];
   if (officeLat && officeLng) {
-    points.push({ lat: officeLat, lng: officeLng, label: '🏢 公司（出發點）', isCompany: true });
+    points.push({ lat: officeLat, lng: officeLng, label: '公司（出發點）', isCompany: true });
   }
   document.querySelectorAll('#sortableBody tr').forEach((tr, i) => {
     const lat = parseFloat(tr.dataset.lat);
@@ -177,14 +177,14 @@ initMap();
 {% else %}
 <!-- ── 規劃表單頁 ── -->
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-gray-800">🚚 送貨路線規劃</h1>
+  <h1 class="text-2xl font-bold text-gray-800">送貨路線規劃</h1>
 </div>
 
 <!-- 頂部工具列：折疊說明 + 快速連結 -->
 <div class="flex flex-wrap items-center gap-2 mb-5">
   <details class="group">
     <summary class="cursor-pointer select-none list-none flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-600 hover:bg-gray-50 transition-colors">
-      <span>📖 使用說明</span>
+      <span>使用說明</span>
       <span class="text-gray-300 group-open:rotate-180 transition-transform duration-200 inline-block">▾</span>
     </summary>
     <div class="absolute z-30 mt-1 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl p-4 space-y-3">
@@ -218,12 +218,12 @@ initMap();
   </details>
 
   <span class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5">
-    ⚠️ 客戶需有 GPS 座標
+    客戶需有 GPS 座標
   </span>
 
   <a href="{% url 'dashboard:delivery_today' %}"
     class="ml-auto text-xs text-gray-500 bg-white border border-gray-200 rounded-xl px-3 py-1.5 hover:bg-gray-50 transition-colors">
-    📦 今日送貨狀況 →
+    今日送貨狀況 →
   </a>
 </div>
 
@@ -288,7 +288,7 @@ initMap();
 {% if pending_list %}
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
   <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-    <h2 class="font-semibold text-gray-700">📋 今日待推播路線</h2>
+    <h2 class="font-semibold text-gray-700">今日待推播路線</h2>
     <span class="text-xs text-gray-400">{{ pending_list|length }} 位員工</span>
   </div>
 
@@ -305,9 +305,8 @@ initMap();
       </div>
       {# 預測時間 #}
       {% if item.predicted %}
-      <div class="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 flex items-center gap-1.5">
-        <span>🕐</span>
-        <span>預計 <strong>{{ item.predicted }} 分鐘</strong>（行車 {{ item.drive }} 分 + 每站約 {{ item.avg_stop }} 分 × {{ item.tasks|length }} 站）</span>
+      <div class="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700">
+        預計 <strong>{{ item.predicted }} 分鐘</strong>（行車 {{ item.drive }} 分 + 每站約 {{ item.avg_stop }} 分 × {{ item.tasks|length }} 站）
       </div>
       {% endif %}
       {# 站點列表 #}

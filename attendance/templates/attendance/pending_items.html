@@ -1,6 +1,6 @@
 {% extends "attendance/base.html" %}
 {% block title %}待處理事項{% endblock %}
-{% block page_title %}📋 待處理事項{% endblock %}
+{% block page_title %}待處理事項{% endblock %}
 
 {% block content %}
 
@@ -19,7 +19,7 @@
 {# ── 區塊一：請假申請 ── #}
 <div class="mb-6">
   <div class="flex items-center gap-2 mb-3">
-    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">📅 請假申請</p>
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">請假申請</p>
     {% if pending_leaves %}
     <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full">{{ pending_leaves|length }}</span>
     {% endif %}
@@ -74,7 +74,7 @@
 {# ── 區塊二：座標修正申請 ── #}
 <div class="mb-6">
   <div class="flex items-center gap-2 mb-3">
-    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">📌 座標修正申請</p>
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">座標修正申請</p>
     {% if pending_corrections %}
     <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">{{ pending_corrections|length }}</span>
     {% endif %}
@@ -86,7 +86,7 @@
     <div class="px-5 py-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div class="min-w-0">
         <div class="flex items-center gap-2 mb-1.5">
-          <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">📌 座標</span>
+          <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">座標</span>
           <span class="font-semibold text-gray-800 text-sm">{{ req.customer.name }}</span>
         </div>
         <p class="text-xs text-gray-500 mb-1">
