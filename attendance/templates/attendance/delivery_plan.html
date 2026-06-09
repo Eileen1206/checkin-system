@@ -24,6 +24,11 @@
         <span class="font-semibold text-gray-700">{{ employee }} 今日路線</span>
         <span class="text-xs text-gray-400">☰ 可拖曳調整</span>
       </div>
+      {% if predicted %}
+      <div class="px-5 py-2.5 bg-blue-50 border-b border-blue-100 text-xs text-blue-700">
+        預計 <strong>{{ predicted }} 分鐘</strong>（行車 {{ drive }} 分 + 每站約 {{ avg_stop }} 分 × {{ n_stops }} 站）
+      </div>
+      {% endif %}
       <table class="w-full text-sm">
         <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
           <tr>

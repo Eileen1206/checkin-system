@@ -305,12 +305,20 @@ def delivery_plan(request):
                 employee=emp, date=edit_date, status='pending'
             ).select_related('customer').order_by('order')
             office    = get_office_coords()
+            task_customers = [t.customer for t in tasks_qs if t.customer]
+            avg_stop  = _get_avg_stop_minutes(emp)
+            n_stops   = tasks_qs.count()
+            predicted, drive = _build_prediction(task_customers, n_stops, avg_stop)
             return render(request, 'attendance/delivery_plan.html', {
                 'success':   True,
                 'employee':  emp,
                 'tasks':     tasks_qs,
                 'office_lat': office[0] if office else None,
                 'office_lng': office[1] if office else None,
+                'predicted':  predicted,
+                'drive':      drive,
+                'avg_stop':   avg_stop,
+                'n_stops':    n_stops,
             })
 
         today = timezone.localdate()
@@ -408,18 +416,27 @@ def delivery_plan(request):
     # 只顯示本次新建的 pending 任務，排除已完成的舊任務
     tasks = DeliveryTask.objects.filter(
         employee=employee, date=date, status='pending'
-    ).order_by('order')
+    ).select_related('customer').order_by('order')
+
+    # 預估時間
+    task_customers = [t.customer for t in tasks if t.customer]
+    avg_stop  = _get_avg_stop_minutes(employee)
+    n_stops   = len(list(tasks))
+    predicted, drive = _build_prediction(task_customers, n_stops, avg_stop)
 
     return render(request, 'attendance/delivery_plan.html', {
         'employees': employees,
-        'success': True,
-        'tasks': tasks,
-        'employee': employee,
-        'date': date,
-        'today': timezone.localdate(),
-        'pending_by_employee': {},
-        'office_lat': office[0] if office else None,  
-        'office_lng': office[1] if office else None, 
+        'success':   True,
+        'tasks':     tasks,
+        'employee':  employee,
+        'date':      date,
+        'today':     timezone.localdate(),
+        'office_lat': office[0] if office else None,
+        'office_lng': office[1] if office else None,
+        'predicted':  predicted,
+        'drive':      drive,
+        'avg_stop':   avg_stop,
+        'n_stops':    n_stops,
     })
 
 
