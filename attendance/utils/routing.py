@@ -33,6 +33,44 @@ def geocode_customer(customer):
     return None
 
 
+def get_route_drive_minutes(ordered_customers):
+    """
+    給定已排好順序的客戶列表（含 lat/lng），
+    呼叫 ORS directions API，回傳公司→各站→公司的行車分鐘數。
+    無法計算時回傳 None。
+    """
+    if not ordered_customers:
+        return None
+
+    office = get_office_coords()
+    if not office:
+        return None
+
+    for c in ordered_customers:
+        if not c.lat or not c.lng:
+            geocode_customer(c)
+
+    if any(not c.lat or not c.lng for c in ordered_customers):
+        return None
+
+    # [lng, lat] 格式：公司 → 各站 → 公司
+    coords  = [[float(office[1]), float(office[0])]]
+    coords += [[float(c.lng), float(c.lat)] for c in ordered_customers]
+    coords += [[float(office[1]), float(office[0])]]
+
+    try:
+        client = get_client()
+        result = client.directions(
+            coordinates=coords,
+            profile='driving-car',
+            format='json',
+        )
+        duration_seconds = result['routes'][0]['summary']['duration']
+        return round(duration_seconds / 60, 1)   # 分鐘
+    except Exception:
+        return None
+
+
 def get_optimal_order(customers):
     """
     計算最短路線，以公司為出發點，回傳排序後的 customer list。

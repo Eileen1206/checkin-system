@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.db import models
 from datetime import datetime
 import json
-from ..utils.routing import get_office_coords
+from ..utils.routing import get_office_coords, get_route_drive_minutes
 from ..models import Employee, Customer, DeliveryTask, DeliverySession, AttendanceRecord
 from .base import require_group
 from linebot.v3.messaging import (
@@ -20,6 +20,46 @@ from linebot.v3.messaging import (
     FlexMessage,
     FlexContainer,
 )
+
+
+def _get_avg_stop_minutes(employee, default=10.0):
+    """
+    從歷史 DeliverySession（已記錄行車時間）算出每站平均停留分鐘。
+    資料不足時回傳 default（10 分鐘）。
+    """
+    sessions = (
+        DeliverySession.objects
+        .filter(
+            employee=employee,
+            started_at__isnull=False,
+            finished_at__isnull=False,
+            planned_drive_minutes__isnull=False,
+        )
+        .prefetch_related('tasks')
+    )
+    total_stop_sec = 0.0
+    total_stops    = 0
+    for s in sessions:
+        task_count = s.tasks.count()
+        if task_count == 0:
+            continue
+        trip_sec  = (s.finished_at - s.started_at).total_seconds()
+        drive_sec = s.planned_drive_minutes * 60
+        stop_sec  = max(trip_sec - drive_sec, 0)
+        total_stop_sec += stop_sec
+        total_stops    += task_count
+    if total_stops > 0:
+        return round(total_stop_sec / total_stops / 60, 1)
+    return default
+
+
+def _build_prediction(ordered_customers, n_stops, avg_stop_min):
+    """回傳 (predicted_minutes, drive_minutes)，算不出來則 (None, None)。"""
+    drive_min = get_route_drive_minutes(ordered_customers)
+    if drive_min is None:
+        return None, None
+    predicted = round(drive_min + n_stops * avg_stop_min)
+    return predicted, round(drive_min)
 
 
 @login_required
@@ -67,6 +107,13 @@ def delivery_push(request):
         pushed_at=timezone.now(),
     )
     tasks.update(session=session)
+
+    # 計算並儲存本趟行車時間（供預測用）
+    task_customers = [t.customer for t in tasks.select_related('customer') if t.customer]
+    drive_min = get_route_drive_minutes(task_customers)
+    if drive_min is not None:
+        session.planned_drive_minutes = drive_min
+        session.save(update_fields=['planned_drive_minutes'])
 
     # 文字摘要
     lines = [f'🚚 今日共 {tasks.count()} 站，出發前請確認路線']
@@ -256,17 +303,30 @@ def delivery_plan(request):
             .select_related('employee__user')
             .order_by('employee', 'order')
         )
-        pending_by_employee = {}
+        raw = {}
         for task in pending_tasks:
             emp = task.employee
-            if emp not in pending_by_employee:
-                pending_by_employee[emp] = []
-            pending_by_employee[emp].append(task)
+            raw.setdefault(emp, []).append(task)
+
+        # 組成帶預測資訊的 list（方便 template 直接取用）
+        pending_list = []
+        for emp, tasks_list in raw.items():
+            avg_stop  = _get_avg_stop_minutes(emp)
+            customers = [t.customer for t in tasks_list
+                         if t.customer and t.customer.lat and t.customer.lng]
+            predicted, drive = _build_prediction(customers, len(tasks_list), avg_stop)
+            pending_list.append({
+                'emp':       emp,
+                'tasks':     tasks_list,
+                'predicted': predicted,   # 分鐘，None 表示無法計算
+                'drive':     drive,       # 行車分鐘
+                'avg_stop':  avg_stop,    # 每站停留分鐘
+            })
 
         return render(request, 'attendance/delivery_plan.html', {
-            'employees': employees,
-            'today': today,
-            'pending_by_employee': pending_by_employee,
+            'employees':   employees,
+            'today':       today,
+            'pending_list': pending_list,
         })
 
     # POST：計算路線並建立任務

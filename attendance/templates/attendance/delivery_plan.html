@@ -281,27 +281,34 @@ initMap();
 </div>
 
 <!-- 下半：今日待推播路線（滿版） -->
-{% if pending_by_employee %}
+{% if pending_list %}
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
   <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
     <h2 class="font-semibold text-gray-700">📋 今日待推播路線</h2>
-    <span class="text-xs text-gray-400">{{ pending_by_employee|length }} 位員工</span>
+    <span class="text-xs text-gray-400">{{ pending_list|length }} 位員工</span>
   </div>
 
   {# ── 手機版：卡片排版 ── #}
   <div class="md:hidden space-y-4 p-4">
-    {% for emp, emp_tasks in pending_by_employee.items %}
+    {% for item in pending_list %}
     <div class="rounded-2xl border border-gray-100 overflow-hidden">
       {# 員工標頭 #}
       <div class="px-4 py-3 bg-gray-50 flex items-center justify-between">
         <span class="font-semibold text-gray-800 text-sm">
-          {{ emp.user.get_full_name|default:emp.user.username }}
+          {{ item.emp.user.get_full_name|default:item.emp.user.username }}
         </span>
-        <span class="text-xs text-gray-400">{{ emp_tasks|length }} 站</span>
+        <span class="text-xs text-gray-400">{{ item.tasks|length }} 站</span>
       </div>
+      {# 預測時間 #}
+      {% if item.predicted %}
+      <div class="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 flex items-center gap-1.5">
+        <span>🕐</span>
+        <span>預計 <strong>{{ item.predicted }} 分鐘</strong>（行車 {{ item.drive }} 分 + 每站約 {{ item.avg_stop }} 分 × {{ item.tasks|length }} 站）</span>
+      </div>
+      {% endif %}
       {# 站點列表 #}
       <div class="divide-y divide-gray-50">
-        {% for task in emp_tasks %}
+        {% for task in item.tasks %}
         <div class="px-4 py-3 flex items-center justify-between gap-3">
           <div class="flex items-center gap-3 min-w-0">
             <span class="w-7 h-7 shrink-0 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600">{{ forloop.counter }}</span>
@@ -324,30 +331,30 @@ initMap();
       <div class="px-4 py-3 bg-white border-t border-gray-50 space-y-2">
         <form method="post" action="{% url 'dashboard:delivery_push' %}">
           {% csrf_token %}
-          <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+          <input type="hidden" name="employee_id" value="{{ item.emp.pk }}">
           <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
           <button type="submit" class="w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
             📲 推播路線
           </button>
         </form>
-        <button type="button" onclick="toggleAddTask('{{ emp.pk }}')"
+        <button type="button" onclick="toggleAddTask('{{ item.emp.pk }}')"
           class="w-full py-2.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-xl text-sm hover:bg-orange-100 transition-colors">
           ➕ 臨時加站
         </button>
-        <div id="addTask_{{ emp.pk }}" class="hidden pt-1 space-y-2">
+        <div id="addTask_{{ item.emp.pk }}" class="hidden pt-1 space-y-2">
           <div class="relative">
-            <input type="text" id="addTaskSearch_{{ emp.pk }}"
+            <input type="text" id="addTaskSearch_{{ item.emp.pk }}"
               placeholder="搜尋客戶名稱或編號"
               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-200">
-            <div id="addTaskResults_{{ emp.pk }}"
+            <div id="addTaskResults_{{ item.emp.pk }}"
               class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-sm"></div>
           </div>
-          <span id="addTaskSelected_{{ emp.pk }}" class="hidden block text-xs text-orange-600 font-medium px-1"></span>
+          <span id="addTaskSelected_{{ item.emp.pk }}" class="hidden block text-xs text-orange-600 font-medium px-1"></span>
           <form method="post" action="{% url 'dashboard:delivery_add_task' %}">
             {% csrf_token %}
-            <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+            <input type="hidden" name="employee_id" value="{{ item.emp.pk }}">
             <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
-            <input type="hidden" name="customer_id" id="addTaskCustomerId_{{ emp.pk }}">
+            <input type="hidden" name="customer_id" id="addTaskCustomerId_{{ item.emp.pk }}">
             <button type="submit" class="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm hover:bg-orange-600 transition-colors">確認加站</button>
           </form>
         </div>
@@ -369,12 +376,12 @@ initMap();
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
-        {% for emp, emp_tasks in pending_by_employee.items %}
-          {% for task in emp_tasks %}
+        {% for item in pending_list %}
+          {% for task in item.tasks %}
           <tr class="hover:bg-amber-50/20">
             {% if forloop.first %}
-            <td class="px-6 py-3 font-medium text-gray-800" rowspan="{{ emp_tasks|length }}">
-              {{ emp.user.get_full_name|default:emp.user.username }}
+            <td class="px-6 py-3 font-medium text-gray-800" rowspan="{{ item.tasks|length }}">
+              {{ item.emp.user.get_full_name|default:item.emp.user.username }}
             </td>
             {% endif %}
             <td class="px-4 py-3 text-gray-500 text-xs">第 {{ forloop.counter }} 站</td>
@@ -395,32 +402,37 @@ initMap();
           <tr class="bg-gray-50/50">
             <td colspan="5" class="px-6 py-3">
               <div class="flex items-center gap-3 flex-wrap">
+                {% if item.predicted %}
+                <span class="text-xs text-blue-600 bg-blue-50 rounded-lg px-2.5 py-1">
+                  🕐 預計 {{ item.predicted }} 分鐘（行車 {{ item.drive }} 分 + 每站 {{ item.avg_stop }} 分）
+                </span>
+                {% endif %}
                 <form method="post" action="{% url 'dashboard:delivery_push' %}">
                   {% csrf_token %}
-                  <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+                  <input type="hidden" name="employee_id" value="{{ item.emp.pk }}">
                   <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
                   <button type="submit" class="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors">
-                    📲 推播給 {{ emp.user.get_full_name|default:emp.user.username }}
+                    📲 推播給 {{ item.emp.user.get_full_name|default:item.emp.user.username }}
                   </button>
                 </form>
-                <button type="button" onclick="toggleAddTask('dt_{{ emp.pk }}')"
+                <button type="button" onclick="toggleAddTask('dt_{{ item.emp.pk }}')"
                   class="px-4 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs hover:bg-orange-100 transition-colors">
                   ➕ 臨時加站
                 </button>
-                <div id="addTask_dt_{{ emp.pk }}" class="hidden items-center gap-2 flex-wrap">
+                <div id="addTask_dt_{{ item.emp.pk }}" class="hidden items-center gap-2 flex-wrap">
                   <div class="relative">
-                    <input type="text" id="addTaskSearch_dt_{{ emp.pk }}"
+                    <input type="text" id="addTaskSearch_dt_{{ item.emp.pk }}"
                       placeholder="搜尋客戶"
                       class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-200 w-48">
-                    <div id="addTaskResults_dt_{{ emp.pk }}"
+                    <div id="addTaskResults_dt_{{ item.emp.pk }}"
                       class="hidden absolute z-10 w-64 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden text-sm"></div>
                   </div>
-                  <span id="addTaskSelected_dt_{{ emp.pk }}" class="hidden text-xs text-orange-600 font-medium"></span>
+                  <span id="addTaskSelected_dt_{{ item.emp.pk }}" class="hidden text-xs text-orange-600 font-medium"></span>
                   <form method="post" action="{% url 'dashboard:delivery_add_task' %}" class="inline">
                     {% csrf_token %}
-                    <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+                    <input type="hidden" name="employee_id" value="{{ item.emp.pk }}">
                     <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
-                    <input type="hidden" name="customer_id" id="addTaskCustomerId_dt_{{ emp.pk }}">
+                    <input type="hidden" name="customer_id" id="addTaskCustomerId_dt_{{ item.emp.pk }}">
                     <button type="submit" class="px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs hover:bg-orange-600 transition-colors">
                       確認加站
                     </button>

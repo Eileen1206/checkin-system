@@ -250,10 +250,11 @@ class DeliverySession(models.Model):
                                     related_name='delivery_sessions', verbose_name='送貨員')
     date        = models.DateField('任務日期')
     trip_number = models.PositiveSmallIntegerField('趟次', default=1)
-    pushed_at   = models.DateTimeField('推播時間', null=True, blank=True)
-    started_at  = models.DateTimeField('出發時間', null=True, blank=True)
-    finished_at = models.DateTimeField('完成時間', null=True, blank=True)
-    auto_closed = models.BooleanField('系統自動關閉', default=False)
+    pushed_at            = models.DateTimeField('推播時間', null=True, blank=True)
+    started_at           = models.DateTimeField('出發時間', null=True, blank=True)
+    finished_at          = models.DateTimeField('完成時間', null=True, blank=True)
+    auto_closed          = models.BooleanField('系統自動關閉', default=False)
+    planned_drive_minutes = models.FloatField('ORS預估行車分鐘', null=True, blank=True)
 
     class Meta:
         verbose_name        = '送貨行程'
