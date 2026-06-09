@@ -162,14 +162,21 @@
       </div>
 
       {# ── 底部資訊 ── #}
-      {% if d.is_started or d.all_done %}
-      <div class="mt-3 pt-3 border-t border-gray-50 text-xs text-gray-400 flex justify-between">
-        <span>出發 {{ d.session.started_at|date:"H:i" }}</span>
-        {% if d.all_done and d.session.finished_at %}
-        <span>完成 {{ d.session.finished_at|date:"H:i" }}</span>
+      <div class="mt-3 pt-3 border-t border-gray-50 text-xs text-gray-400 space-y-1">
+        {% if d.is_started or d.all_done %}
+        <div class="flex justify-between">
+          <span>出發 {{ d.session.started_at|date:"H:i" }}</span>
+          {% if d.all_done and d.session.finished_at %}
+          <span>完成 {{ d.session.finished_at|date:"H:i" }}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if d.predicted and not d.all_done %}
+        <div class="text-blue-500">
+          剩餘預計 <strong>{{ d.predicted }} 分鐘</strong>（{{ d.remaining }} 站）
+        </div>
         {% endif %}
       </div>
-      {% endif %}
 
     </div>
     {% endfor %}

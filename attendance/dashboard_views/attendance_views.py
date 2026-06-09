@@ -18,6 +18,7 @@ from linebot.v3.messaging import (
     FlexContainer,
 )
 from .base import get_today_status, get_work_hours
+from .delivery_views import _get_avg_stop_minutes, _build_prediction
 
 
 @login_required
@@ -47,13 +48,17 @@ def index(request):
 
     delivery_status = []
     for session in active_sessions:
-        tasks = list(session.tasks.order_by('order'))
+        tasks = list(session.tasks.select_related('customer').order_by('order'))
         total = len(tasks)
         if total == 0:
             continue   # 空趟次不顯示
-        completed = sum(1 for t in tasks if t.status == 'completed')
-        next_task = next((t for t in tasks if t.status == 'pending'), None)
-        last_done = next((t for t in reversed(tasks) if t.status == 'completed'), None)
+        completed  = sum(1 for t in tasks if t.status == 'completed')
+        next_task  = next((t for t in tasks if t.status == 'pending'), None)
+        last_done  = next((t for t in reversed(tasks) if t.status == 'completed'), None)
+        pending_tasks = [t for t in tasks if t.status == 'pending']
+        task_customers = [t.customer for t in pending_tasks if t.customer]
+        avg_stop  = _get_avg_stop_minutes(session.employee)
+        predicted, drive = _build_prediction(task_customers, len(pending_tasks), avg_stop)
         delivery_status.append({
             'employee':   session.employee,
             'session':    session,
@@ -65,6 +70,10 @@ def index(request):
             'progress':   int(completed / total * 100) if total else 0,
             'all_done':   completed == total,
             'is_started': session.started_at is not None,
+            'predicted':  predicted,
+            'drive':      drive,
+            'avg_stop':   avg_stop,
+            'remaining':  len(pending_tasks),
         })
 
     # 今日送貨統計
