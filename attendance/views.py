@@ -256,36 +256,13 @@ def handle_postback(event):
         return
 
     elif action == 'approve_clockout':
-        emp_id = params.get('employee_id')
-        time_str = params.get('time')
-        emp = Employee.objects.get(pk=emp_id)
-        naive_dt = datetime.combine(timezone.localdate(), datetime.strptime(time_str, '%H:%M').time())
-        timestamp = timezone.make_aware(naive_dt)
-
-        if AttendanceRecord.objects.filter(employee=emp, timestamp__date=date_type.today(), record_type='clock_out').exists():
-            reply_msg = TextMessage(text='⚠️ 已經記錄過下班時間了')
-        else:
-            AttendanceRecord.objects.create(
-                employee=emp,
-                record_type='clock_out',
-                source='admin',
-                timestamp=timestamp,
-            )
-            reply_msg = TextMessage(text=f'✅ 已記錄 {emp.user.get_full_name()} {time_str} 下班')
-
-            with ApiClient(configuration) as api_client:
-                api = MessagingApi(api_client)
-                api.push_message(PushMessageRequest(
-                    to=emp.line_user_id,
-                    messages=[TextMessage(text=f'✅ 下班時間已確認：{time_str}')]
-                ))
-
+        # 舊版 postback 流程已停用，改用網頁表單（delivery/approve-clockout/）
         with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(ReplyMessageRequest(
+            MessagingApi(api_client).reply_message(ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[reply_msg]
+                messages=[TextMessage(text='此確認按鈕已過期，請請員工重新申請。')]
             ))
+        return
 
     else:
         try:

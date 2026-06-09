@@ -296,16 +296,32 @@ def add_record(request):
         try:
             naive_dt = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M')
             aware_dt = timezone.make_aware(naive_dt)
-            AttendanceRecord.objects.create(
+            target_date = naive_dt.date()
+
+            # 同員工同日同類型 → 蓋掉；沒有才新增
+            existing = AttendanceRecord.objects.filter(
                 employee=employee,
                 record_type=record_type,
-                timestamp=aware_dt,
-                source='manual',
-                is_valid=True,
-            )
+                timestamp__date=target_date,
+            ).first()
+
             label = VALID_TYPES.get(record_type, record_type)
             name  = employee.user.get_full_name() or employee.user.username
-            messages.success(request, f'✅ 已為 {name} 補打卡：{label} {time_str}')
+
+            if existing:
+                existing.timestamp = aware_dt
+                existing.source    = 'manual'
+                existing.save(update_fields=['timestamp', 'source'])
+                messages.success(request, f'✅ 已更新 {name} 補打卡：{label} {time_str}')
+            else:
+                AttendanceRecord.objects.create(
+                    employee=employee,
+                    record_type=record_type,
+                    timestamp=aware_dt,
+                    source='manual',
+                    is_valid=True,
+                )
+                messages.success(request, f'✅ 已為 {name} 補打卡：{label} {time_str}')
         except (ValueError, Exception) as e:
             messages.error(request, f'補打卡失敗：{e}')
 
