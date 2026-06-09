@@ -79,7 +79,6 @@ def index(request):
         emp = emp_data['employee']
         emp_data['is_late'] = False
         if emp_data['status'] != 'absent' and emp.work_start_time:
-            from attendance.models import AttendanceRecord
             clock_in = AttendanceRecord.objects.filter(
                 employee=emp, timestamp__date=today, record_type='clock_in'
             ).first()
