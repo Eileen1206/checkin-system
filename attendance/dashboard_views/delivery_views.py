@@ -435,6 +435,8 @@ def approve_clockout(request):
                 is_valid=True,
             )
 
+            emp_name = employee.user.get_full_name() or employee.user.username
+
             # 通知員工
             if employee.line_user_id:
                 try:
@@ -444,6 +446,21 @@ def approve_clockout(request):
                             to=employee.line_user_id,
                             messages=[TextMessage(
                                 text=f'✅ 管理員已確認下班時間：{time_str}\n感謝你今天的辛勞！'
+                            )]
+                        ))
+                except Exception:
+                    pass
+
+            # 回報老闆：確認了誰、幾點
+            manager_id = getattr(settings, 'MANAGER_LINE_USER_ID', None)
+            if manager_id:
+                try:
+                    cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
+                    with ApiClient(cfg) as api_client:
+                        MessagingApi(api_client).push_message(PushMessageRequest(
+                            to=manager_id,
+                            messages=[TextMessage(
+                                text=f'✅ 已確認 {emp_name} 送貨下班\n日期：{data["date"]}\n下班時間：{time_str}'
                             )]
                         ))
                 except Exception:
