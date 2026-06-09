@@ -91,8 +91,8 @@ def get_work_hours(employee, date=None):
         late_seconds = (clock_in_naive - scheduled_naive).total_seconds()
 
         if late_seconds < 0:
-            # 早到 → 從實際打卡時間算（不因早到而損失工時）
-            start_naive = clock_in_naive
+            # 早到 → 從排班時間開始算（不因早到而多算工時）
+            start_naive = scheduled_naive
         elif late_seconds <= 600:
             # 準時或寬限 10 分鐘內 → 從排班時間開始算
             start_naive = scheduled_naive

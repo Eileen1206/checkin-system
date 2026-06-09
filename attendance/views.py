@@ -371,13 +371,12 @@ def handle_postback(event):
             )
 
         elif action == 'rfid_confirm':
-            # 第二步：員工確認後才寫入
             emp_id = params.get('employee_id')
             record_type = params.get('record_type')
             swipe_ts = params.get('swipe_ts', '0')
             emp = get_object_or_404(Employee, pk=emp_id)
 
-            # 時效雙重驗證
+            # 時效驗證（10 分鐘內有效）
             import time as _time
             if _time.time() - float(swipe_ts) > 600:
                 reply_msg = TextMessage(text='⚠️ 此打卡確認已逾時（超過 10 分鐘），請重新刷卡。')
@@ -386,6 +385,23 @@ def handle_postback(event):
                         reply_token=event.reply_token, messages=[reply_msg]
                     ))
                 return
+
+            # 若選直接下班但午休尚未結束 → 拒絕
+            if record_type == 'clock_out':
+                today = timezone.localdate()
+                has_break_start = AttendanceRecord.objects.filter(
+                    employee=emp, record_type='break_start', timestamp__date=today
+                ).exists()
+                has_break_end = AttendanceRecord.objects.filter(
+                    employee=emp, record_type='break_end', timestamp__date=today
+                ).exists()
+                if has_break_start and not has_break_end:
+                    reply_msg = TextMessage(text='⚠️ 請先刷卡結束午休，再下班打卡')
+                    with ApiClient(configuration) as api_client:
+                        MessagingApi(api_client).reply_message(ReplyMessageRequest(
+                            reply_token=event.reply_token, messages=[reply_msg]
+                        ))
+                    return
 
             from datetime import timedelta as _td
             duplicate = AttendanceRecord.objects.filter(
@@ -429,7 +445,61 @@ def handle_postback(event):
                     ])
                 )
 
+
         elif action == 'delivery_clockout_request':
+            # 第一步：顯示確認卡，防止誤觸
+            try:
+                today_str = timezone.localtime().strftime('%Y-%m-%d')
+                day_key   = f'clockout_req_{employee.pk}_{today_str}'
+
+                if AttendanceRecord.objects.filter(employee=employee, timestamp__date=date_type.today(), record_type='clock_out').exists():
+                    reply_msg = TextMessage(text='⚠️ 已經記錄過下班時間了')
+                elif cache.get(day_key):
+                    reply_msg = TextMessage(text='⏳ 今天已送出申請，請等待管理員確認。')
+                else:
+                    confirm_flex = {
+                        "type": "bubble",
+                        "body": {
+                            "type": "box", "layout": "vertical", "spacing": "sm",
+                            "contents": [
+                                {"type": "text", "text": "送貨接下班",
+                                 "weight": "bold", "size": "xl", "color": "#111827"},
+                                {"type": "text", "text": "確定要送出申請給管理員嗎？",
+                                 "size": "sm", "color": "#6b7280", "wrap": True, "margin": "sm"},
+                            ],
+                        },
+                        "footer": {
+                            "type": "box", "layout": "horizontal", "spacing": "sm",
+                            "contents": [
+                                {
+                                    "type": "button", "style": "primary",
+                                    "color": "#111827", "height": "sm",
+                                    "action": {
+                                        "type": "postback", "label": "✅ 確定送出",
+                                        "data": "action=delivery_clockout_confirm"
+                                    }
+                                },
+                                {
+                                    "type": "button", "style": "secondary",
+                                    "height": "sm",
+                                    "action": {
+                                        "type": "postback", "label": "✖ 取消",
+                                        "data": "action=delivery_clockout_cancel"
+                                    }
+                                },
+                            ],
+                        },
+                    }
+                    reply_msg = FlexMessage(
+                        alt_text='確定要申請送貨接下班嗎？',
+                        contents=FlexContainer.from_dict(confirm_flex)
+                    )
+            except Exception as _e:
+                print(f'[delivery_clockout_request error] {_e}')
+                reply_msg = TextMessage(text='⚠️ 操作失敗，請稍後再試。')
+
+        elif action == 'delivery_clockout_confirm':
+            # 第二步：員工確認後才真正送出給管理員
             try:
                 import uuid as _uuid
                 now_local = timezone.localtime()
@@ -490,8 +560,11 @@ def handle_postback(event):
                     cache.set(day_key, True, 86400)
                     reply_msg = TextMessage(text='✅ 申請已送出，等待管理員確認')
             except Exception as _e:
-                print(f'[delivery_clockout_request error] {_e}')
+                print(f'[delivery_clockout_confirm error] {_e}')
                 reply_msg = TextMessage(text='⚠️ 申請失敗，請稍後再試。')
+
+        elif action == 'delivery_clockout_cancel':
+            reply_msg = TextMessage(text='已取消，申請未送出。')
 
         else:
             reply_msg = TextMessage(text='收到！')
