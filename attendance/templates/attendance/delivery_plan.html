@@ -180,104 +180,108 @@ initMap();
   <h1 class="text-2xl font-bold text-gray-800">🚚 送貨路線規劃</h1>
 </div>
 
-<!-- 上半：兩欄（說明 + 表單） -->
-<div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
-
-  <!-- 左欄：說明 -->
-  <div class="lg:col-span-2 flex flex-col gap-4">
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <h2 class="font-semibold text-gray-700 mb-4">📖 使用說明</h2>
-      <div class="space-y-4">
-        <div class="flex gap-3">
-          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
-          <div>
-            <div class="text-sm font-medium text-gray-700">搜尋並加入客戶</div>
-            <div class="text-xs text-gray-400 mt-0.5">輸入客戶編號或名稱，最多可加入 8 站</div>
-          </div>
-        </div>
-        <div class="flex gap-3">
-          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
-          <div>
-            <div class="text-sm font-medium text-gray-700">標記急單</div>
-            <div class="text-xs text-gray-400 mt-0.5">勾選「⚡ 急單」的客戶會自動排到最前面優先送</div>
-          </div>
-        </div>
-        <div class="flex gap-3">
-          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
-          <div>
-            <div class="text-sm font-medium text-gray-700">選擇日期和送貨員</div>
-            <div class="text-xs text-gray-400 mt-0.5">預設為今天，可指定未來日期</div>
-          </div>
-        </div>
-        <div class="flex gap-3">
-          <span class="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">4</span>
-          <div>
-            <div class="text-sm font-medium text-gray-700">計算最短路線</div>
-            <div class="text-xs text-gray-400 mt-0.5">系統以公司為出發點，自動規劃最佳行駛順序</div>
-          </div>
+<!-- 頂部工具列：折疊說明 + 快速連結 -->
+<div class="flex flex-wrap items-center gap-2 mb-5">
+  <details class="group">
+    <summary class="cursor-pointer select-none list-none flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-600 hover:bg-gray-50 transition-colors">
+      <span>📖 使用說明</span>
+      <span class="text-gray-300 group-open:rotate-180 transition-transform duration-200 inline-block">▾</span>
+    </summary>
+    <div class="absolute z-30 mt-1 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl p-4 space-y-3">
+      {% for step, title, desc in steps_info %}
+      <div class="flex gap-3">
+        <span class="w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">{{ forloop.counter }}</span>
+        <div>
+          <div class="text-sm font-medium text-gray-700">{{ title }}</div>
+          <div class="text-xs text-gray-400 mt-0.5">{{ desc }}</div>
         </div>
       </div>
+      {% empty %}
+      <div class="flex gap-3">
+        <span class="w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
+        <div><div class="text-sm font-medium text-gray-700">搜尋並加入客戶</div><div class="text-xs text-gray-400 mt-0.5">輸入編號或名稱，最多 8 站</div></div>
+      </div>
+      <div class="flex gap-3">
+        <span class="w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
+        <div><div class="text-sm font-medium text-gray-700">標記急單</div><div class="text-xs text-gray-400 mt-0.5">⚡ 急單自動排到最前面</div></div>
+      </div>
+      <div class="flex gap-3">
+        <span class="w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
+        <div><div class="text-sm font-medium text-gray-700">選日期、點送貨員</div><div class="text-xs text-gray-400 mt-0.5">預設今天，點人名快速選取</div></div>
+      </div>
+      <div class="flex gap-3">
+        <span class="w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">4</span>
+        <div><div class="text-sm font-medium text-gray-700">計算最短路線</div><div class="text-xs text-gray-400 mt-0.5">以公司為出發點自動規劃</div></div>
+      </div>
+      {% endfor %}
     </div>
+  </details>
 
-    <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
-      ⚠️ 規劃前請確認客戶資料已設定 GPS 座標，否則無法計算距離。
+  <span class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5">
+    ⚠️ 客戶需有 GPS 座標
+  </span>
+
+  <a href="{% url 'dashboard:delivery_today' %}"
+    class="ml-auto text-xs text-gray-500 bg-white border border-gray-200 rounded-xl px-3 py-1.5 hover:bg-gray-50 transition-colors">
+    📦 今日送貨狀況 →
+  </a>
+</div>
+
+<!-- 主表單（全寬） -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-8">
+  <div class="mb-5">
+    <label class="block text-sm font-semibold text-gray-700 mb-1.5">搜尋客戶</label>
+    <div class="relative">
+      <input type="text" id="searchInput"
+        class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+        placeholder="輸入客戶編號或名稱...">
+      <div id="searchResults" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"></div>
     </div>
-
-    <a href="{% url 'dashboard:delivery_today' %}"
-      class="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-100 shadow-sm text-sm text-gray-600 hover:bg-cream transition-colors">
-      <span>📦 查看今日送貨狀況</span>
-      <span class="text-gray-400">→</span>
-    </a>
+    <p class="text-xs text-gray-400 mt-1">最多可加入 8 站</p>
   </div>
 
-  <!-- 右欄：操作表單 -->
-  <div class="lg:col-span-3">
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <div class="mb-5">
-        <label class="block text-sm font-semibold text-gray-700 mb-1.5">搜尋客戶</label>
-        <div class="relative">
-          <input type="text" id="searchInput"
-            class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-            placeholder="輸入客戶編號或名稱...">
-          <div id="searchResults" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"></div>
-        </div>
-        <p class="text-xs text-gray-400 mt-1">最多可加入 8 站</p>
-      </div>
-
-      <div class="mb-5">
-        <label class="block text-sm font-semibold text-gray-700 mb-1.5">已選站點</label>
-        <div id="selectedList" class="space-y-2 min-h-[48px]">
-          <p class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-xl" id="emptyHint">尚未選擇任何客戶</p>
-        </div>
-      </div>
-
-      <form method="post" id="planForm">
-        {% csrf_token %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">送貨日期</label>
-            <input type="date" name="date" value="{{ today|date:'Y-m-d' }}" min="{{ today|date:'Y-m-d' }}"
-              class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1.5">指派送貨員</label>
-            <select name="employee_id" required
-              class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
-              <option value="">請選擇送貨員</option>
-              {% for emp in employees %}
-              <option value="{{ emp.pk }}">{{ emp.user.get_full_name|default:emp.user.username }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-        <div id="hiddenInputs"></div>
-        <button type="submit"
-          class="w-full px-4 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors">
-          計算最短路線並建立任務 →
-        </button>
-      </form>
+  <div class="mb-5">
+    <label class="block text-sm font-semibold text-gray-700 mb-1.5">已選站點</label>
+    <div id="selectedList" class="space-y-2 min-h-[48px]">
+      <p class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-xl" id="emptyHint">尚未選擇任何客戶</p>
     </div>
   </div>
+
+  <form method="post" id="planForm">
+    {% csrf_token %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+
+      <!-- 送貨日期 -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">送貨日期</label>
+        <input type="date" name="date" value="{{ today|date:'Y-m-d' }}" min="{{ today|date:'Y-m-d' }}"
+          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+      </div>
+
+      <!-- 指派送貨員（卡片快選） -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5">指派送貨員</label>
+        <input type="hidden" name="employee_id" id="selectedEmployeeId">
+        <div class="flex flex-wrap gap-2">
+          {% for emp in employees %}
+          <button type="button"
+            id="empBtn_{{ emp.pk }}"
+            onclick="selectEmployee('{{ emp.pk }}')"
+            class="emp-btn px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 hover:border-gray-500 transition-all">
+            {{ emp.user.get_full_name|default:emp.user.username }}
+          </button>
+          {% endfor %}
+        </div>
+        <p id="empHint" class="text-xs text-red-400 mt-1 hidden">請選擇送貨員</p>
+      </div>
+    </div>
+
+    <div id="hiddenInputs"></div>
+    <button type="submit" id="submitBtn"
+      class="w-full px-4 py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700 transition-colors">
+      計算最短路線並建立任務 →
+    </button>
+  </form>
 </div>
 
 <!-- 下半：今日待推播路線（滿版） -->
@@ -541,6 +545,30 @@ function updateUrgent() {
     hiddenInputs.appendChild(input);
   });
 }
+
+// 送貨員卡片快選
+function selectEmployee(pk) {
+  document.getElementById('selectedEmployeeId').value = pk;
+  document.querySelectorAll('.emp-btn').forEach(btn => {
+    btn.classList.remove('bg-gray-900', 'text-white', 'border-gray-900');
+    btn.classList.add('text-gray-700', 'border-gray-200');
+  });
+  const active = document.getElementById('empBtn_' + pk);
+  if (active) {
+    active.classList.add('bg-gray-900', 'text-white', 'border-gray-900');
+    active.classList.remove('text-gray-700', 'border-gray-200');
+  }
+  document.getElementById('empHint').classList.add('hidden');
+}
+
+// 送出前確認有選送貨員
+document.getElementById('planForm').addEventListener('submit', function(e) {
+  if (!document.getElementById('selectedEmployeeId').value) {
+    e.preventDefault();
+    document.getElementById('empHint').classList.remove('hidden');
+    document.getElementById('empHint').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+});
 
 function toggleAddTask(empPk) {
   const el = document.getElementById(`addTask_${empPk}`);
