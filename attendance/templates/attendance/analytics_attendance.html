@@ -9,64 +9,267 @@
 {% block content %}
 <div class="space-y-6">
 
-  <!-- 近 6 個月遲到 / 曠職趨勢 -->
+{% if no_data %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center text-gray-400 text-sm">
+  尚未設定任何員工班表，無法顯示出勤分析。
+</div>
+{% else %}
+
+{# ── Row 1：Hero KPI 卡片 ─────────────────────────────── #}
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+
+  {# 出勤率 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">本月出勤率</p>
+    <p class="text-3xl font-bold text-gray-900 leading-none">
+      {{ kpi.attendance_rate|floatformat:1 }}<span class="text-base text-gray-500 ml-0.5">%</span>
+    </p>
+    <p class="text-xs mt-2">
+      {% if kpi.attendance_rate_delta > 0 %}
+        <span class="text-emerald-600">▲ +{{ kpi.attendance_rate_delta|floatformat:1 }}%</span>
+      {% elif kpi.attendance_rate_delta < 0 %}
+        <span class="text-red-500">▼ {{ kpi.attendance_rate_delta|floatformat:1|slice:"1:" }}%</span>
+      {% else %}
+        <span class="text-gray-400">—</span>
+      {% endif %}
+      <span class="text-gray-400 ml-1">vs 上月</span>
+    </p>
+  </div>
+
+  {# 平均工時 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">平均工時／人</p>
+    <p class="text-3xl font-bold text-gray-900 leading-none">
+      {{ kpi.avg_hours }}<span class="text-base text-gray-500 ml-0.5">h</span>
+    </p>
+    <p class="text-xs mt-2 text-gray-400">本月累計</p>
+  </div>
+
+  {# 遲到率 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">本月遲到率</p>
+    <p class="text-3xl font-bold leading-none
+      {% if kpi.late_rate >= 10 %}text-red-500
+      {% elif kpi.late_rate >= 5 %}text-amber-500
+      {% else %}text-gray-900{% endif %}">
+      {{ kpi.late_rate|floatformat:1 }}<span class="text-base text-gray-500 ml-0.5">%</span>
+    </p>
+    <p class="text-xs mt-2">
+      {% if kpi.late_rate_delta < 0 %}
+        <span class="text-emerald-600">▼ {{ kpi.late_rate_delta|floatformat:1|slice:"1:" }}%</span>
+      {% elif kpi.late_rate_delta > 0 %}
+        <span class="text-red-500">▲ +{{ kpi.late_rate_delta|floatformat:1 }}%</span>
+      {% else %}
+        <span class="text-gray-400">—</span>
+      {% endif %}
+      <span class="text-gray-400 ml-1">vs 上月</span>
+    </p>
+  </div>
+
+  {# 請假天數 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">本月請假天數</p>
+    <p class="text-3xl font-bold text-gray-900 leading-none">
+      {{ kpi.leave_days }}<span class="text-base text-gray-500 ml-0.5">天</span>
+    </p>
+    <p class="text-xs mt-2">
+      {% if kpi.leave_days_delta > 0 %}
+        <span class="text-amber-500">▲ +{{ kpi.leave_days_delta }} 天</span>
+      {% elif kpi.leave_days_delta < 0 %}
+        <span class="text-emerald-600">▼ {{ kpi.leave_days_delta|slice:"1:" }} 天</span>
+      {% else %}
+        <span class="text-gray-400">—</span>
+      {% endif %}
+      <span class="text-gray-400 ml-1">vs 上月</span>
+    </p>
+  </div>
+
+</div>
+
+{# ── Row 2：12 月趨勢 + 員工健康度 ───────────────────── #}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  {# 12 個月出勤率折線 #}
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h2 class="text-sm font-semibold text-gray-700 mb-4">近 6 個月遲到 &amp; 曠職次數（全員合計）</h2>
-    <div class="relative h-64">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">12 個月出勤率趨勢</h2>
+    <div class="relative h-56">
+      <canvas id="chartTrend12"></canvas>
+    </div>
+  </div>
+
+  {# 員工出勤健康度 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3">員工出勤健康度（本月）</h2>
+    {% if emp_health %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-gray-400 border-b border-gray-100">
+            <th class="pb-2 text-left font-medium">員工</th>
+            <th class="pb-2 text-right font-medium">出勤率</th>
+            <th class="pb-2 text-right font-medium">遲到</th>
+            <th class="pb-2 text-right font-medium">缺勤</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for e in emp_health %}
+          <tr>
+            <td class="py-2.5">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full shrink-0
+                  {% if e.color == 'emerald' %}bg-emerald-400
+                  {% elif e.color == 'amber' %}bg-amber-400
+                  {% else %}bg-red-400{% endif %}"></span>
+                <span class="text-gray-800">{{ e.name }}</span>
+              </div>
+            </td>
+            <td class="py-2.5 text-right font-semibold
+              {% if e.color == 'emerald' %}text-emerald-600
+              {% elif e.color == 'amber' %}text-amber-600
+              {% else %}text-red-600{% endif %}">
+              {{ e.rate|floatformat:1 }}%
+            </td>
+            <td class="py-2.5 text-right text-gray-500">{{ e.late }} 次</td>
+            <td class="py-2.5 text-right text-gray-500">{{ e.absent }} 天</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400 text-center py-10">本月尚無出勤資料</p>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Row 3：週幾缺勤 + 近 6 月遲到曠職 ───────────────── #}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  {# 週幾缺勤分布 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700">週幾缺勤分布（近 3 個月）</h2>
+    <p class="text-xs text-gray-400 mt-0.5 mb-4">識別高風險出勤日，協助排班備援</p>
+    <div class="relative h-48">
+      <canvas id="chartWeekday"></canvas>
+    </div>
+  </div>
+
+  {# 近 6 月遲到 / 曠職 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">近 6 個月遲到 &amp; 曠職次數（全員）</h2>
+    <div class="relative h-48">
       <canvas id="chartLateAbsent"></canvas>
     </div>
   </div>
 
-  <!-- 本月各員工工時 -->
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <h2 class="text-sm font-semibold text-gray-700 mb-4">本月各員工累積工時（小時）</h2>
-    <div class="relative h-72">
-      <canvas id="chartEmpHours"></canvas>
-    </div>
-  </div>
+</div>
 
+{# ── Row 4：本月工時 ──────────────────────────────────── #}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+  <h2 class="text-sm font-semibold text-gray-700 mb-4">本月各員工累積工時（小時）</h2>
+  <div class="relative h-64">
+    <canvas id="chartEmpHours"></canvas>
+  </div>
+</div>
+
+{% endif %}
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+{% if not no_data %}
 <script>
-const labels      = {{ labels|safe }};
-const lateData    = {{ late_data|safe }};
-const absentData  = {{ absent_data|safe }};
-const empLabels   = {{ emp_labels|safe }};
-const empHours    = {{ emp_hours|safe }};
+const labels        = {{ labels|safe }};
+const lateData      = {{ late_data|safe }};
+const absentData    = {{ absent_data|safe }};
+const empLabels     = {{ emp_labels|safe }};
+const empHours      = {{ emp_hours|safe }};
+const labels12      = {{ labels_12|safe }};
+const rate12        = {{ attendance_rate_12|safe }};
+const weekdayLabels = {{ weekday_labels|safe }};
+const weekdayAbsent = {{ weekday_absent|safe }};
 
-// 近 6 個月遲到 / 曠職
-new Chart(document.getElementById('chartLateAbsent'), {
-  type: 'bar',
+// ── 12 個月出勤率折線（含目標線）──────────────────────
+new Chart(document.getElementById('chartTrend12'), {
+  type: 'line',
   data: {
-    labels,
+    labels: labels12,
     datasets: [
       {
-        label: '遲到次數',
-        data: lateData,
-        backgroundColor: '#f59e0b',
-        borderRadius: 6,
+        label: '出勤率',
+        data: rate12,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.07)',
+        tension: 0.35,
+        fill: true,
+        pointRadius: 3,
+        pointHoverRadius: 5,
       },
       {
-        label: '曠職次數',
-        data: absentData,
-        backgroundColor: '#ef4444',
-        borderRadius: 6,
+        label: '目標 95%',
+        data: Array(labels12.length).fill(95),
+        borderColor: '#d1d5db',
+        borderDash: [5, 4],
+        pointRadius: 0,
+        fill: false,
       },
     ],
   },
   options: {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: 'top' } },
+    plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
     scales: {
-      y: { beginAtZero: true, ticks: { stepSize: 1 } },
+      y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } } },
+      x: { ticks: { font: { size: 10 } } },
     },
   },
 });
 
-// 本月工時長條圖
+// ── 週幾缺勤分布（橫條）────────────────────────────────
+new Chart(document.getElementById('chartWeekday'), {
+  type: 'bar',
+  data: {
+    labels: weekdayLabels,
+    datasets: [{
+      label: '缺勤次數',
+      data: weekdayAbsent,
+      backgroundColor: ['#a78bfa', '#fb923c', '#f87171', '#fb923c', '#a78bfa'],
+      borderRadius: 5,
+    }],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } } },
+      y: { ticks: { font: { size: 12 } } },
+    },
+  },
+});
+
+// ── 近 6 個月遲到 / 曠職 ───────────────────────────────
+new Chart(document.getElementById('chartLateAbsent'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      { label: '遲到次數', data: lateData,   backgroundColor: '#f59e0b', borderRadius: 5 },
+      { label: '曠職次數', data: absentData, backgroundColor: '#ef4444', borderRadius: 5 },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+  },
+});
+
+// ── 本月各員工工時 ──────────────────────────────────────
 new Chart(document.getElementById('chartEmpHours'), {
   type: 'bar',
   data: {
@@ -83,10 +286,9 @@ new Chart(document.getElementById('chartEmpHours'), {
     maintainAspectRatio: false,
     indexAxis: 'y',
     plugins: { legend: { display: false } },
-    scales: {
-      x: { beginAtZero: true },
-    },
+    scales: { x: { beginAtZero: true } },
   },
 });
 </script>
+{% endif %}
 {% endblock %}
