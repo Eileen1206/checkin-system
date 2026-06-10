@@ -1,6 +1,30 @@
 {% extends "attendance/base.html" %}
 {% block title %}今日儀表板{% endblock %}
 {% block page_title %}今日儀表板{% endblock %}
+
+{% block extra_head %}
+<style>
+/* 進度條掃光動畫 */
+@keyframes delivery-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.delivery-bar {
+  position: relative;
+  overflow: hidden;
+  transition: width 0.8s cubic-bezier(.4,0,.2,1);
+}
+.delivery-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: delivery-shimmer 1.8s ease-in-out infinite;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- 頁首：日期 -->
@@ -95,7 +119,7 @@
     <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
 
       {# ── 頂列 ── #}
-      <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center justify-between mb-2">
         <div>
           <span class="font-semibold text-gray-800 text-sm">
             {{ d.employee.user.get_full_name|default:d.employee.user.username }}
@@ -110,6 +134,35 @@
             <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full font-medium">送貨中</span>
           {% else %}
             <span class="text-xs px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full font-medium">待出發</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {# ── 動態進度條 ── #}
+      <div class="mb-4">
+        <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          {% if d.all_done %}
+            <div class="h-full bg-emerald-400 rounded-full" style="width:100%"></div>
+          {% elif d.is_started %}
+            <div class="h-full bg-blue-500 rounded-full delivery-bar"
+                 style="width:max({{ d.progress }}%,6%)"></div>
+          {% else %}
+            <div class="h-full bg-gray-200 rounded-full" style="width:4%"></div>
+          {% endif %}
+        </div>
+        <div class="mt-1.5 flex items-center gap-1.5">
+          {% if d.all_done %}
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+            <span class="text-xs text-emerald-600 font-medium">全部送達</span>
+          {% elif d.is_started and d.next_task %}
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span>
+            <span class="text-xs text-blue-600 font-medium">正在前往 · {{ d.next_task.customer_name }}</span>
+          {% elif d.is_started %}
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span>
+            <span class="text-xs text-blue-600 font-medium">送貨中</span>
+          {% else %}
+            <span class="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0"></span>
+            <span class="text-xs text-gray-400">等待出發</span>
           {% endif %}
         </div>
       </div>
@@ -134,7 +187,10 @@
                 </svg>
               </div>
             {% elif task == d.next_task and d.is_started %}
-              <div class="w-4 h-4 rounded-full bg-blue-500 shrink-0 ring-4 ring-blue-100"></div>
+              <div class="relative w-4 h-4 shrink-0">
+                <div class="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-50"></div>
+                <div class="relative w-4 h-4 rounded-full bg-blue-500"></div>
+              </div>
             {% else %}
               <div class="w-4 h-4 rounded-full border-2 border-gray-200 bg-white shrink-0"></div>
             {% endif %}
