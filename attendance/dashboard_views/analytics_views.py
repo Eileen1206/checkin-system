@@ -68,11 +68,13 @@ def analytics_attendance(request):
 
     # 工具函式
     def _is_work_day(emp, d):
-        if d.weekday() >= 5:
+        if d.weekday() >= 7:   # 永遠不會是 True，保留供未來擴充
             return False
         if emp.work_days:
+            # 員工有設定工作日（可含週六=5）時，以此為準
             return str(d.weekday()) in emp.work_days.split(',')
-        return True
+        # 未設定時預設週一~週五（0–4）
+        return d.weekday() < 5
 
     def _is_late(emp, ci_local):
         if not emp.work_start_time:
@@ -136,7 +138,7 @@ def analytics_attendance(request):
         total = sum(
             get_work_hours(emp, date(cy, cm, d))
             for d in range(1, today.day + 1)
-            if date(cy, cm, d).weekday() < 5
+            if _is_work_day(emp, date(cy, cm, d))
         )
         emp_labels.append(emp.user.get_full_name() or emp.user.username)
         emp_hours.append(round(total, 1))
@@ -170,13 +172,13 @@ def analytics_attendance(request):
         'leave_days_delta':      leave_this - leave_last,
     }
 
-    # ── 週幾缺勤分布（近 3 個月）────────────────────────────
-    weekday_absent = [0] * 5
+    # ── 週幾缺勤分布（近 3 個月，含週六）────────────────────
+    weekday_absent = [0] * 6   # 0=週一 … 5=週六
     for y, m in months_12[-3:]:
         _, days_in_m = cal.monthrange(y, m)
         for day in range(1, days_in_m + 1):
             d = date(y, m, day)
-            if d.weekday() >= 5 or d > today:
+            if d.weekday() >= 6 or d > today:   # 只跳過週日(6)
                 continue
             for emp in employees:
                 if not _is_work_day(emp, d):
@@ -219,7 +221,7 @@ def analytics_attendance(request):
         'labels_12':          json.dumps(labels_12, ensure_ascii=False),
         'attendance_rate_12': json.dumps(attendance_rate_12),
         'kpi':                kpi,
-        'weekday_labels':     json.dumps(['週一', '週二', '週三', '週四', '週五'], ensure_ascii=False),
+        'weekday_labels':     json.dumps(['週一', '週二', '週三', '週四', '週五', '週六'], ensure_ascii=False),
         'weekday_absent':     json.dumps(weekday_absent),
         'emp_health':         emp_health,
     })
