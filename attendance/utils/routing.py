@@ -1,4 +1,3 @@
-import itertools
 import openrouteservice
 from django.conf import settings
 
@@ -108,26 +107,20 @@ def get_optimal_order(customers):
         )
         distances = matrix['distances']
 
-        best_order = list(range(len(customers)))
-        best_distance = float('inf')
+        # 最近鄰居法：O(n²)，取代暴力全排列 O(n!)
+        # 從 index 0（公司）出發，每次選距離最近的未拜訪客戶
+        start = 0 if office else None
+        unvisited = set(range(len(customers) if not office else 1, len(coords)))
+        current = start if start is not None else 0
+        order = []
 
-        if office:
-            # 固定從 index 0（公司）出發，對客戶 index 1..N 排列
-            for perm in itertools.permutations(range(1, len(coords))):
-                # 公司→第一站 + 各站之間
-                total = distances[0][perm[0]]
-                total += sum(distances[perm[i]][perm[i + 1]] for i in range(len(perm) - 1))
-                if total < best_distance:
-                    best_distance = total
-                    best_order = [p - 1 for p in perm]  # 轉回 customer index
-        else:
-            for perm in itertools.permutations(range(len(customers))):
-                total = sum(distances[perm[i]][perm[i + 1]] for i in range(len(perm) - 1))
-                if total < best_distance:
-                    best_distance = total
-                    best_order = list(perm)
+        while unvisited:
+            nearest = min(unvisited, key=lambda i: distances[current][i])
+            order.append(nearest - (1 if office else 0))  # 轉回 customer index
+            unvisited.remove(nearest)
+            current = nearest
 
-        return [customers[i] for i in best_order]
+        return [customers[i] for i in order]
 
     except Exception:
         return customers
