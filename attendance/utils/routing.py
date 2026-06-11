@@ -4,7 +4,7 @@ from django.conf import settings
 
 
 def get_client():
-    return openrouteservice.Client(key=settings.ORS_API_KEY)
+    return openrouteservice.Client(key=settings.ORS_API_KEY, timeout=8)
 
 
 def get_office_coords():
