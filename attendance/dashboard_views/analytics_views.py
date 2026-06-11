@@ -57,14 +57,17 @@ def analytics_attendance(request):
         record_type='clock_in',
         timestamp__date__gte=period_start,
         timestamp__date__lte=today,
-    ).values_list('employee_id', 'timestamp')
+    ).values_list('employee_id', 'timestamp', 'source')
 
     clockin_map = {}      # (emp_id, date) -> local datetime
-    for emp_id, ts in raw_ci:
+    makeup_set  = set()   # (emp_id, date) — source='admin' 表示補打卡
+    for emp_id, ts, source in raw_ci:
         loc = localtime(ts)
         key = (emp_id, loc.date())
         if key not in clockin_map:
             clockin_map[key] = loc
+        if source == 'admin':
+            makeup_set.add(key)
 
     # 工具函式
     def _is_work_day(emp, d):
@@ -189,7 +192,7 @@ def analytics_attendance(request):
     # ── 員工出勤健康度（本月）───────────────────────────────
     emp_health = []
     for i, emp in enumerate(employees):
-        total_wd = absent_c = late_c = 0
+        total_wd = absent_c = late_c = makeup_c = 0
         for day in range(1, today.day + 1):
             d = date(cy, cm, day)
             if not _is_work_day(emp, d):
@@ -198,14 +201,20 @@ def analytics_attendance(request):
             ci = clockin_map.get((emp.id, d))
             if ci is None:
                 absent_c += 1
-            elif _is_late(emp, ci):
-                late_c += 1
+            else:
+                if _is_late(emp, ci):
+                    late_c += 1
+                if (emp.id, d) in makeup_set:
+                    makeup_c += 1
         rate = round((1 - absent_c / max(total_wd, 1)) * 100, 1) if total_wd else 100.0
+        makeup_rate = round(makeup_c / max(total_wd, 1) * 100, 1) if total_wd else 0.0
         emp_health.append({
-            'name':   emp_labels[i],
-            'rate':   rate,
-            'late':   late_c,
-            'absent': absent_c,
+            'name':        emp_labels[i],
+            'rate':        rate,
+            'late':        late_c,
+            'absent':      absent_c,
+            'makeup':      makeup_c,
+            'makeup_rate': makeup_rate,
             'color':  'emerald' if rate >= 90 else ('amber' if rate >= 80 else 'red'),
         })
     emp_health.sort(key=lambda x: x['rate'])  # 最差排最前，方便老闆看

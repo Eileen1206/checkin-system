@@ -109,6 +109,7 @@
             <th class="pb-2 text-right font-medium">出勤率</th>
             <th class="pb-2 text-right font-medium">遲到</th>
             <th class="pb-2 text-right font-medium">缺勤</th>
+            <th class="pb-2 text-right font-medium">補打卡</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
@@ -131,6 +132,14 @@
             </td>
             <td class="py-2.5 text-right text-gray-500">{{ e.late }} 次</td>
             <td class="py-2.5 text-right text-gray-500">{{ e.absent }} 天</td>
+            <td class="py-2.5 text-right">
+              {% if e.makeup > 0 %}
+                <span class="text-orange-500 font-medium">{{ e.makeup }} 次</span>
+                <span class="text-gray-400 text-xs ml-0.5">({{ e.makeup_rate }}%)</span>
+              {% else %}
+                <span class="text-gray-300">—</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
