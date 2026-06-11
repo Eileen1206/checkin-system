@@ -9,21 +9,171 @@
 {% block content %}
 <div class="space-y-6">
 
-  <!-- 近 30 天送貨趟次 / 完成趟次 -->
+{# ── Row 1：Hero KPI 卡片 ─────────────────────────────── #}
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+
+  {# 準時完成率 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">準時完成率</p>
+    <p class="text-3xl font-bold leading-none
+      {% if kpi.completion_rate >= 85 %}text-emerald-600
+      {% elif kpi.completion_rate >= 65 %}text-amber-500
+      {% else %}text-red-500{% endif %}">
+      {% if kpi.completion_rate is not None %}
+        {{ kpi.completion_rate|floatformat:1 }}<span class="text-base text-gray-500 ml-0.5">%</span>
+      {% else %}<span class="text-gray-300 text-xl">—</span>{% endif %}
+    </p>
+    <p class="text-xs mt-2">
+      {% if kpi.completion_rate_delta is not None %}
+        {% if kpi.completion_rate_delta > 0 %}
+          <span class="text-emerald-600">▲ +{{ kpi.completion_rate_delta|floatformat:1 }}%</span>
+        {% elif kpi.completion_rate_delta < 0 %}
+          <span class="text-red-500">▼ {{ kpi.completion_rate_delta|floatformat:1|slice:"1:" }}%</span>
+        {% else %}
+          <span class="text-gray-400">持平</span>
+        {% endif %}
+      {% else %}
+        <span class="text-gray-400">—</span>
+      {% endif %}
+      <span class="text-gray-400 ml-1">vs 前 30 天</span>
+    </p>
+  </div>
+
+  {# 平均趟程時間 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">平均趟程時間</p>
+    <p class="text-3xl font-bold text-gray-900 leading-none">
+      {% if kpi.trip_min is not None %}
+        {{ kpi.trip_min }}<span class="text-base text-gray-500 ml-0.5">分</span>
+      {% else %}<span class="text-gray-300 text-xl">—</span>{% endif %}
+    </p>
+    <p class="text-xs mt-2">
+      {% if kpi.trip_min_delta is not None %}
+        {% if kpi.trip_min_delta < 0 %}
+          <span class="text-emerald-600">▼ {{ kpi.trip_min_delta|floatformat:0|slice:"1:" }} 分</span>
+        {% elif kpi.trip_min_delta > 0 %}
+          <span class="text-amber-500">▲ +{{ kpi.trip_min_delta|floatformat:0 }} 分</span>
+        {% else %}
+          <span class="text-gray-400">持平</span>
+        {% endif %}
+      {% else %}
+        <span class="text-gray-400">—</span>
+      {% endif %}
+      <span class="text-gray-400 ml-1">vs 前 30 天</span>
+    </p>
+  </div>
+
+  {# 推播響應時間 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">推播響應時間</p>
+    <p class="text-3xl font-bold text-gray-900 leading-none">
+      {% if kpi.response_min is not None %}
+        {{ kpi.response_min|floatformat:1 }}<span class="text-base text-gray-500 ml-0.5">分</span>
+      {% else %}<span class="text-gray-300 text-xl">—</span>{% endif %}
+    </p>
+    <p class="text-xs mt-2 text-gray-400">推播到開始送貨的時間</p>
+  </div>
+
+  {# 規劃準確度 #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+    <p class="text-xs text-gray-400 mb-1">規劃準確度偏差</p>
+    <p class="text-3xl font-bold leading-none
+      {% if kpi.plan_delta is not None %}
+        {% if kpi.plan_delta >= 15 or kpi.plan_delta <= -15 %}text-amber-500
+        {% else %}text-gray-900{% endif %}
+      {% else %}text-gray-900{% endif %}">
+      {% if kpi.plan_delta is not None %}
+        {% if kpi.plan_delta > 0 %}+{% endif %}{{ kpi.plan_delta|floatformat:0 }}<span class="text-base text-gray-500 ml-0.5">分</span>
+      {% else %}<span class="text-gray-300 text-xl">—</span>{% endif %}
+    </p>
+    <p class="text-xs mt-2 text-gray-400">實際 vs 路線規劃估時</p>
+  </div>
+
+</div>
+
+{# ── Row 2：趟次折線 + 員工健康度 ────────────────────── #}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  {# 近 30 天趟次折線（現有） #}
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
     <h2 class="text-sm font-semibold text-gray-700 mb-4">近 30 天每日送貨趟次</h2>
-    <div class="relative h-64">
+    <div class="relative h-56">
       <canvas id="chartTrips"></canvas>
     </div>
   </div>
 
-  <!-- 本月各員工送貨績效 -->
+  {# 員工 Exception 健康度表（新） #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-1">員工送貨健康度（近 30 天）</h2>
+    <p class="text-xs text-gray-400 mb-3">依準時完成率由低到高排列，紅色需優先關注</p>
+    {% if exception_rows %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-gray-400 border-b border-gray-100">
+            <th class="pb-2 text-left font-medium">員工</th>
+            <th class="pb-2 text-right font-medium">完成率</th>
+            <th class="pb-2 text-right font-medium">響應</th>
+            <th class="pb-2 text-right font-medium">趟程</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for row in exception_rows %}
+          <tr>
+            <td class="py-2.5">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full shrink-0
+                  {% if row.color == 'emerald' %}bg-emerald-400
+                  {% elif row.color == 'amber' %}bg-amber-400
+                  {% else %}bg-red-400{% endif %}"></span>
+                <span class="text-gray-800">{{ row.name }}</span>
+              </div>
+            </td>
+            <td class="py-2.5 text-right font-semibold
+              {% if row.color == 'emerald' %}text-emerald-600
+              {% elif row.color == 'amber' %}text-amber-600
+              {% else %}text-red-600{% endif %}">
+              {% if row.rate is not None %}{{ row.rate|floatformat:1 }}%{% else %}—{% endif %}
+            </td>
+            <td class="py-2.5 text-right text-gray-500">
+              {% if row.response is not None %}{{ row.response|floatformat:1 }} 分{% else %}—{% endif %}
+            </td>
+            <td class="py-2.5 text-right text-gray-500">
+              {% if row.trip_min is not None %}{{ row.trip_min }} 分{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400 text-center py-10">近 30 天尚無送貨資料</p>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Row 3：出發時段 + 員工績效 ──────────────────────── #}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  {# 出發時段分布（新） #}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700">出發時段分布（近 30 天）</h2>
+    <p class="text-xs text-gray-400 mt-0.5 mb-4">識別高峰時段，協助排班與交通評估</p>
+    <div class="relative h-56">
+      <canvas id="chartHeatmap"></canvas>
+    </div>
+  </div>
+
+  {# 本月各員工送貨績效（現有） #}
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
     <h2 class="text-sm font-semibold text-gray-700 mb-4">本月各員工送貨趟數 &amp; 完成站點數</h2>
-    <div class="relative h-72">
+    <div class="relative h-56">
       <canvas id="chartEmpDelivery"></canvas>
     </div>
   </div>
+
+</div>
 
 </div>
 {% endblock %}
@@ -38,8 +188,10 @@ const empLabels        = {{ emp_labels|safe }};
 const empTrips         = {{ emp_trips|safe }};
 const empStations      = {{ emp_stations|safe }};
 const empAutoClosed    = {{ emp_auto_closed|safe }};
+const heatmapHours     = {{ heatmap_hours|safe }};
+const heatmapValues    = {{ heatmap_values|safe }};
 
-// 30 天趟次折線圖（含未按完成）
+// ── 30 天趟次折線圖（含未按完成）──────────────────────
 new Chart(document.getElementById('chartTrips'), {
   type: 'line',
   data: {
@@ -49,7 +201,7 @@ new Chart(document.getElementById('chartTrips'), {
         label: '總趟次',
         data: tripCounts,
         borderColor: '#3b82f6',
-        backgroundColor: '#3b82f622',
+        backgroundColor: 'rgba(59,130,246,0.07)',
         tension: 0.4,
         fill: true,
         pointRadius: 3,
@@ -58,7 +210,7 @@ new Chart(document.getElementById('chartTrips'), {
         label: '已完成',
         data: finishCounts,
         borderColor: '#10b981',
-        backgroundColor: '#10b98122',
+        backgroundColor: 'rgba(16,185,129,0.07)',
         tension: 0.4,
         fill: true,
         pointRadius: 3,
@@ -67,7 +219,6 @@ new Chart(document.getElementById('chartTrips'), {
         label: '未按完成',
         data: autoClosedCounts,
         borderColor: '#f97316',
-        backgroundColor: '#f9731622',
         tension: 0.4,
         fill: false,
         pointRadius: 3,
@@ -78,41 +229,60 @@ new Chart(document.getElementById('chartTrips'), {
   options: {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: 'top' } },
-    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+    plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
+    scales: {
+      y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } } },
+      x: { ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
+    },
   },
 });
 
-// 員工送貨績效（含未按完成）
+// ── 出發時段分布（橫條）────────────────────────────────
+new Chart(document.getElementById('chartHeatmap'), {
+  type: 'bar',
+  data: {
+    labels: heatmapHours,
+    datasets: [{
+      label: '出發次數',
+      data: heatmapValues,
+      backgroundColor: heatmapValues.map(v => {
+        const max = Math.max(...heatmapValues, 1);
+        const ratio = v / max;
+        const r = Math.round(59 + (239 - 59) * (1 - ratio));
+        const g = Math.round(130 + (68  - 130) * (1 - ratio));
+        const b = Math.round(246 + (44  - 246) * (1 - ratio));
+        return `rgba(${r},${g},${b},0.85)`;
+      }),
+      borderRadius: 4,
+    }],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } } },
+      y: { ticks: { font: { size: 11 } } },
+    },
+  },
+});
+
+// ── 員工送貨績效柱狀圖──────────────────────────────────
 new Chart(document.getElementById('chartEmpDelivery'), {
   type: 'bar',
   data: {
     labels: empLabels,
     datasets: [
-      {
-        label: '送貨趟數',
-        data: empTrips,
-        backgroundColor: '#3b82f6',
-        borderRadius: 6,
-      },
-      {
-        label: '完成站點',
-        data: empStations,
-        backgroundColor: '#10b981',
-        borderRadius: 6,
-      },
-      {
-        label: '未按完成',
-        data: empAutoClosed,
-        backgroundColor: '#f97316',
-        borderRadius: 6,
-      },
+      { label: '送貨趟數', data: empTrips,     backgroundColor: '#3b82f6', borderRadius: 6 },
+      { label: '完成站點', data: empStations,  backgroundColor: '#10b981', borderRadius: 6 },
+      { label: '未按完成', data: empAutoClosed, backgroundColor: '#f97316', borderRadius: 6 },
     ],
   },
   options: {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { position: 'top' } },
+    plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
     scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
   },
 });

@@ -239,44 +239,130 @@ def analytics_attendance(request):
 @login_required
 @require_group('admin', 'finance')
 def analytics_delivery(request):
-    """送貨分析：每日趟數、完成率、平均時間"""
-    today = timezone.localdate()
-    # 最近 30 天
-    days = [(today - timedelta(days=i)) for i in range(29, -1, -1)]
-    labels = [d.strftime('%-m/%-d') if hasattr(d, 'strftime') else d.strftime('%m/%d') for d in days]
-    # Windows 不支援 %-m，用 %m/%d 再去掉前導零
+    """送貨分析 BI：KPI 摘要、趟次趨勢、員工健康度、時段分布"""
+    from django.utils.timezone import localtime as ltime
+    from django.db.models import Count
+    from collections import defaultdict
+
+    today        = timezone.localdate()
+    period_start = today - timedelta(days=29)
+    prev_end     = today - timedelta(days=30)
+    prev_start   = today - timedelta(days=59)
+
+    # ── 批次載入（避免 N+1）──────────────────────────────────
+    sessions_now  = list(DeliverySession.objects.filter(
+        date__range=(period_start, today)
+    ).select_related('employee__user'))
+
+    sessions_prev = list(DeliverySession.objects.filter(
+        date__range=(prev_start, prev_end)
+    ).select_related('employee__user'))
+
+    station_map = {
+        row['employee_id']: row['count']
+        for row in DeliveryTask.objects.filter(
+            date__range=(period_start, today), status='completed'
+        ).values('employee_id').annotate(count=Count('id'))
+    }
+
+    # ── KPI 計算函式（純 Python）─────────────────────────────
+    def _completion_rate(sl):
+        if not sl:
+            return None
+        done = sum(1 for s in sl if not s.auto_closed and s.finished_at)
+        return round(done / len(sl) * 100, 1)
+
+    def _avg_trip_min(sl):
+        valid = [s for s in sl if s.started_at and s.finished_at and not s.auto_closed]
+        if not valid:
+            return None
+        return round(sum((s.finished_at - s.started_at).total_seconds() for s in valid) / len(valid) / 60)
+
+    def _avg_response_min(sl):
+        valid = [s for s in sl if s.pushed_at and s.started_at and s.started_at >= s.pushed_at]
+        if not valid:
+            return None
+        return round(sum((s.started_at - s.pushed_at).total_seconds() for s in valid) / len(valid) / 60, 1)
+
+    def _avg_plan_delta(sl):
+        valid = [s for s in sl if s.planned_drive_minutes and s.started_at and s.finished_at and not s.auto_closed]
+        if not valid:
+            return None
+        total = sum((s.finished_at - s.started_at).total_seconds() / 60 - s.planned_drive_minutes for s in valid)
+        return round(total / len(valid), 1)
+
+    def _delta(a, b):
+        return round(a - b, 1) if a is not None and b is not None else None
+
+    # ── KPI 卡片 ─────────────────────────────────────────────
+    kpi = {
+        'completion_rate':       _completion_rate(sessions_now),
+        'completion_rate_delta': _delta(_completion_rate(sessions_now),  _completion_rate(sessions_prev)),
+        'trip_min':              _avg_trip_min(sessions_now),
+        'trip_min_delta':        _delta(_avg_trip_min(sessions_now),     _avg_trip_min(sessions_prev)),
+        'response_min':          _avg_response_min(sessions_now),
+        'response_min_delta':    _delta(_avg_response_min(sessions_now), _avg_response_min(sessions_prev)),
+        'plan_delta':            _avg_plan_delta(sessions_now),
+        'plan_delta_delta':      _delta(_avg_plan_delta(sessions_now),   _avg_plan_delta(sessions_prev)),
+    }
+
+    # ── 近 30 天每日趟次（現有圖表，純 Python 計算）──────────
+    days   = [(today - timedelta(days=i)) for i in range(29, -1, -1)]
     labels = [d.strftime('%m/%d').lstrip('0').replace('/0', '/') for d in days]
 
-    trip_counts   = []
-    finish_counts = []
-    for d in days:
-        total    = DeliverySession.objects.filter(date=d).count()
-        finished = DeliverySession.objects.filter(date=d, finished_at__isnull=False).count()
-        trip_counts.append(total)
-        finish_counts.append(finished)
+    day_total    = defaultdict(int)
+    day_finished = defaultdict(int)
+    day_closed   = defaultdict(int)
+    for s in sessions_now:
+        day_total[s.date] += 1
+        if s.finished_at and not s.auto_closed:
+            day_finished[s.date] += 1
+        if s.auto_closed:
+            day_closed[s.date] += 1
 
-    # 近 30 天每日「未按完成」次數
-    auto_closed_counts = [
-        DeliverySession.objects.filter(date=d, auto_closed=True).count()
-        for d in days
-    ]
+    trip_counts        = [day_total.get(d, 0)    for d in days]
+    finish_counts      = [day_finished.get(d, 0) for d in days]
+    auto_closed_counts = [day_closed.get(d, 0)   for d in days]
 
-    # 各員工本月送貨趟數
+    # ── 各員工本月績效（現有圖表）────────────────────────────
+    employees = list(Employee.objects.select_related('user').order_by('employee_id'))
     emp_labels      = []
     emp_trips       = []
     emp_stations    = []
     emp_auto_closed = []
-    employees = Employee.objects.select_related('user').order_by('employee_id')
     for emp in employees:
-        trips       = DeliverySession.objects.filter(employee=emp, date__year=today.year, date__month=today.month).count()
-        stations    = DeliveryTask.objects.filter(employee=emp, date__year=today.year, date__month=today.month, status='completed').count()
-        auto_closed = DeliverySession.objects.filter(employee=emp, date__year=today.year, date__month=today.month, auto_closed=True).count()
+        emp_s = [s for s in sessions_now if s.employee_id == emp.id]
         emp_labels.append(emp.user.get_full_name() or emp.user.username)
-        emp_trips.append(trips)
-        emp_stations.append(stations)
-        emp_auto_closed.append(auto_closed)
+        emp_trips.append(len(emp_s))
+        emp_stations.append(station_map.get(emp.id, 0))
+        emp_auto_closed.append(sum(1 for s in emp_s if s.auto_closed))
+
+    # ── 員工 Exception 健康度表──────────────────────────────
+    exception_rows = []
+    for i, emp in enumerate(employees):
+        emp_s = [s for s in sessions_now if s.employee_id == emp.id]
+        if not emp_s:
+            continue
+        rate = _completion_rate(emp_s)
+        exception_rows.append({
+            'name':     emp_labels[i],
+            'rate':     rate,
+            'response': _avg_response_min(emp_s),
+            'trip_min': _avg_trip_min(emp_s),
+            'color':    'emerald' if (rate or 0) >= 85 else ('amber' if (rate or 0) >= 65 else 'red'),
+        })
+    exception_rows.sort(key=lambda x: (x['rate'] or 0))
+
+    # ── 出發時段分布──────────────────────────────────────────
+    hour_counts = defaultdict(int)
+    for s in sessions_now:
+        if s.started_at:
+            hour_counts[ltime(s.started_at).hour] += 1
+    heatmap_hours  = list(range(6, 20))
+    heatmap_values = [hour_counts.get(h, 0) for h in heatmap_hours]
 
     return render(request, 'attendance/analytics_delivery.html', {
+        # 現有圖表
         'labels':             json.dumps(labels, ensure_ascii=False),
         'trip_counts':        json.dumps(trip_counts),
         'finish_counts':      json.dumps(finish_counts),
@@ -285,6 +371,11 @@ def analytics_delivery(request):
         'emp_trips':          json.dumps(emp_trips),
         'emp_stations':       json.dumps(emp_stations),
         'emp_auto_closed':    json.dumps(emp_auto_closed),
+        # 新增
+        'kpi':            kpi,
+        'exception_rows': exception_rows,
+        'heatmap_hours':  json.dumps([f'{h}時' for h in heatmap_hours], ensure_ascii=False),
+        'heatmap_values': json.dumps(heatmap_values),
     })
 
 
