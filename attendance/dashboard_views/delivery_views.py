@@ -53,9 +53,13 @@ def _get_avg_stop_minutes(employee, default=5.0):
     return default
 
 
-def _build_prediction(ordered_customers, n_stops, avg_stop_min):
-    """回傳 (predicted_minutes, drive_minutes)，算不出來則 (None, None)。"""
-    drive_min = get_route_drive_minutes(ordered_customers)
+def _build_prediction(ordered_customers, n_stops, avg_stop_min, cache_only=False):
+    """回傳 (predicted_minutes, drive_minutes)，算不出來則 (None, None)。
+
+    cache_only=True 供只讀的儀表板頁使用，只讀行車時間快取、不同步呼叫
+    ORS，避免頁面渲染因外部 API 卡住而讓 gunicorn worker timeout。
+    """
+    drive_min = get_route_drive_minutes(ordered_customers, cache_only=cache_only)
     if drive_min is None:
         return None, None
     predicted = round(drive_min + n_stops * avg_stop_min)
@@ -308,7 +312,7 @@ def delivery_plan(request):
             task_customers = [t.customer for t in tasks_qs if t.customer]
             avg_stop  = _get_avg_stop_minutes(emp)
             n_stops   = tasks_qs.count()
-            predicted, drive = _build_prediction(task_customers, n_stops, avg_stop)
+            predicted, drive = _build_prediction(task_customers, n_stops, avg_stop, cache_only=True)
             return render(request, 'attendance/delivery_plan.html', {
                 'success':   True,
                 'employee':  emp,
@@ -339,7 +343,7 @@ def delivery_plan(request):
             avg_stop  = _get_avg_stop_minutes(emp)
             customers = [t.customer for t in tasks_list
                          if t.customer and t.customer.lat and t.customer.lng]
-            predicted, drive = _build_prediction(customers, len(tasks_list), avg_stop)
+            predicted, drive = _build_prediction(customers, len(tasks_list), avg_stop, cache_only=True)
             pending_list.append({
                 'emp':       emp,
                 'tasks':     tasks_list,

@@ -58,7 +58,7 @@ def index(request):
         pending_tasks = [t for t in tasks if t.status == 'pending']
         task_customers = [t.customer for t in pending_tasks if t.customer]
         avg_stop  = _get_avg_stop_minutes(session.employee)
-        predicted, drive = _build_prediction(task_customers, len(pending_tasks), avg_stop)
+        predicted, drive = _build_prediction(task_customers, len(pending_tasks), avg_stop, cache_only=True)
         delivery_status.append({
             'employee':   session.employee,
             'session':    session,
