@@ -145,6 +145,18 @@ class WebhookSignatureTest(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_webhook_returns_200_on_handler_error(self):
+        """處理事件時發生非簽章錯誤，webhook 仍須回 200，避免 LINE 反覆重送。"""
+        from attendance import views
+        with patch.object(views.handler, 'handle', side_effect=RuntimeError('boom')):
+            resp = self.client.post(
+                '/attendance/webhook/',
+                data=b'{}',
+                content_type='application/json',
+                HTTP_X_LINE_SIGNATURE='whatever',
+            )
+        self.assertEqual(resp.status_code, 200)
+
 
 class RouteDriveCacheTest(TestCase):
     """行車時間預估：只讀路徑不得同步呼叫 ORS，避免 worker timeout"""

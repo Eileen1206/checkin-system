@@ -130,6 +130,10 @@ def webhook(request):
         handler.handle(body, signature)
     except InvalidSignatureError:
         return HttpResponse('Invalid signature', status=400)
+    except Exception as e:
+        # 任何處理錯誤都吞掉並回 200，避免 LINE 判定送失敗而每分鐘反覆
+        # 重送同一事件（其 reply token 早已失效）造成 400→500 無限迴圈。
+        print(f'[webhook error] {e}')
 
     return HttpResponse('OK')
 
@@ -188,6 +192,11 @@ def handle_text_message(event):
 def handle_postback(event):
     """使用者點選按鈕後觸發"""
     from attendance.models import Employee
+
+    # LINE 重送（redelivery）的事件，其 reply token 一定已失效，
+    # 直接略過，避免回覆時拿到 400「Invalid reply token」。
+    if getattr(getattr(event, 'delivery_context', None), 'is_redelivery', False):
+        return
 
     line_user_id = event.source.user_id
     data = event.postback.data
