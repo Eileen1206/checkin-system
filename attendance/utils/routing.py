@@ -9,11 +9,14 @@ DRIVE_CACHE_TTL = 60 * 60 * 12  # 12 小時
 
 
 def get_client():
-    # retry_over_query_limit=False：ORS 免費額度被限流 (429) 時，
-    # 不要在請求執行緒內反覆重試，否則單次呼叫會遠超過 gunicorn timeout。
+    # retry_over_query_limit=False：ORS 免費額度被限流 (429) 時，不要反覆重試。
+    # retry_timeout=5：ORS 伺服器掛掉 (503) 時，客戶端預設會重試整整 60 秒
+    #   （retry_timeout 預設值），會超過 gunicorn timeout 拖垮 worker；
+    #   縮短重試視窗，讓呼叫端快速放棄並走既有的 fallback（退回原順序 / 不預測）。
     return openrouteservice.Client(
         key=settings.ORS_API_KEY,
         timeout=8,
+        retry_timeout=5,
         retry_over_query_limit=False,
     )
 
