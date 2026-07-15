@@ -173,6 +173,15 @@ class RouteDriveCacheTest(TestCase):
             lat='25.040000', lng='121.560000',
         )
 
+    def test_client_has_bounded_retry_window(self):
+        """ORS client 必須設短 retry_timeout，避免伺服器掛掉時重試到 worker timeout。"""
+        with patch.object(routing.openrouteservice, 'Client') as Client:
+            routing.get_client()
+        kwargs = Client.call_args.kwargs
+        self.assertIn('retry_timeout', kwargs)
+        self.assertLessEqual(kwargs['retry_timeout'], 10)
+        self.assertFalse(kwargs.get('retry_over_query_limit', True))
+
     def test_cache_only_never_calls_ors(self):
         """cache_only=True 且快取未命中時回傳 None，且不建立 ORS client。"""
         with patch.object(routing, 'get_client',
