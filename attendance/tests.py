@@ -248,3 +248,49 @@ class DashboardNoBlockingCallTest(TestCase):
                           side_effect=AssertionError('儀表板不應呼叫 ORS')):
             resp = self.client.get('/dashboard/')
         self.assertEqual(resp.status_code, 200)
+
+
+class DeliveryPushErrorTest(TestCase):
+    """LINE 推播失敗時，delivery_push 須回滾並提示，而非回 500 錯誤頁"""
+
+    def setUp(self):
+        cache.clear()
+        admin = User.objects.create_user(
+            username='boss2', password='pass12345',
+            is_staff=True, is_superuser=True,
+        )
+        self.client.login(username='boss2', password='pass12345')
+
+        driver_user = User.objects.create_user(
+            username='driver2', password='x', first_name='一', last_name='王',
+        )
+        self.employee = Employee.objects.create(
+            user=driver_user, employee_id='D009',
+            department='外送', is_delivery=True, line_user_id='Utest009',
+        )
+        customer = Customer.objects.create(
+            customer_id='C009', name='客戶九', address='客戶地址',
+            lat='25.040000', lng='121.560000',
+        )
+        DeliveryTask.objects.create(
+            employee=self.employee, date=timezone.localdate(), order=1,
+            customer=customer, customer_name=customer.name,
+            address=customer.address, status='pending',
+        )
+
+    def test_push_failure_rolls_back_and_avoids_500(self):
+        from attendance.dashboard_views import delivery_views
+        with patch.object(delivery_views, 'MessagingApi') as MessagingApi:
+            MessagingApi.return_value.push_message.side_effect = Exception('LINE 500')
+            resp = self.client.post('/dashboard/delivery/push/', {
+                'employee_id': self.employee.pk,
+                'date': str(timezone.localdate()),
+            })
+        # 應為轉址（回送貨規劃頁），而非 500 錯誤頁
+        self.assertEqual(resp.status_code, 302)
+        # 本趟已回滾，不留半殘趟次
+        self.assertEqual(DeliverySession.objects.count(), 0)
+        # 任務退回未推播狀態（session 為空、仍為 pending）
+        task = DeliveryTask.objects.get()
+        self.assertIsNone(task.session)
+        self.assertEqual(task.status, 'pending')
