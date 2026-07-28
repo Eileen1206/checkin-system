@@ -185,12 +185,21 @@ def delivery_push(request):
     )
 
     configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-    with ApiClient(configuration) as api_client:
-        api = MessagingApi(api_client)
-        api.push_message(PushMessageRequest(
-            to=employee.line_user_id,
-            messages=[TextMessage(text=message_text), flex_msg]
-        ))
+    try:
+        with ApiClient(configuration) as api_client:
+            api = MessagingApi(api_client)
+            api.push_message(PushMessageRequest(
+                to=employee.line_user_id,
+                messages=[TextMessage(text=message_text), flex_msg]
+            ))
+    except Exception as e:
+        # LINE 推播 API 失敗（例如 LINE 服務暫時異常回 500）時，不要讓整個
+        # 請求爆成 Django 500 錯誤頁；回滾本趟（刪掉沒推成功的趟次，任務
+        # 經 SET_NULL 退回未推播狀態），提示老闆稍後重試。
+        print(f'[delivery_push error] {e}')
+        session.delete()
+        messages.error(request, 'LINE 推播失敗（LINE 服務暫時異常），請稍後再試一次。')
+        return redirect('dashboard:delivery_plan')
 
     messages.success(request, f'已推播路線給 {employee.user.get_full_name()}！')
     return redirect('dashboard:delivery_plan')
