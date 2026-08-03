@@ -154,7 +154,10 @@ SITE_URL = env('SITE_URL', default='http://localhost:8000')
 # GPS 同意書版本號：條款改版時請遞增，員工將被要求重新同意
 GPS_CONSENT_VERSION = 'v1.0'
 
-# 排班：同一天休假人數達此門檻即在請假月曆標示「人力吃緊」
+# 排班：一例一休統計門檻
+# 週日為公司公休（例假），自動成立；員工每週需在週一~週六排定的「休息日（一休）」天數
+SCHEDULE_WEEKDAY_REST_REQUIRED = env.int('SCHEDULE_WEEKDAY_REST_REQUIRED', default=1)
+# 同一天休假人數達此門檻即在請假月曆標示「人力吃緊」
 SCHEDULE_MANPOWER_WARN_THRESHOLD = env.int('SCHEDULE_MANPOWER_WARN_THRESHOLD', default=2)
 
 

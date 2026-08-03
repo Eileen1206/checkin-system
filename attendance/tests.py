@@ -298,39 +298,41 @@ class DeliveryPushErrorTest(TestCase):
 
 
 class SchedulingLogicTest(TestCase):
-    """一例一休判定的純邏輯（不碰 DB）"""
+    """一例一休判定：週日公休為例假，只看週一~週六是否排了休息日"""
 
     def _week(self, anchor):
         """由任一日期取得其所在週的週一~週日 7 個 date。"""
         monday = anchor - timedelta(days=anchor.weekday())
         return [monday + timedelta(days=i) for i in range(7)]
 
-    def test_mon_to_fri_worker_compliant_without_leave(self):
+    def test_no_weekday_leave_is_missing(self):
+        """整週沒排平日休 → 缺休（即使固定週休二也一樣）。"""
         week = self._week(date(2026, 8, 15))
-        st = scheduling.employee_week_status({0, 1, 2, 3, 4}, week, set())
-        self.assertTrue(st['compliant'])  # 週六固定休、週日例假
-
-    def test_mon_to_sat_worker_missing_flex_day(self):
-        week = self._week(date(2026, 8, 15))
-        st = scheduling.employee_week_status({0, 1, 2, 3, 4, 5}, week, set())
+        st = scheduling.week_rest_status(week, set(), required=1)
         self.assertFalse(st['compliant'])
-        self.assertTrue(st['mandatory_ok'])   # 週日仍是例假
-        self.assertFalse(st['flex_ok'])
-        self.assertIn('缺休息日（平日未排休）', st['reasons'])
+        self.assertEqual(st['weekday_rest'], 0)
+        self.assertEqual(st['shortfall'], 1)
 
-    def test_mon_to_sat_worker_ok_when_takes_leave(self):
+    def test_one_weekday_leave_is_compliant(self):
         week = self._week(date(2026, 8, 15))
         tuesday = week[1]
-        st = scheduling.employee_week_status({0, 1, 2, 3, 4, 5}, week, {tuesday})
+        st = scheduling.week_rest_status(week, {tuesday}, required=1)
         self.assertTrue(st['compliant'])
+        self.assertEqual(st['weekday_rest'], 1)
 
-    def test_seven_day_worker_missing_both(self):
+    def test_sunday_leave_does_not_count(self):
+        """週日已是公休（例假），週日放假不算平日休息日。"""
         week = self._week(date(2026, 8, 15))
-        st = scheduling.employee_week_status({0, 1, 2, 3, 4, 5, 6}, week, set())
+        sunday = week[6]
+        st = scheduling.week_rest_status(week, {sunday}, required=1)
         self.assertFalse(st['compliant'])
-        self.assertFalse(st['mandatory_ok'])
-        self.assertFalse(st['flex_ok'])
-        self.assertEqual(len(st['reasons']), 2)
+        self.assertEqual(st['weekday_rest'], 0)
+
+    def test_required_two_needs_two_weekday_rests(self):
+        week = self._week(date(2026, 8, 15))
+        st = scheduling.week_rest_status(week, {week[1]}, required=2)
+        self.assertFalse(st['compliant'])
+        self.assertEqual(st['shortfall'], 1)
 
     def test_iter_month_weeks_covers_month(self):
         weeks = scheduling.iter_month_weeks(2026, 8)
