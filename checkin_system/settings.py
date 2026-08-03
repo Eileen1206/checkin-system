@@ -154,4 +154,7 @@ SITE_URL = env('SITE_URL', default='http://localhost:8000')
 # GPS 同意書版本號：條款改版時請遞增，員工將被要求重新同意
 GPS_CONSENT_VERSION = 'v1.0'
 
+# 排班：同一天休假人數達此門檻即在請假月曆標示「人力吃緊」
+SCHEDULE_MANPOWER_WARN_THRESHOLD = env.int('SCHEDULE_MANPOWER_WARN_THRESHOLD', default=2)
+
 

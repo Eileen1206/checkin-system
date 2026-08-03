@@ -4,9 +4,11 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.utils import timezone
 from django.urls import reverse
-from datetime import datetime
+from django.conf import settings
+from datetime import datetime, date
 import json
 from ..models import Employee, LeaveRecord, LeaveRequest, LocationCorrectionRequest
+from ..utils import scheduling
 from .base import require_group
 
 
@@ -77,6 +79,57 @@ def leave_calendar(request):
     else:
         next_year, next_month = year, month + 1
 
+    # ── 一例一休排班統計 ─────────────────────────────────────────
+    # 以「週一起算」的完整 7 天週計算，查詢範圍放寬到涵蓋各週的完整日期
+    month_weeks = scheduling.iter_month_weeks(year, month)
+    range_start = month_weeks[0]['dates'][0]
+    range_end   = month_weeks[-1]['dates'][-1]
+
+    leave_qs_range = LeaveRecord.objects.filter(
+        date__gte=range_start, date__lte=range_end
+    ).select_related('employee__user')
+
+    leave_dates_by_emp = {}
+    for lr in leave_qs_range:
+        leave_dates_by_emp.setdefault(lr.employee_id, set()).add(lr.date)
+
+    # 每員工 × 每週 達標表
+    week_compliance = []
+    for emp in employees:
+        work_set   = scheduling.parse_work_days(emp.work_days)
+        emp_leaves = leave_dates_by_emp.get(emp.pk, set())
+        cells, miss = [], 0
+        for wk in month_weeks:
+            st = scheduling.employee_week_status(work_set, wk['dates'], emp_leaves)
+            if not st['compliant']:
+                miss += 1
+            cells.append(st)
+        week_compliance.append({
+            'employee': emp,
+            'name': emp.user.get_full_name() or emp.user.username,
+            'cells': cells,
+            'miss_count': miss,
+        })
+
+    week_headers = [{
+        'index': wk['index'],
+        'label': f"{wk['dates'][0].month}/{wk['dates'][0].day}–{wk['dates'][6].month}/{wk['dates'][6].day}",
+    } for wk in month_weeks]
+
+    # 人力吃緊日（只看當月）
+    threshold   = getattr(settings, 'SCHEDULE_MANPOWER_WARN_THRESHOLD', 2)
+    month_dates = {date(year, month, d) for d in range(1, days_in_month + 1)}
+    leave_pairs = [
+        (lr.date, lr.employee.user.get_full_name() or lr.employee.user.username)
+        for lr in leave_qs_range
+    ]
+    leaves_by_date  = scheduling.group_leaves_by_date(leave_pairs)
+    understaffed    = scheduling.understaffed_days(leaves_by_date, threshold, only_dates=month_dates)
+    _wd_labels = ['一', '二', '三', '四', '五', '六', '日']
+    for item in understaffed:
+        item['weekday'] = _wd_labels[item['date'].weekday()]
+    understaffed_days_nums = [item['date'].day for item in understaffed]
+
     return render(request, 'attendance/leave_calendar.html', {
         'year': year, 'month': month,
         'weeks': weeks,
@@ -87,6 +140,12 @@ def leave_calendar(request):
         'prev_year': prev_year, 'prev_month': prev_month,
         'next_year': next_year, 'next_month': next_month,
         'weekday_labels': ['一', '二', '三', '四', '五', '六', '日'],
+        # 一例一休統計
+        'week_headers': week_headers,
+        'week_compliance': week_compliance,
+        'understaffed': understaffed,
+        'understaffed_days_nums': understaffed_days_nums,
+        'manpower_threshold': threshold,
     })
 
 
