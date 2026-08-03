@@ -93,14 +93,14 @@ def leave_calendar(request):
     for lr in leave_qs_range:
         leave_dates_by_emp.setdefault(lr.employee_id, set()).add(lr.date)
 
-    # 每員工 × 每週 達標表
+    # 每員工 × 每週 達標表（週日公休為例假，只看週一~週六是否排了休息日）
+    required = getattr(settings, 'SCHEDULE_WEEKDAY_REST_REQUIRED', 1)
     week_compliance = []
     for emp in employees:
-        work_set   = scheduling.parse_work_days(emp.work_days)
         emp_leaves = leave_dates_by_emp.get(emp.pk, set())
         cells, miss = [], 0
         for wk in month_weeks:
-            st = scheduling.employee_week_status(work_set, wk['dates'], emp_leaves)
+            st = scheduling.week_rest_status(wk['dates'], emp_leaves, required=required)
             if not st['compliant']:
                 miss += 1
             cells.append(st)

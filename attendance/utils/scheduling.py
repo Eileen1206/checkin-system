@@ -1,20 +1,13 @@
 """
 一例一休排班統計的純計算邏輯（不碰 DB，資料由呼叫端帶入，方便測試）。
 
-規則（依老闆設定）：
-- 例假 = 週日（固定）。
-- 休息日 = 週一~週六擇一，由員工自排。
-- 每週達標 = 例假 + 休息日 共 2 天。
-- 「休息日」認定：該日「不在固定上班日(work_days)」或「有請假紀錄」皆算休，
-  如此週一~週五的員工週六本來就算休，不會被誤報缺休。
+規則（依老闆最終確認）：
+- 例假（一例）= 週日公司公休，自動成立，不需排、不計算。
+- 休息日（一休）= 員工在「週一~週六」自行排的請假（LeaveRecord），每週需 >= 需求天數（預設 1）。
+- 達標 = 該週平日已排休天數 >= 需求。固定週休二但沒排平日休 → 仍算缺休（不看 work_days）。
 """
 import calendar as _calendar
 from datetime import date, timedelta
-
-
-def parse_work_days(work_days_str):
-    """'0,1,2,3,4' → {0,1,2,3,4}（0=週一…6=週日）。"""
-    return {int(d) for d in str(work_days_str).split(',') if d.strip().isdigit()}
 
 
 def iter_month_weeks(year, month):
@@ -36,31 +29,21 @@ def iter_month_weeks(year, month):
     return weeks
 
 
-def employee_week_status(work_day_set, week_dates, leave_date_set):
+def week_rest_status(week_dates, leave_date_set, required=1):
     """
-    判定單週一例一休達標。
-      work_day_set  : set[int] 固定上班日（0=週一…6=週日）
+    判定單週「休息日（一休）」是否達標。
       week_dates    : [週一..週日 共 7 個 date]
       leave_date_set: set[date] 該員工已排休（LeaveRecord）的日期
-    回傳 dict：mandatory_ok（例假）、flex_ok（休息日）、compliant、reasons（中文清單）。
+      required      : 該週需排的平日休息日數（週日公休例假不計入）
+    只計「週一~週六」中有排請假的天數；週日公休（例假）自動成立、不計入。
+    回傳 dict：weekday_rest、required、compliant、shortfall。
     """
-    def is_rest(d):
-        return (d.weekday() not in work_day_set) or (d in leave_date_set)
-
-    mandatory_ok = is_rest(week_dates[6])              # 週日例假
-    flex_ok      = any(is_rest(d) for d in week_dates[:6])  # 週一~週六休息日
-
-    reasons = []
-    if not mandatory_ok:
-        reasons.append('缺例假（週日未休）')
-    if not flex_ok:
-        reasons.append('缺休息日（平日未排休）')
-
+    weekday_rest = sum(1 for d in week_dates[:6] if d in leave_date_set)
     return {
-        'mandatory_ok': mandatory_ok,
-        'flex_ok': flex_ok,
-        'compliant': mandatory_ok and flex_ok,
-        'reasons': reasons,
+        'weekday_rest': weekday_rest,
+        'required': required,
+        'compliant': weekday_rest >= required,
+        'shortfall': max(required - weekday_rest, 0),
     }
 
 
