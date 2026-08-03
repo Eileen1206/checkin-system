@@ -4,10 +4,11 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from django.core.cache import cache
 from attendance.models import (
-    Employee, Customer, AttendanceRecord, DeliverySession, DeliveryTask,
+    Employee, Customer, AttendanceRecord, DeliverySession, DeliveryTask, LeaveRecord,
 )
 from django.utils import timezone
-from attendance.utils import routing
+from datetime import date, timedelta
+from attendance.utils import routing, scheduling
 
 
 class LoginRequiredTest(TestCase):
@@ -294,3 +295,98 @@ class DeliveryPushErrorTest(TestCase):
         task = DeliveryTask.objects.get()
         self.assertIsNone(task.session)
         self.assertEqual(task.status, 'pending')
+
+
+class SchedulingLogicTest(TestCase):
+    """一例一休判定的純邏輯（不碰 DB）"""
+
+    def _week(self, anchor):
+        """由任一日期取得其所在週的週一~週日 7 個 date。"""
+        monday = anchor - timedelta(days=anchor.weekday())
+        return [monday + timedelta(days=i) for i in range(7)]
+
+    def test_mon_to_fri_worker_compliant_without_leave(self):
+        week = self._week(date(2026, 8, 15))
+        st = scheduling.employee_week_status({0, 1, 2, 3, 4}, week, set())
+        self.assertTrue(st['compliant'])  # 週六固定休、週日例假
+
+    def test_mon_to_sat_worker_missing_flex_day(self):
+        week = self._week(date(2026, 8, 15))
+        st = scheduling.employee_week_status({0, 1, 2, 3, 4, 5}, week, set())
+        self.assertFalse(st['compliant'])
+        self.assertTrue(st['mandatory_ok'])   # 週日仍是例假
+        self.assertFalse(st['flex_ok'])
+        self.assertIn('缺休息日（平日未排休）', st['reasons'])
+
+    def test_mon_to_sat_worker_ok_when_takes_leave(self):
+        week = self._week(date(2026, 8, 15))
+        tuesday = week[1]
+        st = scheduling.employee_week_status({0, 1, 2, 3, 4, 5}, week, {tuesday})
+        self.assertTrue(st['compliant'])
+
+    def test_seven_day_worker_missing_both(self):
+        week = self._week(date(2026, 8, 15))
+        st = scheduling.employee_week_status({0, 1, 2, 3, 4, 5, 6}, week, set())
+        self.assertFalse(st['compliant'])
+        self.assertFalse(st['mandatory_ok'])
+        self.assertFalse(st['flex_ok'])
+        self.assertEqual(len(st['reasons']), 2)
+
+    def test_iter_month_weeks_covers_month(self):
+        weeks = scheduling.iter_month_weeks(2026, 8)
+        self.assertTrue(weeks)
+        for wk in weeks:
+            self.assertEqual(len(wk['dates']), 7)
+            self.assertEqual(wk['dates'][0].weekday(), 0)   # 週一起算
+            self.assertEqual(wk['dates'][6].weekday(), 6)   # 週日結束
+        # 8/1 與 8/31 都要被某一週涵蓋
+        all_days = {d for wk in weeks for d in wk['dates']}
+        self.assertIn(date(2026, 8, 1), all_days)
+        self.assertIn(date(2026, 8, 31), all_days)
+
+    def test_understaffed_days_threshold(self):
+        d1, d2 = date(2026, 8, 10), date(2026, 8, 11)
+        by_date = scheduling.group_leaves_by_date([
+            (d1, '甲'), (d1, '乙'),   # 2 人
+            (d2, '丙'),               # 1 人
+        ])
+        result = scheduling.understaffed_days(by_date, threshold=2)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['date'], d1)
+        self.assertEqual(result[0]['count'], 2)
+
+
+class LeaveCalendarStatsViewTest(TestCase):
+    """請假月曆的一例一休統計區塊"""
+
+    def setUp(self):
+        admin = User.objects.create_user(
+            username='boss3', password='pass12345',
+            is_staff=True, is_superuser=True,
+        )
+        self.client.login(username='boss3', password='pass12345')
+
+        # 週一~週六的員工，8 月完全沒排平日休 → 應有缺休週
+        u1 = User.objects.create_user(username='w1', password='x', first_name='一', last_name='王')
+        self.emp1 = Employee.objects.create(
+            user=u1, employee_id='W1', department='外送', work_days='0,1,2,3,4,5',
+        )
+        u2 = User.objects.create_user(username='w2', password='x', first_name='二', last_name='李')
+        self.emp2 = Employee.objects.create(
+            user=u2, employee_id='W2', department='外送', work_days='0,1,2,3,4,5',
+        )
+        # 同一天兩人休 → 人力吃緊
+        LeaveRecord.objects.create(employee=self.emp1, date=date(2026, 8, 11))
+        LeaveRecord.objects.create(employee=self.emp2, date=date(2026, 8, 11))
+
+    def test_stats_in_context(self):
+        resp = self.client.get('/dashboard/leave/?year=2026&month=8')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('week_compliance', resp.context)
+        self.assertIn('understaffed', resp.context)
+        # 8/11 兩人休 → 人力吃緊清單有一筆
+        understaffed = resp.context['understaffed']
+        self.assertTrue(any(item['date'] == date(2026, 8, 11) for item in understaffed))
+        # 週一~週六且該員工只在 8/11 排一天休 → 其他週應有缺休
+        rows = {r['employee'].pk: r for r in resp.context['week_compliance']}
+        self.assertGreater(rows[self.emp2.pk]['miss_count'], 0)
