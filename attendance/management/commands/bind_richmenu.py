@@ -24,7 +24,7 @@ class Command(BaseCommand):
         headers = {'Authorization': f'Bearer {token}'}
 
         employees = Employee.objects.filter(
-            line_user_id__isnull=False
+            line_user_id__isnull=False, is_active=True
         ).exclude(line_user_id='')
 
         count = 0

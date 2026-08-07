@@ -25,6 +25,7 @@ urlpatterns = [
     path('employees/', dashboard_views.employee_list, name='employee_list'),
     path('employees/add/', dashboard_views.employee_add, name='employee_add'),
     path('employees/<int:pk>/edit/', dashboard_views.employee_edit, name='employee_edit'),
+    path('employees/<int:pk>/toggle-active/', dashboard_views.employee_toggle_active, name='employee_toggle_active'),
     path('salary/export/', dashboard_views.export_salary_excel, name='export_salary_excel'),
     path('rfid/', dashboard_views.rfid_page, name='rfid_page'),
     path('rfid/checkin/', dashboard_views.rfid_checkin, name='rfid_checkin'),

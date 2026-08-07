@@ -306,7 +306,7 @@ def delivery_plan(request):
     """送貨路線規劃頁面"""
     from ..utils.routing import get_optimal_order, geocode_customer
 
-    employees = Employee.objects.filter(is_delivery=True).select_related('user')
+    employees = Employee.objects.filter(is_delivery=True, is_active=True).select_related('user')
 
     if request.method == 'GET':
         # GET ?edit=<employee_id>：顯示現有任務的拖曳編輯頁
@@ -486,7 +486,7 @@ def delivery_today(request):
     if employee_id:
         orphan_tasks = orphan_tasks.filter(employee_id=employee_id)
 
-    delivery_employees = Employee.objects.filter(is_delivery=True).select_related('user')
+    delivery_employees = Employee.objects.filter(is_delivery=True, is_active=True).select_related('user')
 
     return render(request, 'attendance/delivery_today.html', {
         'trips':                trips,

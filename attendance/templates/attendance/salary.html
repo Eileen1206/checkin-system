@@ -17,11 +17,19 @@
         <option value="{{ m }}"{% if m == month %} selected{% endif %}>{{ m }}月</option>
       {% endfor %}
     </select>
+    {% if show_inactive %}<input type="hidden" name="show_inactive" value="1">{% endif %}
     <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 whitespace-nowrap">查詢</button>
-    <a href="{% url 'dashboard:export_salary_excel' %}?year={{ year }}&month={{ month }}"
+    <a href="{% url 'dashboard:export_salary_excel' %}?year={{ year }}&month={{ month }}{% if show_inactive %}&show_inactive=1{% endif %}"
    class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50 whitespace-nowrap">
    匯出 Excel
 </a>
+    {% if show_inactive %}
+    <a href="?year={{ year }}&month={{ month }}"
+      class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50 whitespace-nowrap">只看在職</a>
+    {% else %}
+    <a href="?year={{ year }}&month={{ month }}&show_inactive=1"
+      class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50 whitespace-nowrap">顯示已停用{% if inactive_count %}（{{ inactive_count }}）{% endif %}</a>
+    {% endif %}
   </form>
 </div>
 

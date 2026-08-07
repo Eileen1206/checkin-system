@@ -392,3 +392,63 @@ class LeaveCalendarStatsViewTest(TestCase):
         # 週一~週六且該員工只在 8/11 排一天休 → 其他週應有缺休
         rows = {r['employee'].pk: r for r in resp.context['week_compliance']}
         self.assertGreater(rows[self.emp2.pk]['miss_count'], 0)
+
+
+class EmployeeDeactivateTest(TestCase):
+    """停用員工：全系統隱藏、資料保留、可篩選 / 復職"""
+
+    def setUp(self):
+        admin = User.objects.create_user(
+            username='boss4', password='pass12345',
+            is_staff=True, is_superuser=True,
+        )
+        self.client.login(username='boss4', password='pass12345')
+
+        u_active = User.objects.create_user(username='act', password='x', first_name='在', last_name='職')
+        self.active_emp = Employee.objects.create(user=u_active, employee_id='A1', department='業務')
+        u_inactive = User.objects.create_user(username='inact', password='x', first_name='離', last_name='職')
+        self.inactive_emp = Employee.objects.create(
+            user=u_inactive, employee_id='Z9', department='業務', is_active=False,
+        )
+
+    def test_default_is_active_true(self):
+        self.assertTrue(self.active_emp.is_active)
+
+    def test_active_manager_excludes_inactive_but_data_kept(self):
+        active_ids = set(Employee.active.values_list('pk', flat=True))
+        self.assertIn(self.active_emp.pk, active_ids)
+        self.assertNotIn(self.inactive_emp.pk, active_ids)
+        # 預設 manager 仍看得到（資料保留、可查/復職）
+        self.assertIn(self.inactive_emp.pk, set(Employee.objects.values_list('pk', flat=True)))
+
+    def test_employee_list_hides_inactive_by_default(self):
+        resp = self.client.get('/dashboard/employees/')
+        ids = [e.pk for e in resp.context['employees']]
+        self.assertIn(self.active_emp.pk, ids)
+        self.assertNotIn(self.inactive_emp.pk, ids)
+
+    def test_employee_list_shows_inactive_with_flag(self):
+        resp = self.client.get('/dashboard/employees/?show_inactive=1')
+        ids = [e.pk for e in resp.context['employees']]
+        self.assertIn(self.inactive_emp.pk, ids)
+
+    def test_leave_calendar_roster_excludes_inactive(self):
+        resp = self.client.get('/dashboard/leave/?year=2026&month=8')
+        ids = [e.pk for e in resp.context['employees']]
+        self.assertNotIn(self.inactive_emp.pk, ids)
+
+    def test_salary_hides_inactive_by_default(self):
+        resp = self.client.get('/dashboard/salary/')
+        emp_ids = [r['employee'].pk for r in resp.context['results']]
+        self.assertIn(self.active_emp.pk, emp_ids)
+        self.assertNotIn(self.inactive_emp.pk, emp_ids)
+
+    def test_toggle_active_deactivates_and_reactivates(self):
+        resp = self.client.post(f'/dashboard/employees/{self.active_emp.pk}/toggle-active/')
+        self.assertEqual(resp.status_code, 302)
+        self.active_emp.refresh_from_db()
+        self.assertFalse(self.active_emp.is_active)
+        # 再按一次 → 復職
+        self.client.post(f'/dashboard/employees/{self.active_emp.pk}/toggle-active/')
+        self.active_emp.refresh_from_db()
+        self.assertTrue(self.active_emp.is_active)

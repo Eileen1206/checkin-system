@@ -6,6 +6,7 @@ from .attendance_views import (
 )
 from .employee_views import (
     binding_list, generate_token, employee_list, employee_add, employee_edit,
+    employee_toggle_active,
 )
 from .customer_views import (
     import_customers, search_customer, customer_list, customer_edit, geocode_customers, parse_gmaps_url,
@@ -31,6 +32,7 @@ __all__ = [
     'require_group', 'get_today_status', 'get_work_hours', 'WORK_DAY_CHOICES', 'calculate_salary',
     'index', 'add_record', 'daily_records', 'dismiss_anomaly', 'rfid_page', 'rfid_checkin',
     'binding_list', 'generate_token', 'employee_list', 'employee_add', 'employee_edit',
+    'employee_toggle_active',
     'import_customers', 'search_customer', 'customer_list', 'customer_edit', 'geocode_customers', 'parse_gmaps_url',
     'location_correction_list', 'location_correction_review',
     'delivery_push', 'delivery_add_task', 'delivery_delete_task', 'delivery_reorder', 'delivery_plan', 'delivery_today', 'approve_clockout',

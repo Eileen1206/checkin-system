@@ -30,7 +30,7 @@ class Command(BaseCommand):
 
         anomaly_list = []  # 收集忘打下班卡的員工，最後一次通知管理員
 
-        employees = Employee.objects.filter(remind_enabled=True)
+        employees = Employee.objects.filter(remind_enabled=True, is_active=True)
 
         for emp in employees:
 

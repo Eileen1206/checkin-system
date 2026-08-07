@@ -4,6 +4,12 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 
+class ActiveEmployeeManager(models.Manager):
+    """只回傳在職員工（供各列表 / 名單使用）。"""
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True)
+
+
 class Employee(models.Model):
     EMPLOYMENT_TYPE_CHOICES = [
         ('monthly', '月薪制'),
@@ -32,8 +38,13 @@ class Employee(models.Model):
         help_text='例：0,1,2,3,4 代表週一至週五',
     )
     remind_enabled = models.BooleanField('啟用打卡提醒', default=True)
+    is_active = models.BooleanField('在職', default=True,
+                                    help_text='取消勾選＝停用（離職）；資料保留，但不在各列表顯示')
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = models.Manager()          # 預設：全部（含停用），供編輯、復職、查舊資料
+    active = ActiveEmployeeManager()    # 只在職，供各名單 / 列表使用
 
     class Meta:
         verbose_name = '員工'

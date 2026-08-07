@@ -54,7 +54,7 @@ def leave_calendar(request):
     if week:
         weeks.append(week + [None] * (7 - len(week)))
 
-    employees = Employee.objects.select_related('user').order_by('employee_id')
+    employees = Employee.active.select_related('user').order_by('employee_id')
 
     leave_records = LeaveRecord.objects.filter(
         date__year=year, date__month=month
