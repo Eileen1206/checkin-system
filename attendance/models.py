@@ -5,9 +5,15 @@ from django.utils import timezone
 
 
 class ActiveEmployeeManager(models.Manager):
-    """只回傳在職員工（供各列表 / 名單使用）。"""
+    """只回傳在職員工（供員工列表 / 綁定等名單使用）。"""
     def get_queryset(self):
         return super().get_queryset().filter(is_active=True)
+
+
+class TrackedEmployeeManager(models.Manager):
+    """在職且列入出勤/報表（排除離職者與純管理帳號）。供出勤、薪資、請假、分析等報表使用。"""
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True, is_report_visible=True)
 
 
 class Employee(models.Model):
@@ -40,11 +46,14 @@ class Employee(models.Model):
     remind_enabled = models.BooleanField('啟用打卡提醒', default=True)
     is_active = models.BooleanField('在職', default=True,
                                     help_text='取消勾選＝停用（離職）；資料保留，但不在各列表顯示')
+    is_report_visible = models.BooleanField('列入出勤/報表', default=True,
+                                            help_text='取消勾選＝純管理帳號，不列入出勤、薪資、請假、分析等報表')
 
     created_at = models.DateTimeField(auto_now_add=True)
 
-    objects = models.Manager()          # 預設：全部（含停用），供編輯、復職、查舊資料
-    active = ActiveEmployeeManager()    # 只在職，供各名單 / 列表使用
+    objects = models.Manager()          # 預設：全部（含停用 / 純管理），供編輯、復職、查舊資料
+    active = ActiveEmployeeManager()    # 只在職，供員工列表 / 綁定名單
+    tracked = TrackedEmployeeManager()  # 在職且列報表，供出勤 / 薪資 / 請假 / 分析等
 
     class Meta:
         verbose_name = '員工'

@@ -1,0 +1,46 @@
+{% extends "attendance/base.html" %}
+{% block title %}新增完成{% endblock %}
+{% block content %}
+
+<div class="max-w-lg mx-auto">
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+    <div class="text-4xl mb-3">✅</div>
+    <h1 class="text-xl font-bold text-gray-800 mb-1">已新增員工</h1>
+    <p class="text-sm text-gray-500 mb-6">
+      {{ emp.user.get_full_name|default:emp.user.username }}（工號 {{ emp.employee_id }}）
+    </p>
+
+    <p class="text-sm font-medium text-gray-700 mb-3">請新員工用 LINE 掃碼完成綁定</p>
+    <div id="qrcode" class="inline-block p-3 border border-gray-200 rounded-xl bg-white"></div>
+    <p class="text-xs text-gray-400 mt-3">綁定碼：<code class="bg-gray-100 px-2 py-0.5 rounded">{{ token }}</code></p>
+    <p class="text-xs text-gray-400 mt-1">綁定碼 24 小時內有效。也可稍後到「LINE 綁定」頁重新產生。</p>
+
+    <div class="flex items-center justify-center gap-3 mt-8">
+      <a href="{% url 'dashboard:employee_add' %}"
+        class="px-5 py-2.5 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">+ 再新增一位</a>
+      <a href="{% url 'dashboard:employee_list' %}"
+        class="px-5 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">完成（回列表）</a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+  const BOT_BASIC_ID = '{{ line_bot_basic_id }}';
+  const TOKEN = '{{ token }}';
+  const lineUrl = BOT_BASIC_ID
+    ? `https://line.me/R/oaMessage/${encodeURIComponent(BOT_BASIC_ID)}/?${encodeURIComponent(TOKEN)}`
+    : TOKEN;
+  new QRCode(document.getElementById('qrcode'), {
+    text: lineUrl,
+    width: 220,
+    height: 220,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
+  });
+</script>
+{% endblock %}

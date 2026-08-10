@@ -452,3 +452,86 @@ class EmployeeDeactivateTest(TestCase):
         self.client.post(f'/dashboard/employees/{self.active_emp.pk}/toggle-active/')
         self.active_emp.refresh_from_db()
         self.assertTrue(self.active_emp.is_active)
+
+
+class AdminOnlyEmployeeTest(TestCase):
+    """純管理帳號：在職但不列入出勤/報表，仍在員工列表可見"""
+
+    def setUp(self):
+        admin = User.objects.create_user(
+            username='boss5', password='pass12345',
+            is_staff=True, is_superuser=True,
+        )
+        self.client.login(username='boss5', password='pass12345')
+
+        u1 = User.objects.create_user(username='track', password='x', first_name='一', last_name='般')
+        self.tracked_emp = Employee.objects.create(user=u1, employee_id='T1', department='業務')
+        u2 = User.objects.create_user(username='mgr', password='x', first_name='純', last_name='管')
+        self.admin_emp = Employee.objects.create(
+            user=u2, employee_id='M1', department='管理', is_report_visible=False,
+        )
+
+    def test_default_is_report_visible_true(self):
+        self.assertTrue(self.tracked_emp.is_report_visible)
+
+    def test_tracked_manager_excludes_admin_only(self):
+        ids = set(Employee.tracked.values_list('pk', flat=True))
+        self.assertIn(self.tracked_emp.pk, ids)
+        self.assertNotIn(self.admin_emp.pk, ids)
+        # active（員工列表用）仍含純管理員
+        self.assertIn(self.admin_emp.pk, set(Employee.active.values_list('pk', flat=True)))
+
+    def test_employee_list_shows_admin_only(self):
+        resp = self.client.get('/dashboard/employees/')
+        ids = [e.pk for e in resp.context['employees']]
+        self.assertIn(self.admin_emp.pk, ids)
+
+    def test_reports_exclude_admin_only(self):
+        # 請假月曆
+        leave = self.client.get('/dashboard/leave/?year=2026&month=8')
+        self.assertNotIn(self.admin_emp.pk, [e.pk for e in leave.context['employees']])
+        # 薪資
+        sal = self.client.get('/dashboard/salary/')
+        self.assertNotIn(self.admin_emp.pk, [r['employee'].pk for r in sal.context['results']])
+
+
+class OnboardWizardTest(TestCase):
+    """入職精靈：新增員工＋可選立即產生綁定碼"""
+
+    def setUp(self):
+        admin = User.objects.create_user(
+            username='boss6', password='pass12345',
+            is_staff=True, is_superuser=True,
+        )
+        self.client.login(username='boss6', password='pass12345')
+
+    def _base(self, **over):
+        data = {
+            'need_login': 'on', 'username': 'newguy', 'password': 'pw123456',
+            'first_name': '新', 'last_name': '人',
+            'employee_id': 'N1', 'department': '業務',
+            'employment_type': 'monthly',
+        }
+        data.update(over)
+        return data
+
+    def test_wizard_with_token_shows_qr(self):
+        from attendance.models import BindingToken
+        resp = self.client.post('/dashboard/employees/add/', self._base(make_token='on'))
+        self.assertEqual(resp.status_code, 200)  # 綁定 QR done 頁
+        emp = Employee.objects.get(employee_id='N1')
+        self.assertTrue(emp.is_report_visible)
+        self.assertEqual(BindingToken.objects.filter(employee=emp).count(), 1)
+
+    def test_wizard_admin_only_without_token_redirects(self):
+        resp = self.client.post('/dashboard/employees/add/',
+                                self._base(username='mgr2', employee_id='M2', admin_only='on'))
+        self.assertEqual(resp.status_code, 302)  # 轉址回列表
+        emp = Employee.objects.get(employee_id='M2')
+        self.assertFalse(emp.is_report_visible)
+
+    def test_wizard_sets_work_days(self):
+        self.client.post('/dashboard/employees/add/',
+                         self._base(username='wd', employee_id='WD1', work_days=['0', '2', '4']))
+        emp = Employee.objects.get(employee_id='WD1')
+        self.assertEqual(emp.work_days, '0,2,4')

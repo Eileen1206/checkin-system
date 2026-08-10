@@ -52,11 +52,16 @@
           {% endif %}
         </td>
         <td class="px-5 py-3">
-          {% if emp.is_active %}
-            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">在職</span>
-          {% else %}
-            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-500">已停用</span>
-          {% endif %}
+          <div class="flex flex-wrap items-center gap-1">
+            {% if emp.is_active %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">在職</span>
+            {% else %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-500">已停用</span>
+            {% endif %}
+            {% if not emp.is_report_visible %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">純管理</span>
+            {% endif %}
+          </div>
         </td>
         <td class="px-5 py-3">
           <div class="flex items-center gap-2">

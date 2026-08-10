@@ -104,15 +104,21 @@ def employee_add(request):
         fuel_daily_allowance = request.POST.get('fuel_daily_allowance') or 0
         labor_insurance_amount = request.POST.get('labor_insurance_amount') or None
         health_insurance_amount = request.POST.get('health_insurance_amount') or None
+        # 純管理帳號 → 不列入報表；勾「純管理帳號」＝ is_report_visible False
+        is_report_visible = request.POST.get('admin_only') != 'on'
+        remind_enabled = request.POST.get('remind_enabled') == 'on'
+        selected_days = request.POST.getlist('work_days')
+        work_days = ','.join(selected_days) if selected_days else '0,1,2,3,4'
+        make_token = request.POST.get('make_token') == 'on'
 
         # 建立系統user
         if User.objects.filter(username=username).exists():
             messages.error(request, '此帳號已存在')
-            return render(request, 'attendance/employee_add.html')
+            return render(request, 'attendance/employee_add.html', {'day_choices': WORK_DAY_CHOICES})
 
         if Employee.objects.filter(employee_id=employee_id).exists():
             messages.error(request, '此工號已存在')
-            return render(request, 'attendance/employee_add.html')
+            return render(request, 'attendance/employee_add.html', {'day_choices': WORK_DAY_CHOICES})
 
         user = User.objects.create_user(
             username=username,
@@ -125,7 +131,7 @@ def employee_add(request):
             user.save()
 
         # 建立員工
-        Employee.objects.create(
+        emp = Employee.objects.create(
             user=user,
             employee_id=employee_id,
             department=department,
@@ -138,7 +144,21 @@ def employee_add(request):
             fuel_daily_allowance=fuel_daily_allowance,
             labor_insurance_amount=labor_insurance_amount,
             health_insurance_amount=health_insurance_amount,
+            is_report_visible=is_report_visible,
+            remind_enabled=remind_enabled,
+            work_days=work_days,
         )
+
+        # 入職精靈最後一步：可選擇立即產生 LINE 綁定碼，並顯示 QR
+        if make_token:
+            token = BindingToken.objects.create(employee=emp)
+            return render(request, 'attendance/employee_add_done.html', {
+                'emp': emp,
+                'token': token.token,
+                'line_bot_basic_id': settings.LINE_BOT_BASIC_ID,
+            })
+
+        messages.success(request, f'已新增員工【{emp.user.get_full_name() or emp.user.username}】')
         return redirect('dashboard:employee_list')
     return render(request, 'attendance/employee_add.html')
 
@@ -167,6 +187,7 @@ def employee_edit(request, pk):
         emp.health_insurance_amount = request.POST.get('health_insurance_amount') or None
         emp.remind_enabled = request.POST.get('remind_enabled') == 'on'
         emp.is_active = request.POST.get('is_active') == 'on'
+        emp.is_report_visible = request.POST.get('is_report_visible') == 'on'
         selected_days = request.POST.getlist('work_days')
         emp.work_days = ','.join(selected_days) if selected_days else ''
         emp.save()
