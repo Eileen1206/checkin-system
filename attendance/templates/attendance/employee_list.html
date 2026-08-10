@@ -5,8 +5,19 @@
 
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-bold text-gray-800">員工管理</h1>
-  <a href="{% url 'dashboard:employee_add' %}"
-    class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">+ 新增員工</a>
+  <div class="flex items-center gap-3">
+    {% if show_inactive %}
+      <a href="{% url 'dashboard:employee_list' %}"
+        class="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">只看在職</a>
+    {% else %}
+      <a href="?show_inactive=1"
+        class="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+        顯示已停用{% if inactive_count %}（{{ inactive_count }}）{% endif %}
+      </a>
+    {% endif %}
+    <a href="{% url 'dashboard:employee_add' %}"
+      class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">+ 新增員工</a>
+  </div>
 </div>
 
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -19,12 +30,13 @@
         <th class="text-left px-5 py-3 font-medium">薪資類型</th>
         <th class="text-left px-5 py-3 font-medium">上下班時間</th>
         <th class="text-left px-5 py-3 font-medium">送貨員</th>
+        <th class="text-left px-5 py-3 font-medium">狀態</th>
         <th class="px-5 py-3"></th>
       </tr>
     </thead>
     <tbody class="divide-y divide-gray-50">
       {% for emp in employees %}
-      <tr class="hover:bg-amber-50/30">
+      <tr class="hover:bg-amber-50/30 {% if not emp.is_active %}opacity-60{% endif %}">
         <td class="px-5 py-3"><code class="text-xs bg-gray-100 px-2 py-1 rounded">{{ emp.employee_id }}</code></td>
         <td class="px-5 py-3 font-medium text-gray-800">{{ emp.user.get_full_name|default:emp.user.username }}</td>
         <td class="px-5 py-3 text-gray-600">{{ emp.department }}</td>
@@ -40,13 +52,34 @@
           {% endif %}
         </td>
         <td class="px-5 py-3">
-          <a href="{% url 'dashboard:employee_edit' emp.pk %}"
-            class="px-3 py-1.5 border border-gray-300 text-gray-600 rounded-xl text-xs hover:bg-gray-50">編輯</a>
+          {% if emp.is_active %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">在職</span>
+          {% else %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-500">已停用</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3">
+          <div class="flex items-center gap-2">
+            <a href="{% url 'dashboard:employee_edit' emp.pk %}"
+              class="px-3 py-1.5 border border-gray-300 text-gray-600 rounded-xl text-xs hover:bg-gray-50">編輯</a>
+            <form method="post" action="{% url 'dashboard:employee_toggle_active' emp.pk %}" class="inline">
+              {% csrf_token %}
+              {% if show_inactive %}<input type="hidden" name="show_inactive" value="1">{% endif %}
+              {% if emp.is_active %}
+              <button type="submit"
+                onclick="return confirm('確定停用【{{ emp.user.get_full_name|default:emp.user.username }}】？資料會保留，但不再顯示於各列表。')"
+                class="px-3 py-1.5 border border-red-200 text-red-600 rounded-xl text-xs hover:bg-red-50">停用</button>
+              {% else %}
+              <button type="submit"
+                class="px-3 py-1.5 border border-green-200 text-green-600 rounded-xl text-xs hover:bg-green-50">復職</button>
+              {% endif %}
+            </form>
+          </div>
         </td>
       </tr>
       {% empty %}
       <tr>
-        <td colspan="7" class="px-5 py-10 text-center text-gray-400">尚無員工資料</td>
+        <td colspan="8" class="px-5 py-10 text-center text-gray-400">尚無員工資料</td>
       </tr>
       {% endfor %}
     </tbody>

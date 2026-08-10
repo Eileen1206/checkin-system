@@ -278,7 +278,7 @@ def index(request):
 def add_record(request):
     """管理員補打卡（新增一筆 AttendanceRecord）"""
     VALID_TYPES = dict(AttendanceRecord.RECORD_TYPE_CHOICES)
-    employees   = Employee.objects.select_related('user').order_by('employee_id')
+    employees   = Employee.active.select_related('user').order_by('employee_id')
 
     # ── POST 處理（表單送出）──────────────────────────────
     if request.method == 'POST':
@@ -373,7 +373,7 @@ def daily_records(request):
         ('break_end',   '▶ 午休結束'),
         ('clock_out',   '■ 下班打卡'),
     ]
-    employees = Employee.objects.select_related('user').order_by('employee_id')
+    employees = Employee.active.select_related('user').order_by('employee_id')
 
     # 讀取員工 / 日期（GET 或 POST 都可能帶）
     employee_id = (request.POST.get('employee_id') or request.GET.get('employee_id', '')).strip()

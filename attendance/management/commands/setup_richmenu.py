@@ -109,7 +109,7 @@ class Command(BaseCommand):
         self.stdout.write(f'一般員工 Rich Menu ID: {staff_menu_id}')
 
         # === 綁定給員工 ===
-        employees = Employee.objects.filter(line_user_id__isnull=False).exclude(line_user_id='')
+        employees = Employee.objects.filter(line_user_id__isnull=False, is_active=True).exclude(line_user_id='')
         count = 0
         for emp in employees:
             menu_id = delivery_menu_id if emp.is_delivery else staff_menu_id

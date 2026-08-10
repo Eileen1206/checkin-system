@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.conf import settings
+from django.urls import reverse
 from ..models import Employee, BindingToken, User
 from .base import require_group, WORK_DAY_CHOICES
 
@@ -10,7 +11,7 @@ from .base import require_group, WORK_DAY_CHOICES
 @require_group('admin', 'finance')
 def binding_list(request):
     """顯示所有員工的綁定狀態"""
-    employees = Employee.objects.select_related('user').all()
+    employees = Employee.active.select_related('user').all()
 
     employee_data = []
     for emp in employees:
@@ -55,8 +56,31 @@ def generate_token(request, employee_id):
 @login_required
 @require_group('admin', 'finance')
 def employee_list(request):
-    employees = Employee.objects.select_related('user').order_by('employee_id')
-    return render(request, 'attendance/employee_list.html', {'employees': employees})
+    show_inactive = request.GET.get('show_inactive') == '1'
+    qs = Employee.objects if show_inactive else Employee.active
+    employees = qs.select_related('user').order_by('employee_id')
+    return render(request, 'attendance/employee_list.html', {
+        'employees': employees,
+        'show_inactive': show_inactive,
+        'inactive_count': Employee.objects.filter(is_active=False).count(),
+    })
+
+
+@login_required
+@require_group('admin', 'finance')
+def employee_toggle_active(request, pk):
+    """一鍵 停用 / 復職（資料保留，不刪除）"""
+    if request.method != 'POST':
+        return redirect('dashboard:employee_list')
+    emp = get_object_or_404(Employee, pk=pk)
+    emp.is_active = not emp.is_active
+    emp.save(update_fields=['is_active'])
+    name = emp.user.get_full_name() or emp.user.username
+    messages.success(request, f'已{"復職" if emp.is_active else "停用"}【{name}】')
+    url = reverse('dashboard:employee_list')
+    if request.POST.get('show_inactive') == '1':
+        url = f'{url}?show_inactive=1'
+    return redirect(url)
 
 
 @login_required
@@ -142,6 +166,7 @@ def employee_edit(request, pk):
         emp.labor_insurance_amount = request.POST.get('labor_insurance_amount') or None
         emp.health_insurance_amount = request.POST.get('health_insurance_amount') or None
         emp.remind_enabled = request.POST.get('remind_enabled') == 'on'
+        emp.is_active = request.POST.get('is_active') == 'on'
         selected_days = request.POST.getlist('work_days')
         emp.work_days = ','.join(selected_days) if selected_days else ''
         emp.save()

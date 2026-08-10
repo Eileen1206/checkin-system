@@ -14,7 +14,9 @@ def salary(request):
     year = int(request.GET.get('year', timezone.localdate().year))
     month = int(request.GET.get('month', timezone.localdate().month))
 
-    employees = Employee.objects.select_related('user').all()
+    show_inactive = request.GET.get('show_inactive') == '1'
+    emp_qs = Employee.objects if show_inactive else Employee.active
+    employees = emp_qs.select_related('user').all()
     results = []
 
     for emp in employees:
@@ -52,7 +54,9 @@ def salary(request):
         'year': year,
         'years': range(timezone.localdate().year, timezone.localdate().year - 3, -1),
         'month': month,
-        'months': range(1, 13)
+        'months': range(1, 13),
+        'show_inactive': show_inactive,
+        'inactive_count': Employee.objects.filter(is_active=False).count(),
     })
 
 
@@ -85,7 +89,8 @@ def export_salary_excel(request):
 
     ws.append(['工號', '姓名', '部門', '底薪', '保養費', '勞務加給', '勞健保扣除', '實領'])
 
-    employees = Employee.objects.select_related('user').order_by('employee_id')
+    emp_qs = Employee.objects if request.GET.get('show_inactive') == '1' else Employee.active
+    employees = emp_qs.select_related('user').order_by('employee_id')
     for emp in employees:
         result = calculate_salary(emp, year, month)
         ws.append([

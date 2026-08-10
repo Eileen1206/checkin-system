@@ -41,7 +41,7 @@ def analytics_attendance(request):
     today = timezone.localdate()
 
     # 只分析「有設定上班時間」的員工（排除純帳號）
-    employees = list(Employee.objects.filter(
+    employees = list(Employee.active.filter(
         work_start_time__isnull=False
     ).select_related('user').order_by('employee_id'))
 
@@ -325,7 +325,7 @@ def analytics_delivery(request):
     auto_closed_counts = [day_closed.get(d, 0)   for d in days]
 
     # ── 各員工本月績效（現有圖表）────────────────────────────
-    employees = list(Employee.objects.select_related('user').order_by('employee_id'))
+    employees = list(Employee.active.select_related('user').order_by('employee_id'))
     emp_labels      = []
     emp_trips       = []
     emp_stations    = []
