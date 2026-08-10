@@ -24,7 +24,7 @@ def get_today_status():
     回傳格式：{employee: status_string}
     status 值：'absent' | 'working' | 'break' | 'left'
     """
-    employees = Employee.active.select_related('user').all()
+    employees = Employee.tracked.select_related('user').all()
     today = timezone.localdate()
     status_map = {}
 

@@ -7,105 +7,175 @@
   <a href="{% url 'dashboard:employee_list' %}" class="text-sm text-gray-500 hover:underline">← 返回列表</a>
 </div>
 
+<!-- 進度指示 -->
+<div class="flex items-center gap-2 mb-5 max-w-2xl text-sm">
+  <span class="step-pill flex-1 text-center py-2 rounded-xl border" data-step="1">1　帳號 & 身份</span>
+  <span class="text-gray-300">›</span>
+  <span class="step-pill flex-1 text-center py-2 rounded-xl border" data-step="2">2　薪資 & 排班</span>
+  <span class="text-gray-300">›</span>
+  <span class="step-pill flex-1 text-center py-2 rounded-xl border" data-step="3">3　LINE 綁定</span>
+</div>
+
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-2xl">
-  <form method="post">
+  <form method="post" id="wizard-form">
     {% csrf_token %}
 
-    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">帳號資訊</p>
+    <!-- ── Step 1：帳號 & 身份 ── -->
+    <div class="wizard-step" data-step="1">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">帳號資訊</p>
 
-    <!-- 是否需要登入系統 -->
-    <div class="mb-4 p-3 bg-gray-50 rounded-xl flex items-start gap-3">
-      <input type="checkbox" name="need_login" id="id_need_login" class="w-4 h-4 rounded mt-0.5" checked>
-      <div>
-        <label for="id_need_login" class="text-sm font-medium text-gray-700 cursor-pointer">需要登入管理系統</label>
-        <p class="text-xs text-gray-400 mt-0.5">只使用 LINE 打卡的員工不需要勾選，帳號會自動設為無法登入</p>
+      <div class="mb-4 p-3 bg-gray-50 rounded-xl flex items-start gap-3">
+        <input type="checkbox" name="need_login" id="id_need_login" class="w-4 h-4 rounded mt-0.5" checked>
+        <div>
+          <label for="id_need_login" class="text-sm font-medium text-gray-700 cursor-pointer">需要登入管理系統</label>
+          <p class="text-xs text-gray-400 mt-0.5">只使用 LINE 打卡的員工不需要勾選，帳號會自動設為無法登入</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">帳號（登入用）</label>
+          <input type="text" name="username" id="id_username" required class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div id="password_field">
+          <label class="block text-sm font-medium text-gray-700 mb-1">密碼</label>
+          <input type="password" name="password" id="id_password" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">姓</label>
+          <input type="text" name="last_name" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">名</label>
+          <input type="text" name="first_name" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+      </div>
+
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">身份</p>
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">工號</label>
+          <input type="text" name="employee_id" id="id_employee_id" required class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">部門</label>
+          <input type="text" name="department" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="is_delivery" class="w-4 h-4 rounded">
+          <span class="text-sm font-medium text-gray-700">是送貨員</span>
+        </label>
+      </div>
+
+      <div class="p-3 bg-amber-50/60 border border-amber-100 rounded-xl">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" name="admin_only" id="id_admin_only" class="w-4 h-4 rounded mt-0.5">
+          <span>
+            <span class="text-sm font-medium text-gray-700">純管理帳號（不列入出勤/報表）</span>
+            <span class="block text-xs text-gray-400 mt-0.5">勾選後：不會出現在出勤、薪資、請假、分析等報表，但仍可登入後台管理。</span>
+          </span>
+        </label>
       </div>
     </div>
 
-    <div class="grid grid-cols-2 gap-4 mb-6">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">帳號（登入用）</label>
-        <input type="text" name="username" required class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+    <!-- ── Step 2：薪資 & 排班 ── -->
+    <div class="wizard-step hidden" data-step="2">
+      <p id="admin-hint" class="hidden text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-4">
+        此為純管理帳號，以下薪資/排班可留空。
+      </p>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">薪資</p>
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">薪資類型</label>
+          <select name="employment_type" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
+            <option value="monthly">月薪制</option>
+            <option value="hourly">時薪制</option>
+          </select>
+        </div>
+        <div></div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">月薪（月薪制填）</label>
+          <input type="number" name="monthly_salary" min="0" step="1" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">時薪（時薪制填）</label>
+          <input type="number" name="hourly_rate" min="0" step="0.01" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">每日油費補貼</label>
+          <input type="number" name="fuel_daily_allowance" value="0" min="0" step="1" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div></div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">勞保自負月額</label>
+          <input type="number" name="labor_insurance_amount" min="0" step="1" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">健保自負月額</label>
+          <input type="number" name="health_insurance_amount" min="0" step="1" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
       </div>
-      <div id="password_field">
-        <label class="block text-sm font-medium text-gray-700 mb-1">密碼</label>
-        <input type="password" name="password" id="id_password" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">排班</p>
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">上班時間</label>
+          <input type="time" name="work_start_time" id="id_work_start_time" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">下班時間</label>
+          <input type="time" name="work_end_time" id="id_work_end_time" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+          <p id="time_error" class="text-xs text-red-500 mt-1 hidden">下班時間必須晚於上班時間</p>
+        </div>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">姓</label>
-        <input type="text" name="last_name" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">工作日</label>
+        <div class="flex flex-wrap gap-3">
+          {% for val, label in day_choices %}
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+            <input type="checkbox" name="work_days" value="{{ val }}" class="w-4 h-4 rounded"
+              {% if val < 5 %}checked{% endif %}>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">名</label>
-        <input type="text" name="first_name" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+
+      <div class="mb-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="remind_enabled" class="w-4 h-4 rounded" checked>
+          <span class="text-sm font-medium text-gray-700">啟用打卡提醒（LINE 推播）</span>
+        </label>
       </div>
     </div>
 
-    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">員工資料</p>
-    <div class="grid grid-cols-2 gap-4 mb-6">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">工號</label>
-        <input type="text" name="employee_id" required class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+    <!-- ── Step 3：LINE 綁定 ── -->
+    <div class="wizard-step hidden" data-step="3">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">LINE 綁定</p>
+      <div class="p-4 bg-gray-50 rounded-xl mb-4">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" name="make_token" id="id_make_token" class="w-4 h-4 rounded mt-0.5" checked>
+          <span>
+            <span class="text-sm font-medium text-gray-700">建立後立即產生 LINE 綁定碼</span>
+            <span class="block text-xs text-gray-400 mt-0.5">建立完成會顯示 QR Code，讓新員工用 LINE 掃碼綁定；也可稍後到「LINE 綁定」頁再產生。</span>
+          </span>
+        </label>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">部門</label>
-        <input type="text" name="department" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">薪資類型</label>
-        <select name="employment_type" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white">
-          <option value="monthly">月薪制</option>
-          <option value="hourly">時薪制</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">月薪（月薪制填）</label>
-        <input type="number" name="monthly_salary" min="0" step="1"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">時薪（時薪制填）</label>
-        <input type="number" name="hourly_rate" min="0" step="0.01"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">上班時間</label>
-        <input type="time" name="work_start_time" id="id_work_start_time"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">下班時間</label>
-        <input type="time" name="work_end_time" id="id_work_end_time"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-        <p id="time_error" class="text-xs text-red-500 mt-1 hidden">下班時間必須晚於上班時間</p>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">每日油費補貼</label>
-        <input type="number" name="fuel_daily_allowance" value="0" min="0" step="1"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">勞保自負月額</label>
-        <input type="number" name="labor_insurance_amount" min="0" step="1"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">健保自負月額</label>
-        <input type="number" name="health_insurance_amount" min="0" step="1"
-          class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-      </div>
+      <p class="text-sm text-gray-500">按「建立員工」完成新增。</p>
     </div>
 
-    <div class="mb-6">
-      <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" name="is_delivery" class="w-4 h-4 rounded">
-        <span class="text-sm font-medium text-gray-700">是送貨員</span>
-      </label>
+    <!-- ── 導覽 ── -->
+    <div class="flex items-center mt-8">
+      <button type="button" id="btn-prev" class="hidden px-5 py-2.5 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">← 上一步</button>
+      <div class="ml-auto flex gap-2">
+        <button type="button" id="btn-next" class="px-6 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">下一步 →</button>
+        <button type="submit" id="btn-submit" class="hidden px-6 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">建立員工</button>
+      </div>
     </div>
-
-    <button type="submit" class="px-6 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">
-      新增員工
-    </button>
   </form>
 </div>
 
@@ -113,38 +183,80 @@
 
 {% block extra_scripts %}
 <script>
+  let step = 1;
+  const TOTAL = 3;
+
+  function render() {
+    document.querySelectorAll('.wizard-step').forEach(el => {
+      el.classList.toggle('hidden', +el.dataset.step !== step);
+    });
+    document.querySelectorAll('.step-pill').forEach(el => {
+      const s = +el.dataset.step;
+      el.classList.toggle('bg-gray-900', s === step);
+      el.classList.toggle('text-white', s === step);
+      el.classList.toggle('border-gray-900', s === step);
+      el.classList.toggle('text-gray-400', s !== step);
+      el.classList.toggle('border-gray-200', s !== step);
+    });
+    document.getElementById('btn-prev').classList.toggle('hidden', step === 1);
+    document.getElementById('btn-next').classList.toggle('hidden', step === TOTAL);
+    document.getElementById('btn-submit').classList.toggle('hidden', step !== TOTAL);
+  }
+
+  // Step 1 必填驗證（避免送出時聚焦到隱藏欄位）
+  function validateStep1() {
+    const u = document.getElementById('id_username');
+    const e = document.getElementById('id_employee_id');
+    const needLogin = document.getElementById('id_need_login').checked;
+    const pw = document.getElementById('id_password');
+    if (!u.value.trim()) { alert('請填寫帳號'); u.focus(); return false; }
+    if (!e.value.trim()) { alert('請填寫工號'); e.focus(); return false; }
+    if (needLogin && !pw.value) { alert('需要登入的帳號請填寫密碼'); pw.focus(); return false; }
+    return true;
+  }
+
   function validateTimes() {
     const start = document.getElementById('id_work_start_time').value;
     const end   = document.getElementById('id_work_end_time').value;
     const err   = document.getElementById('time_error');
     if (start && end && end <= start) {
       err.classList.remove('hidden');
-      document.getElementById('id_work_end_time').setCustomValidity('下班時間必須晚於上班時間');
       return false;
     }
     err.classList.add('hidden');
-    document.getElementById('id_work_end_time').setCustomValidity('');
     return true;
   }
-  document.getElementById('id_work_start_time').addEventListener('change', validateTimes);
-  document.getElementById('id_work_end_time').addEventListener('change', validateTimes);
-  document.querySelector('form').addEventListener('submit', e => { if (!validateTimes()) e.preventDefault(); });
 
-  // 切換密碼欄位顯示
+  document.getElementById('btn-next').addEventListener('click', () => {
+    if (step === 1 && !validateStep1()) return;
+    if (step === 2 && !validateTimes()) return;
+    if (step < TOTAL) { step++; render(); }
+  });
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    if (step > 1) { step--; render(); }
+  });
+  document.getElementById('wizard-form').addEventListener('submit', e => {
+    if (!validateStep1() || !validateTimes()) { e.preventDefault(); }
+  });
+
+  // 純管理帳號：提示 + 預設不產生綁定碼
+  const adminOnly = document.getElementById('id_admin_only');
+  adminOnly.addEventListener('change', () => {
+    document.getElementById('admin-hint').classList.toggle('hidden', !adminOnly.checked);
+    document.getElementById('id_make_token').checked = !adminOnly.checked;
+  });
+
+  // 密碼欄位顯示切換
   const needLogin = document.getElementById('id_need_login');
   const pwField   = document.getElementById('password_field');
   const pwInput   = document.getElementById('id_password');
   function togglePassword() {
-    if (needLogin.checked) {
-      pwField.style.display = '';
-      pwInput.required = true;
-    } else {
-      pwField.style.display = 'none';
-      pwInput.required = false;
-      pwInput.value = '';
-    }
+    pwField.style.display = needLogin.checked ? '' : 'none';
+    if (!needLogin.checked) pwInput.value = '';
   }
   needLogin.addEventListener('change', togglePassword);
-  togglePassword(); // 初始化
+
+  togglePassword();
+  render();
 </script>
 {% endblock %}

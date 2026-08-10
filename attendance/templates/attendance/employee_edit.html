@@ -116,6 +116,15 @@
       <p class="text-xs text-gray-400 mt-1 ml-6">取消勾選＝停用（離職）。資料會保留，但不再顯示於員工列表、出勤、請假、薪資等各處。</p>
     </div>
 
+    <div class="mb-4">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" name="is_report_visible" class="w-4 h-4 rounded"
+          {% if emp.is_report_visible %}checked{% endif %}>
+        <span class="text-sm font-medium text-gray-700">列入出勤/報表</span>
+      </label>
+      <p class="text-xs text-gray-400 mt-1 ml-6">取消勾選＝純管理帳號。仍在職、能登入後台，但不列入出勤、薪資、請假、分析等報表。</p>
+    </div>
+
     <div class="mb-6">
       <p class="text-sm font-medium text-gray-700 mb-2">工作日</p>
       <div class="flex gap-3 flex-wrap">
