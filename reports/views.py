@@ -85,7 +85,7 @@ def report(request):
     month    = int(request.GET.get('month', today.month))
     emp_id   = request.GET.get('employee_id')
 
-    employees = Employee.objects.select_related('user').order_by('employee_id')
+    employees = Employee.tracked.select_related('user').order_by('employee_id')
 
     # 選定員工
     selected = None
@@ -177,7 +177,7 @@ def export_attendance_csv(request):
         return HttpResponse('日期參數錯誤', status=400)
 
     employee_id = request.GET.get('employee_id', '').strip()
-    employees = Employee.objects.select_related('user').order_by('employee_id')
+    employees = Employee.tracked.select_related('user').order_by('employee_id')
     if employee_id:
         employees = employees.filter(pk=employee_id)
 

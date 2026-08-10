@@ -493,6 +493,10 @@ class AdminOnlyEmployeeTest(TestCase):
         # 薪資
         sal = self.client.get('/dashboard/salary/')
         self.assertNotIn(self.admin_emp.pk, [r['employee'].pk for r in sal.context['results']])
+        # 出勤報表（reports app）的員工下拉
+        rpt = self.client.get('/reports/')
+        self.assertNotIn(self.admin_emp.pk, [e.pk for e in rpt.context['employees']])
+        self.assertIn(self.tracked_emp.pk, [e.pk for e in rpt.context['employees']])
 
 
 class OnboardWizardTest(TestCase):
