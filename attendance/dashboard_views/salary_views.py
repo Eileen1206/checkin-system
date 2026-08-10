@@ -35,11 +35,13 @@ def salary(request):
             # 以這裡算好的 total_hours 重算 base，確保顯示與計算一致（不四捨五入）
             base = total_hours * hourly
             result['base']  = base
-            result['total'] = base + result['maintenance'] + result['allowance'] - result['deduction']
+            result['total'] = (base + result['maintenance'] + result['allowance']
+                               + result.get('overtime', 0) - result['deduction'])
 
             day_detail = '\n'.join(f'  {d} → {h}h' for d, h in day_hours)
             result['detail'] = (
                 f'時薪 ${hourly:.0f} × {total_hours:.1f}小時 = ${base:,.0f}\n'
+                f'加班費：${result.get("overtime", 0):,.0f}\n'
                 f'保養費：${result["maintenance"]:,.0f}\n'
                 f'勞健保扣除：-${result["deduction"]:,.0f}\n'
                 f'--- 每日明細 ---\n{day_detail}'
@@ -87,7 +89,7 @@ def export_salary_excel(request):
     ws = wb.active
     ws.title = f"{year}-{month:02d} 薪資表"
 
-    ws.append(['工號', '姓名', '部門', '底薪', '保養費', '勞務加給', '勞健保扣除', '實領'])
+    ws.append(['工號', '姓名', '部門', '底薪', '保養費', '勞務加給', '加班費', '勞健保扣除', '實領'])
 
     emp_qs = Employee.objects if request.GET.get('show_inactive') == '1' else Employee.tracked
     employees = emp_qs.select_related('user').order_by('employee_id')
@@ -100,6 +102,7 @@ def export_salary_excel(request):
             float(result['base']),
             float(result['maintenance']),
             float(result['allowance']),
+            float(result.get('overtime', 0)),
             float(result['deduction']),
             float(result['total']),
         ])

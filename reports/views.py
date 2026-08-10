@@ -226,9 +226,9 @@ def export_attendance_csv(request):
 
                 day_data = _build_day(emp, d)
 
-                # 請假類型
+                # 請假事由
                 leave = LeaveRecord.objects.filter(employee=emp, date=d).first()
-                leave_type = leave.get_leave_type_display() if leave else '—'
+                leave_type = (leave.reason or '請假') if leave else '—'
 
                 writer.writerow([
                     emp.employee_id,

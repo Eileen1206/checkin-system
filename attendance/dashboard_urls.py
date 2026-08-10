@@ -46,4 +46,6 @@ urlpatterns = [
     path('analytics/attendance/', dashboard_views.analytics_attendance, name='analytics_attendance'),
     path('analytics/delivery/', dashboard_views.analytics_delivery, name='analytics_delivery'),
     path('analytics/customer/', dashboard_views.analytics_customer, name='analytics_customer'),
+    path('annual-leave/', dashboard_views.annual_leave, name='annual_leave'),
+    path('holidays/', dashboard_views.holiday_list, name='holiday_list'),
 ]

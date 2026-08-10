@@ -8,7 +8,7 @@ from attendance.models import (
 )
 from django.utils import timezone
 from datetime import date, timedelta
-from attendance.utils import routing, scheduling
+from attendance.utils import routing, scheduling, payroll
 
 
 class LoginRequiredTest(TestCase):
@@ -539,3 +539,101 @@ class OnboardWizardTest(TestCase):
                          self._base(username='wd', employee_id='WD1', work_days=['0', '2', '4']))
         emp = Employee.objects.get(employee_id='WD1')
         self.assertEqual(emp.work_days, '0,2,4')
+
+
+class PayrollLaborLawTest(TestCase):
+    """勞基法特休天數 / 加班費 / 工資基準（純函式）"""
+
+    def setUp(self):
+        u1 = User.objects.create_user('pm', password='x')
+        self.monthly = Employee.objects.create(
+            user=u1, employee_id='PM', department='x',
+            employment_type='monthly', monthly_salary=36000, work_days='0,1,2,3,4,5')
+        u2 = User.objects.create_user('ph', password='x')
+        self.hourly = Employee.objects.create(
+            user=u2, employee_id='PH', department='x',
+            employment_type='hourly', hourly_rate=200, work_days='0,1,2,3,4,5')
+
+    def test_annual_leave_days_brackets(self):
+        hire = date(2020, 1, 1)
+        self.assertEqual(payroll.annual_leave_days(hire, date(2020, 6, 1)), 0)   # <6mo
+        self.assertEqual(payroll.annual_leave_days(hire, date(2020, 7, 1)), 3)   # 6mo
+        self.assertEqual(payroll.annual_leave_days(hire, date(2021, 1, 1)), 7)   # 1yr
+        self.assertEqual(payroll.annual_leave_days(hire, date(2022, 1, 1)), 10)  # 2yr
+        self.assertEqual(payroll.annual_leave_days(hire, date(2023, 1, 1)), 14)  # 3yr
+        self.assertEqual(payroll.annual_leave_days(hire, date(2025, 1, 1)), 15)  # 5yr
+        self.assertEqual(payroll.annual_leave_days(hire, date(2030, 1, 1)), 16)  # 10yr
+        self.assertEqual(payroll.annual_leave_days(hire, date(2044, 1, 1)), 30)  # 24yr→30
+        self.assertEqual(payroll.annual_leave_days(hire, date(2050, 1, 1)), 30)  # 上限
+
+    def test_service_length(self):
+        self.assertEqual(payroll.service_length(date(2020, 1, 1), date(2023, 4, 1)), (3, 3))
+
+    def test_wages(self):
+        self.assertAlmostEqual(payroll.hourly_wage(self.monthly), 150.0)   # 36000/240
+        self.assertAlmostEqual(payroll.daily_wage(self.monthly), 1200.0)   # 36000/30
+        self.assertAlmostEqual(payroll.hourly_wage(self.hourly), 200.0)
+        self.assertAlmostEqual(payroll.daily_wage(self.hourly), 1600.0)    # 200×8
+
+    def test_classify_day(self):
+        monday = date(2026, 8, 15)
+        monday = monday - timedelta(days=monday.weekday())
+        sunday = monday + timedelta(days=6)
+        self.assertEqual(monday.weekday(), 0)
+        self.assertEqual(sunday.weekday(), 6)
+        self.assertEqual(payroll.classify_day(self.monthly, monday, set(), set()), '平日')
+        self.assertEqual(payroll.classify_day(self.monthly, sunday, set(), set()), '例假')
+        self.assertEqual(payroll.classify_day(self.monthly, monday, {monday}, set()), '國定假日')
+        self.assertEqual(payroll.classify_day(self.monthly, monday, set(), {monday}), '休息日')
+
+    def test_weekday_ot(self):
+        # 11h → 3h 加班；月薪全額 vs 時薪只補加成
+        self.assertAlmostEqual(payroll.weekday_ot(11, 200, True),
+                               200 * (2 * 4 / 3 + 1 * 5 / 3), places=2)
+        self.assertAlmostEqual(payroll.weekday_ot(11, 200, False),
+                               200 * (2 * 1 / 3 + 1 * 2 / 3), places=2)
+        self.assertEqual(payroll.weekday_ot(8, 200, True), 0)   # 未超過 8h 無加班
+
+    def test_restday_ot_monthly(self):
+        # 10h 休息日：前2×4/3、3~8(6h)×5/3、9~10(2h)×8/3
+        self.assertAlmostEqual(payroll.restday_ot(10, 200, True),
+                               200 * (2 * 4 / 3 + 6 * 5 / 3 + 2 * 8 / 3), places=2)
+
+    def test_holiday_ot_monthly(self):
+        # 8h 國定假日（月薪）→ 加發一日日薪
+        self.assertAlmostEqual(payroll.holiday_ot(8, 150, 1200, True), 1200, places=2)
+
+
+class PayrollViewTest(TestCase):
+    """特休結算頁 / 國定假日管理 / 薪資含加班費"""
+
+    def setUp(self):
+        admin = User.objects.create_user(
+            username='boss7', password='pass12345', is_staff=True, is_superuser=True)
+        self.client.login(username='boss7', password='pass12345')
+        u = User.objects.create_user('emp_al', password='x', first_name='特', last_name='休')
+        self.emp = Employee.objects.create(
+            user=u, employee_id='AL1', department='x',
+            employment_type='monthly', monthly_salary=30000, hire_date=date(2020, 1, 1))
+
+    def test_annual_leave_settlement_page(self):
+        resp = self.client.get(f'/dashboard/annual-leave/?employee_id={self.emp.pk}&as_of=2024-06-01')
+        self.assertEqual(resp.status_code, 200)
+        s = resp.context['settlement']
+        self.assertTrue(s['has_hire_date'])
+        self.assertEqual(s['days'], 14)        # 2020→2024 滿4年 = 14 天
+        self.assertEqual(s['daily_wage'], 1000)  # 30000/30
+        self.assertEqual(s['payout'], 14000)     # 14 × 1000
+
+    def test_holiday_add(self):
+        from attendance.models import Holiday
+        resp = self.client.post('/dashboard/holidays/', {
+            'action': 'add', 'dates': '2026-01-01\n2026-02-28', 'name': '測試'})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(Holiday.objects.count(), 2)
+
+    def test_salary_results_have_overtime_key(self):
+        resp = self.client.get('/dashboard/salary/')
+        self.assertEqual(resp.status_code, 200)
+        for r in resp.context['results']:
+            self.assertIn('overtime', r)

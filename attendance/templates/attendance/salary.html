@@ -42,6 +42,7 @@
         <th class="text-left px-5 py-3 font-medium">底薪</th>
         <th class="text-left px-5 py-3 font-medium">保養費</th>
         <th class="text-left px-5 py-3 font-medium">勞務加給</th>
+        <th class="text-left px-5 py-3 font-medium">加班費</th>
         <th class="text-left px-5 py-3 font-medium">扣除（勞健保）</th>
         <th class="text-left px-5 py-3 font-medium">實領</th>
       </tr>
@@ -72,6 +73,18 @@
                 </form>
             </div>
       </td>
+        <td class="px-5 py-3 text-gray-600">
+          {{ result.overtime|floatformat:0 }} 元
+          {% if result.overtime_detail %}
+          <button onclick="this.nextElementSibling.classList.toggle('hidden')"
+            class="ml-1 text-xs text-gray-400 hover:text-gray-600">明細 ▾</button>
+          <div class="hidden mt-2 text-xs text-gray-500 font-normal space-y-0.5 bg-gray-50 rounded-lg p-2">
+            {% for row in result.overtime_detail %}
+            <div>{{ row.date }}（{{ row.cls }}）{{ row.hours }}h → <span class="font-medium text-gray-700">${{ row.amount }}</span></div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </td>
         <td class="px-5 py-3 text-red-500">{{ result.deduction|floatformat:0 }} 元</td>
         <td class="px-5 py-3 font-semibold text-gray-800">
           {{ result.total|floatformat:0 }} 元
@@ -89,7 +102,7 @@
       </tr>
       {% empty %}
       <tr>
-        <td colspan="6" class="px-5 py-10 text-center text-gray-400">尚無薪資紀錄</td>
+        <td colspan="7" class="px-5 py-10 text-center text-gray-400">尚無薪資紀錄</td>
       </tr>
       {% endfor %}
     </tbody>

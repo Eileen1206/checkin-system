@@ -27,6 +27,9 @@ from .leave_views import (
 from .analytics_views import (
     analytics_attendance, analytics_delivery, analytics_customer,
 )
+from .payroll_views import (
+    annual_leave, holiday_list,
+)
 
 __all__ = [
     'require_group', 'get_today_status', 'get_work_hours', 'WORK_DAY_CHOICES', 'calculate_salary',
@@ -40,4 +43,5 @@ __all__ = [
     'leave_calendar', 'leave_add_api', 'leave_delete_api', 'leave_add', 'leave_delete',
     'leave_request_list', 'leave_request_approve', 'leave_request_deny', 'pending_items',
     'analytics_attendance', 'analytics_delivery', 'analytics_customer',
+    'annual_leave', 'holiday_list',
 ]
