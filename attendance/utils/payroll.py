@@ -132,7 +132,11 @@ def holiday_ot(hours, hourly, daily, is_monthly):
 # ───────────────────── 每月加班費彙總 ─────────────────────
 
 def monthly_overtime(emp, year, month):
-    """回傳 {'amount': 加班費總額, 'detail': [每日明細]}。"""
+    """
+    回傳 {'amount': 加班費總額, 'detail': [每日明細], 'tiers': {分級時數}}。
+    tiers 依勞基法級距彙總當月加班時數（供明細報表顯示）：
+      weekday_1_2 / weekday_3plus / restday_1_2 / restday_3_8 / restday_9_12 / holiday
+    """
     from attendance.models import AttendanceRecord, LeaveRecord, Holiday
     from attendance.dashboard_views.base import get_work_hours
 
@@ -151,6 +155,11 @@ def monthly_overtime(emp, year, month):
 
     total = 0.0
     detail = []
+    tiers = {
+        'weekday_1_2': 0.0, 'weekday_3plus': 0.0,
+        'restday_1_2': 0.0, 'restday_3_8': 0.0, 'restday_9_12': 0.0,
+        'holiday': 0.0,
+    }
     for d in days:
         h = get_work_hours(emp, d)
         if not h:
@@ -158,14 +167,21 @@ def monthly_overtime(emp, year, month):
         cls = classify_day(emp, d, holiday_set, leave_dates)
         if cls == '平日':
             amt = weekday_ot(h, hourly, is_monthly)
+            ot = max(h - 8, 0)
+            tiers['weekday_1_2'] += min(ot, 2.0)
+            tiers['weekday_3plus'] += max(ot - 2, 0)
         elif cls == '休息日':
             amt = restday_ot(h, hourly, is_monthly)
+            tiers['restday_1_2'] += min(h, 2.0)
+            tiers['restday_3_8'] += min(max(h - 2, 0), 6.0)
+            tiers['restday_9_12'] += min(max(h - 8, 0), 4.0)
         else:  # 例假 / 國定假日
             amt = holiday_ot(h, hourly, daily, is_monthly)
+            tiers['holiday'] += h
         if amt > 0:
             total += amt
             detail.append({'date': d, 'cls': cls, 'hours': h, 'amount': round(amt)})
-    return {'amount': round(total), 'detail': detail}
+    return {'amount': round(total), 'detail': detail, 'tiers': tiers}
 
 
 # ───────────────────── 特休結算（全額折現）─────────────────────

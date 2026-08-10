@@ -637,3 +637,17 @@ class PayrollViewTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         for r in resp.context['results']:
             self.assertIn('overtime', r)
+
+    def test_monthly_overtime_returns_tiers(self):
+        ot = payroll.monthly_overtime(self.emp, 2024, 6)
+        self.assertIn('tiers', ot)
+        self.assertEqual(
+            set(ot['tiers'].keys()),
+            {'weekday_1_2', 'weekday_3plus', 'restday_1_2', 'restday_3_8', 'restday_9_12', 'holiday'},
+        )
+
+    def test_salary_detail_page(self):
+        resp = self.client.get(f'/dashboard/salary/{self.emp.pk}/detail/?year=2024&month=6')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('weekday_tiers', resp.context)
+        self.assertIn('restday_tiers', resp.context)

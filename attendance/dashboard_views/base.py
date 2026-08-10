@@ -188,6 +188,7 @@ def calculate_salary(emp, year, month):
         'allowance': allowance_amount,
         'overtime': overtime,
         'overtime_detail': ot['detail'],
+        'overtime_tiers': ot['tiers'],
         'deduction': deduction,
         'total': total,
     }

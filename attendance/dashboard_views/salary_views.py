@@ -1,10 +1,11 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.utils import timezone
 from django.urls import reverse
 import openpyxl
 from ..models import Employee, AttendanceRecord, MonthlyAllowance
+from ..utils import payroll
 from .base import require_group, get_work_hours, calculate_salary
 
 
@@ -77,6 +78,57 @@ def add_allowance(request):
         defaults={'amount': amount, 'note': note}
     )
     return redirect(f"{reverse('dashboard:salary')}?year={year}&month={month}")
+
+
+@login_required
+@require_group('admin', 'finance')
+def salary_detail(request, pk):
+    """單一員工的薪資詳細計算報表（含加班分級時數）。"""
+    emp = get_object_or_404(Employee, pk=pk)
+    year = int(request.GET.get('year', timezone.localdate().year))
+    month = int(request.GET.get('month', timezone.localdate().month))
+
+    result = calculate_salary(emp, year, month)
+
+    # 時薪制：補上每日工時明細（與薪資頁一致）
+    day_hours, total_hours = [], 0
+    if emp.employment_type == 'hourly':
+        records = AttendanceRecord.objects.filter(
+            employee=emp, timestamp__year=year, timestamp__month=month)
+        days = list(records.filter(record_type='clock_in').dates('timestamp', 'day'))
+        day_hours = [(d, get_work_hours(emp, d)) for d in days]
+        total_hours = sum(h for _, h in day_hours)
+
+    def _hm(x):
+        h = int(x)
+        return {'h': h, 'm': int(round((x - h) * 60))}
+
+    t = result['overtime_tiers']
+    weekday_tiers = [
+        {'label': '第 1-2 小時', **_hm(t['weekday_1_2'])},
+        {'label': '第 3 小時以上', **_hm(t['weekday_3plus'])},
+    ]
+    restday_tiers = [
+        {'label': '第 1-2 小時', **_hm(t['restday_1_2'])},
+        {'label': '第 3-8 小時', **_hm(t['restday_3_8'])},
+        {'label': '第 9-12 小時', **_hm(t['restday_9_12'])},
+    ]
+
+    return render(request, 'attendance/salary_detail.html', {
+        'emp': emp, 'year': year, 'month': month,
+        'result': result,
+        'weekday_tiers': weekday_tiers,
+        'restday_tiers': restday_tiers,
+        'holiday_hm': _hm(t['holiday']),
+        'overtime_detail': result['overtime_detail'],
+        'day_hours': day_hours, 'total_hours': total_hours,
+        'hourly': float(emp.hourly_rate or 0),
+        'hourly_wage': round(payroll.hourly_wage(emp), 2),
+        'daily_wage': round(payroll.daily_wage(emp)),
+        'is_monthly': emp.employment_type == 'monthly',
+        'months': range(1, 13),
+        'years': range(timezone.localdate().year, timezone.localdate().year - 3, -1),
+    })
 
 
 @login_required

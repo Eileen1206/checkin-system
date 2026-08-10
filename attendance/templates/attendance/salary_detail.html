@@ -1,0 +1,143 @@
+{% extends "attendance/base.html" %}
+{% block title %}薪資明細{% endblock %}
+{% block page_title %}薪資明細{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-800">{{ emp.user.get_full_name|default:emp.user.username }}　薪資明細</h1>
+    <p class="text-sm text-gray-400 mt-1">工號 {{ emp.employee_id }}　·　{{ year }} 年 {{ month }} 月　·　{% if is_monthly %}月薪制{% else %}時薪制{% endif %}</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <form method="get" class="flex items-center gap-2">
+      <select name="year" onchange="this.form.submit()" class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm">
+        {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+      </select>
+      <select name="month" onchange="this.form.submit()" class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm">
+        {% for m in months %}<option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}月</option>{% endfor %}
+      </select>
+    </form>
+    <a href="{% url 'dashboard:salary' %}?year={{ year }}&month={{ month }}" class="text-sm text-gray-500 hover:underline">← 返回</a>
+  </div>
+</div>
+
+<!-- 薪資摘要 -->
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+    <p class="text-xs text-gray-400 mb-1">底薪</p>
+    <p class="text-lg font-bold text-gray-800">${{ result.base|floatformat:0 }}</p>
+  </div>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+    <p class="text-xs text-gray-400 mb-1">加班費</p>
+    <p class="text-lg font-bold text-teal-600">${{ result.overtime|floatformat:0 }}</p>
+  </div>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+    <p class="text-xs text-gray-400 mb-1">勞務加給</p>
+    <p class="text-lg font-bold text-gray-800">${{ result.allowance|floatformat:0 }}</p>
+  </div>
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+    <p class="text-xs text-gray-400 mb-1">扣除（勞健保）</p>
+    <p class="text-lg font-bold text-red-500">-${{ result.deduction|floatformat:0 }}</p>
+  </div>
+  <div class="bg-teal-50 rounded-2xl border border-teal-100 p-4">
+    <p class="text-xs text-teal-600 mb-1">實領</p>
+    <p class="text-lg font-extrabold text-teal-700">${{ result.total|floatformat:0 }}</p>
+  </div>
+</div>
+
+<!-- 加班分級時數（勞基法 §24） -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+  <div class="flex items-center gap-2 mb-4">
+    <span class="w-3 h-3 rounded-full border-2 border-orange-400"></span>
+    <h2 class="text-lg font-bold text-gray-800">加給工資時數</h2>
+    <span class="text-xs text-gray-400 ml-2">加班基數 ${{ hourly_wage }}／時（{% if is_monthly %}月薪/240{% else %}時薪{% endif %}）</span>
+  </div>
+
+  <div class="border-l-2 border-orange-200 pl-4 space-y-5">
+    <div>
+      <p class="text-sm font-semibold text-gray-700 mb-2">當月份<span class="text-blue-500">平日</span>加班總時數</p>
+      {% for row in weekday_tiers %}
+      <div class="flex items-center gap-3 mb-2 text-sm">
+        <span class="w-28 text-gray-500">{{ row.label }}</span>
+        <span class="inline-flex items-center justify-center w-16 h-9 rounded-lg border border-gray-200 font-medium">{{ row.h }}</span>
+        <span class="text-gray-500">小時</span>
+        <span class="inline-flex items-center justify-center w-16 h-9 rounded-lg border border-gray-200 font-medium">{{ row.m }}</span>
+        <span class="text-gray-500">分鐘</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="border-t border-gray-100 pt-4">
+      <p class="text-sm font-semibold text-gray-700 mb-2">當月份<span class="text-green-600">休息日</span>加班總時數</p>
+      {% for row in restday_tiers %}
+      <div class="flex items-center gap-3 mb-2 text-sm">
+        <span class="w-28 text-gray-500">{{ row.label }}</span>
+        <span class="inline-flex items-center justify-center w-16 h-9 rounded-lg border border-gray-200 font-medium">{{ row.h }}</span>
+        <span class="text-gray-500">小時</span>
+        <span class="inline-flex items-center justify-center w-16 h-9 rounded-lg border border-gray-200 font-medium">{{ row.m }}</span>
+        <span class="text-gray-500">分鐘</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if holiday_hm.h or holiday_hm.m %}
+    <div class="border-t border-gray-100 pt-4">
+      <p class="text-sm font-semibold text-gray-700 mb-2">當月份<span class="text-red-500">例假／國定假日</span>出勤總時數</p>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="w-28 text-gray-500">加倍工資</span>
+        <span class="inline-flex items-center justify-center w-16 h-9 rounded-lg border border-gray-200 font-medium">{{ holiday_hm.h }}</span>
+        <span class="text-gray-500">小時</span>
+        <span class="inline-flex items-center justify-center w-16 h-9 rounded-lg border border-gray-200 font-medium">{{ holiday_hm.m }}</span>
+        <span class="text-gray-500">分鐘</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 每日加班明細 -->
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+  <div class="px-6 py-4 border-b border-gray-100"><h2 class="font-bold text-gray-800">每日加班明細</h2></div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+      <tr>
+        <th class="text-left px-6 py-3 font-medium">日期</th>
+        <th class="text-left px-6 py-3 font-medium">日別</th>
+        <th class="text-left px-6 py-3 font-medium">工時</th>
+        <th class="text-right px-6 py-3 font-medium">加班費</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      {% for row in overtime_detail %}
+      <tr class="hover:bg-amber-50/30">
+        <td class="px-6 py-3 text-gray-700">{{ row.date|date:"Y-m-d" }}</td>
+        <td class="px-6 py-3"><span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">{{ row.cls }}</span></td>
+        <td class="px-6 py-3 text-gray-600">{{ row.hours }} 小時</td>
+        <td class="px-6 py-3 text-right font-medium text-gray-800">${{ row.amount }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="px-6 py-8 text-center text-gray-400">本月無加班</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if not is_monthly and day_hours %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-bold text-gray-800">每日工時（時薪 ${{ hourly|floatformat:0 }}／時，共 {{ total_hours|floatformat:1 }}h）</h2>
+  </div>
+  <table class="w-full text-sm">
+    <tbody class="divide-y divide-gray-50">
+      {% for d, h in day_hours %}
+      <tr class="hover:bg-amber-50/30">
+        <td class="px-6 py-2.5 text-gray-700">{{ d|date:"Y-m-d" }}</td>
+        <td class="px-6 py-2.5 text-right text-gray-600">{{ h }} 小時</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -50,7 +50,11 @@
     <tbody class="divide-y divide-gray-50">
       {% for result in results %}
       <tr class="hover:bg-amber-50/30">
-        <td class="px-5 py-3 font-medium text-gray-800">{{ result.employee.user.get_full_name|default:result.employee.user.username }}</td>
+        <td class="px-5 py-3 font-medium text-gray-800">
+          {{ result.employee.user.get_full_name|default:result.employee.user.username }}
+          <a href="{% url 'dashboard:salary_detail' result.employee.pk %}?year={{ year }}&month={{ month }}"
+            class="block text-xs text-blue-500 hover:underline mt-0.5">明細報表 →</a>
+        </td>
         <td class="px-5 py-3 text-gray-600">{{ result.base|floatformat:0 }} 元</td>
         <td class="px-5 py-3 text-gray-600">{{ result.maintenance|floatformat:0 }} 元</td>
         <td class="px-5 py-3 text-gray-600">
