@@ -21,6 +21,7 @@ urlpatterns = [
     path('delivery/today/', dashboard_views.delivery_today, name='delivery_today'),
     path('delivery/approve-clockout/', dashboard_views.approve_clockout, name='approve_clockout'),
     path('salary/', dashboard_views.salary, name='salary'),
+    path('salary/<int:pk>/detail/', dashboard_views.salary_detail, name='salary_detail'),
     path('salary/allowance/add/', dashboard_views.add_allowance, name='add_allowance'),
     path('employees/', dashboard_views.employee_list, name='employee_list'),
     path('employees/add/', dashboard_views.employee_add, name='employee_add'),
@@ -46,4 +47,6 @@ urlpatterns = [
     path('analytics/attendance/', dashboard_views.analytics_attendance, name='analytics_attendance'),
     path('analytics/delivery/', dashboard_views.analytics_delivery, name='analytics_delivery'),
     path('analytics/customer/', dashboard_views.analytics_customer, name='analytics_customer'),
+    path('annual-leave/', dashboard_views.annual_leave, name='annual_leave'),
+    path('holidays/', dashboard_views.holiday_list, name='holiday_list'),
 ]

@@ -176,12 +176,19 @@ def calculate_salary(emp, year, month):
         health = float(emp.health_insurance_amount) if emp.health_insurance_amount else 0
         deduction = labor + health
 
-    total = base + maintenance + allowance_amount - deduction
+    from attendance.utils import payroll
+    ot = payroll.monthly_overtime(emp, year, month)
+    overtime = ot['amount']
+
+    total = base + maintenance + allowance_amount + overtime - deduction
     return {
         'employee': emp,
         'base': base,
         'maintenance': maintenance,
         'allowance': allowance_amount,
+        'overtime': overtime,
+        'overtime_detail': ot['detail'],
+        'overtime_tiers': ot['tiers'],
         'deduction': deduction,
         'total': total,
     }

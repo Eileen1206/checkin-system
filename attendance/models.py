@@ -29,6 +29,8 @@ class Employee(models.Model):
     line_user_id = models.CharField('LINE User ID', max_length=50, unique=True, null=True, blank=True)
     rfid_uid = models.CharField('RFID 卡號', max_length=20, unique=True, null=True, blank=True)
     employment_type = models.CharField('薪資類型', max_length=10, choices=EMPLOYMENT_TYPE_CHOICES, default='monthly')
+    hire_date = models.DateField('到職日', null=True, blank=True,
+                                 help_text='用於週年制特休與年資計算')
     monthly_salary = models.DecimalField('月薪', max_digits=10, decimal_places=2, null=True, blank=True)
     hourly_rate = models.DecimalField('時薪', max_digits=8, decimal_places=2, null=True, blank=True)
     fuel_daily_allowance = models.DecimalField('每日油費補貼', max_digits=8, decimal_places=2, default=0)
@@ -156,6 +158,20 @@ class MonthlyAllowance(models.Model):
 
     def __str__(self):
         return f"{self.employee} - {self.year}/{self.month:02d} +${self.amount}"
+
+
+class Holiday(models.Model):
+    """國定假日（供加班費「假日加倍」判定）。"""
+    date = models.DateField('日期', unique=True)
+    name = models.CharField('名稱', max_length=50, blank=True)
+
+    class Meta:
+        verbose_name = '國定假日'
+        verbose_name_plural = '國定假日'
+        ordering = ['date']
+
+    def __str__(self):
+        return f"{self.date} {self.name}".strip()
 
 
 

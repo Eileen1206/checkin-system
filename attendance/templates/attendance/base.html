@@ -223,6 +223,14 @@
                class="nav-item {% if request.resolver_match.url_name == 'salary' %}active{% endif %}">
                 <i class="fa-solid fa-coins"></i> 薪資計算
             </a>
+            <a href="{% url 'dashboard:annual_leave' %}"
+               class="nav-item {% if request.resolver_match.url_name == 'annual_leave' %}active{% endif %}">
+                <i class="fa-solid fa-umbrella-beach"></i> 特休結算
+            </a>
+            <a href="{% url 'dashboard:holiday_list' %}"
+               class="nav-item {% if request.resolver_match.url_name == 'holiday_list' %}active{% endif %}">
+                <i class="fa-solid fa-calendar-check"></i> 國定假日
+            </a>
 
             {# 分析 #}
             <p class="nav-section">分析</p>

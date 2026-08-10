@@ -3,8 +3,19 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.conf import settings
 from django.urls import reverse
+from datetime import datetime
 from ..models import Employee, BindingToken, User
 from .base import require_group, WORK_DAY_CHOICES
+
+
+def _parse_date(raw):
+    raw = (raw or '').strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 
 @login_required
@@ -110,6 +121,7 @@ def employee_add(request):
         selected_days = request.POST.getlist('work_days')
         work_days = ','.join(selected_days) if selected_days else '0,1,2,3,4'
         make_token = request.POST.get('make_token') == 'on'
+        hire_date = _parse_date(request.POST.get('hire_date'))
 
         # 建立系統user
         if User.objects.filter(username=username).exists():
@@ -147,6 +159,7 @@ def employee_add(request):
             is_report_visible=is_report_visible,
             remind_enabled=remind_enabled,
             work_days=work_days,
+            hire_date=hire_date,
         )
 
         # 入職精靈最後一步：可選擇立即產生 LINE 綁定碼，並顯示 QR
@@ -188,6 +201,7 @@ def employee_edit(request, pk):
         emp.remind_enabled = request.POST.get('remind_enabled') == 'on'
         emp.is_active = request.POST.get('is_active') == 'on'
         emp.is_report_visible = request.POST.get('is_report_visible') == 'on'
+        emp.hire_date = _parse_date(request.POST.get('hire_date'))
         selected_days = request.POST.getlist('work_days')
         emp.work_days = ','.join(selected_days) if selected_days else ''
         emp.save()

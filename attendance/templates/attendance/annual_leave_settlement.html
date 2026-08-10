@@ -1,0 +1,66 @@
+{% extends "attendance/base.html" %}
+{% block title %}特休結算{% endblock %}
+{% block page_title %}特休結算{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-800">特休結算</h1>
+    <p class="text-sm text-gray-400 mt-1">依勞基法第 38 條（週年制）計算應有特休天數，全額折現＝天數 × 日薪。</p>
+  </div>
+  <form method="get" class="flex items-center gap-2 flex-wrap">
+    <select name="employee_id" onchange="this.form.submit()"
+            class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300">
+      {% for emp in employees %}
+      <option value="{{ emp.pk }}" {% if emp == selected %}selected{% endif %}>
+        {{ emp.employee_id }} {{ emp.user.get_full_name|default:emp.user.username }}{% if not emp.is_active %}（已離職）{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <input type="date" name="as_of" value="{{ as_of }}"
+           class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300">
+    <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 whitespace-nowrap">結算</button>
+    <span class="text-xs text-gray-400">（結算日空白＝今天；離職結算填離職日）</span>
+  </form>
+</div>
+
+{% if settlement %}
+  {% if not settlement.has_hire_date %}
+  <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-amber-700">
+    此員工尚未設定<strong>到職日</strong>，無法計算特休。請先到
+    <a href="{% url 'dashboard:employee_edit' selected.pk %}" class="underline font-medium">員工編輯</a> 補上到職日。
+  </div>
+  {% else %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 mb-1">到職日</p>
+      <p class="text-lg font-bold text-gray-800">{{ selected.hire_date|date:"Y-m-d" }}</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 mb-1">年資（結算日 {{ settlement.as_of|date:"Y-m-d" }}）</p>
+      <p class="text-lg font-bold text-gray-800">{{ settlement.years }} 年 {{ settlement.months }} 個月</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 mb-1">本期應有特休</p>
+      <p class="text-lg font-bold text-teal-600">{{ settlement.days }} 天</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 mb-1">日薪</p>
+      <p class="text-lg font-bold text-gray-800">${{ settlement.daily_wage }}</p>
+    </div>
+  </div>
+
+  <div class="mt-4 bg-teal-50 border border-teal-100 rounded-2xl p-6 flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <p class="text-sm text-teal-700 font-medium">特休折現金額（全額）</p>
+      <p class="text-xs text-teal-600/70 mt-0.5">{{ settlement.days }} 天 × ${{ settlement.daily_wage }}／天</p>
+    </div>
+    <p class="text-3xl font-extrabold text-teal-700">${{ settlement.payout }}</p>
+  </div>
+  <p class="text-xs text-gray-400 mt-3">※ 本頁採「全額折現」（不扣抵已休特休）。特休天數依勞基法第 38 條、週年制計算。</p>
+  {% endif %}
+{% else %}
+<p class="text-gray-400">尚無員工資料。</p>
+{% endif %}
+
+{% endblock %}
