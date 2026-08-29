@@ -655,6 +655,25 @@ class PayrollViewTest(TestCase):
         self.assertNotIn(date(2026, 1, 3), dates)  # 無名稱的週末不匯入
         self.assertEqual(len(dates), 2)
 
+    def test_holiday_import_uses_selected_year(self):
+        """匯入年度由下拉決定：選 2027 就抓 2027，且勞動節補在該年。"""
+        from attendance.models import Holiday
+        from attendance.dashboard_views import payroll_views
+        with patch.object(payroll_views, '_import_taiwan_holidays',
+                          wraps=payroll_views._import_taiwan_holidays) as spy, \
+             patch.object(payroll_views.requests, 'get') as g:
+            g.return_value.json.return_value = [
+                {'date': '20270101', 'isHoliday': True, 'description': '開國紀念日'},
+            ]
+            g.return_value.raise_for_status.return_value = None
+            self.client.post('/dashboard/holidays/',
+                             {'action': 'import', 'import_year': '2027'})
+        spy.assert_called_once_with(2027)
+        self.assertIn('2027', g.call_args[0][0])          # 取用 2027 年度資料
+        dates = set(Holiday.objects.values_list('date', flat=True))
+        self.assertIn(date(2027, 1, 1), dates)
+        self.assertIn(date(2027, 5, 1), dates)            # 勞動節補在所選年度
+
     def test_holiday_import_failure_shows_error(self):
         """外部資料抓不到時不得 500，應提示錯誤並轉址。"""
         from attendance.dashboard_views import payroll_views

@@ -23,15 +23,23 @@
   <div class="lg:col-span-1">
     <!-- 一鍵匯入 -->
     <div class="bg-teal-50 rounded-2xl border border-teal-100 p-5 mb-4">
-      <p class="text-sm font-semibold text-teal-800 mb-1">一鍵匯入 {{ year }} 年國定假日</p>
-      <p class="text-xs text-teal-700/70 mb-3">自動抓取政府行事曆（含補班補假調整），並補上勞動節。已存在的日期會自動略過。</p>
+      <p class="text-sm font-semibold text-teal-800 mb-1">一鍵匯入國定假日</p>
+      <p class="text-xs text-teal-700/70 mb-3">選擇年度，自動抓取該年政府行事曆（含補班補假調整），並補上勞動節。已存在的日期會自動略過。</p>
       <form method="post" id="import-form">
         {% csrf_token %}
         <input type="hidden" name="action" value="import">
-        <input type="hidden" name="import_year" value="{{ year }}">
+        <label class="block text-xs text-teal-800/80 mb-1">匯入年度</label>
+        <select name="import_year" id="import-year"
+          class="w-full px-3 py-2 mb-3 border border-teal-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-300">
+          {% for y in import_years %}
+          <option value="{{ y }}" {% if y == year %}selected{% endif %}>
+            {{ y }} 年{% if y == today_year %}（今年）{% endif %}
+          </option>
+          {% endfor %}
+        </select>
         <button type="submit" id="import-btn"
           class="w-full px-4 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700 disabled:opacity-60">
-          <span id="import-label">📅 匯入 {{ year }} 年國定假日</span>
+          <span id="import-label">📅 匯入國定假日</span>
         </button>
       </form>
     </div>
