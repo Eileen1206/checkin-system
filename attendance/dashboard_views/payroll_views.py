@@ -110,10 +110,17 @@ def holiday_list(request):
         return redirect('dashboard:holiday_list')
 
     today = timezone.localdate()
-    year = int(request.GET.get('year', today.year))
+    try:
+        year = int(request.GET.get('year', today.year))
+    except ValueError:
+        year = today.year
     holidays = Holiday.objects.filter(date__year=year).order_by('date')
+    # 可匯入年度：明年～前兩年（政府行事曆通常於前一年底公布次年度）
+    import_years = list(range(today.year + 1, today.year - 3, -1))
     return render(request, 'attendance/holiday_list.html', {
-        'holidays': holidays,
-        'year':     year,
-        'years':    range(today.year + 1, today.year - 3, -1),
+        'holidays':     holidays,
+        'year':         year,
+        'years':        import_years,
+        'import_years': import_years,
+        'today_year':   today.year,
     })
