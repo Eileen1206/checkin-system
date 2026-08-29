@@ -439,7 +439,7 @@ class EmployeeDeactivateTest(TestCase):
 
     def test_salary_hides_inactive_by_default(self):
         resp = self.client.get('/dashboard/salary/')
-        emp_ids = [r['employee'].pk for r in resp.context['results']]
+        emp_ids = [e.pk for e in resp.context['employees']]
         self.assertIn(self.active_emp.pk, emp_ids)
         self.assertNotIn(self.inactive_emp.pk, emp_ids)
 
@@ -492,7 +492,7 @@ class AdminOnlyEmployeeTest(TestCase):
         self.assertNotIn(self.admin_emp.pk, [e.pk for e in leave.context['employees']])
         # 薪資
         sal = self.client.get('/dashboard/salary/')
-        self.assertNotIn(self.admin_emp.pk, [r['employee'].pk for r in sal.context['results']])
+        self.assertNotIn(self.admin_emp.pk, [e.pk for e in sal.context['employees']])
         # 出勤報表（reports app）的員工下拉
         rpt = self.client.get('/reports/')
         self.assertNotIn(self.admin_emp.pk, [e.pk for e in rpt.context['employees']])
@@ -634,11 +634,60 @@ class PayrollViewTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Holiday.objects.count(), 2)
 
-    def test_salary_results_have_overtime_key(self):
+    def test_holiday_import_year(self):
+        """一鍵匯入：只收 isHoliday 且有節日名稱者，並補上勞動節。"""
+        from attendance.models import Holiday
+        from attendance.dashboard_views import payroll_views
+        fake = [
+            {'date': '20260101', 'isHoliday': True,  'description': '開國紀念日'},
+            {'date': '20260103', 'isHoliday': True,  'description': ''},          # 一般週末 → 跳過
+            {'date': '20260105', 'isHoliday': False, 'description': ''},          # 上班日 → 跳過
+        ]
+        with patch.object(payroll_views.requests, 'get') as g:
+            g.return_value.json.return_value = fake
+            g.return_value.raise_for_status.return_value = None
+            resp = self.client.post('/dashboard/holidays/',
+                                    {'action': 'import', 'import_year': '2026'})
+        self.assertEqual(resp.status_code, 302)
+        dates = set(Holiday.objects.values_list('date', flat=True))
+        self.assertIn(date(2026, 1, 1), dates)     # 國定假日
+        self.assertIn(date(2026, 5, 1), dates)     # 勞動節自動補
+        self.assertNotIn(date(2026, 1, 3), dates)  # 無名稱的週末不匯入
+        self.assertEqual(len(dates), 2)
+
+    def test_holiday_import_failure_shows_error(self):
+        """外部資料抓不到時不得 500，應提示錯誤並轉址。"""
+        from attendance.dashboard_views import payroll_views
+        with patch.object(payroll_views.requests, 'get', side_effect=Exception('boom')):
+            resp = self.client.post('/dashboard/holidays/',
+                                    {'action': 'import', 'import_year': '2026'})
+        self.assertEqual(resp.status_code, 302)
+
+    def test_salary_page_renders_without_computing(self):
+        """薪資頁應先秒開（只帶員工名單），計算交給 API。"""
         resp = self.client.get('/dashboard/salary/')
         self.assertEqual(resp.status_code, 200)
-        for r in resp.context['results']:
-            self.assertIn('overtime', r)
+        self.assertIn('employees', resp.context)
+        self.assertNotIn('results', resp.context)
+
+    def test_salary_calc_api(self):
+        resp = self.client.get(
+            f'/dashboard/salary/api/calc/?employee_id={self.emp.pk}&year=2024&month=6')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        for key in ('base', 'overtime', 'deduction', 'total', 'name'):
+            self.assertIn(key, data)
+
+    def test_salary_calc_api_bad_params(self):
+        resp = self.client.get('/dashboard/salary/api/calc/?employee_id=999999&year=2024&month=6')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_salary_row_has_overtime_key(self):
+        from attendance.dashboard_views.salary_views import _salary_row
+        r = _salary_row(self.emp, 2024, 6)
+        self.assertIn('overtime', r)
+        self.assertIn('overtime_tiers', r)
 
     def test_monthly_overtime_returns_tiers(self):
         ot = payroll.monthly_overtime(self.emp, 2024, 6)

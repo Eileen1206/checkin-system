@@ -33,6 +33,21 @@
   </form>
 </div>
 
+<!-- 計算進度 -->
+<div id="calc-panel" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <p class="text-sm font-medium text-gray-700">
+      <span class="inline-block w-4 h-4 mr-1 align-[-2px] border-2 border-gray-300 border-t-teal-500 rounded-full animate-spin" id="calc-spinner"></span>
+      正在計算 {{ year }} 年 {{ month }} 月薪資…
+    </p>
+    <p class="text-sm text-gray-500"><span id="calc-done">0</span> / <span id="calc-total">{{ employee_count }}</span> 位</p>
+  </div>
+  <div class="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+    <div id="calc-bar" class="h-full bg-teal-500 rounded-full transition-all duration-300" style="width:0%"></div>
+  </div>
+  <p class="text-xs text-gray-400 mt-2" id="calc-current">準備中…</p>
+</div>
+
 <!-- 薪資表格 -->
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
   <table class="w-full text-sm">
@@ -47,79 +62,117 @@
         <th class="text-left px-5 py-3 font-medium">實領</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-gray-50">
-      {% for result in results %}
-      <tr class="hover:bg-amber-50/30">
+    <tbody class="divide-y divide-gray-50" id="salary-body">
+      {% for emp in employees %}
+      <tr id="row-{{ emp.pk }}" class="hover:bg-amber-50/30">
         <td class="px-5 py-3 font-medium text-gray-800">
-          {{ result.employee.user.get_full_name|default:result.employee.user.username }}
-          <a href="{% url 'dashboard:salary_detail' result.employee.pk %}?year={{ year }}&month={{ month }}"
+          {{ emp.user.get_full_name|default:emp.user.username }}
+          <a href="{% url 'dashboard:salary_detail' emp.pk %}?year={{ year }}&month={{ month }}"
             class="block text-xs text-blue-500 hover:underline mt-0.5">明細報表 →</a>
         </td>
-        <td class="px-5 py-3 text-gray-600">{{ result.base|floatformat:0 }} 元</td>
-        <td class="px-5 py-3 text-gray-600">{{ result.maintenance|floatformat:0 }} 元</td>
-        <td class="px-5 py-3 text-gray-600">
-          {{ result.allowance|floatformat:0 }} 元
-          <button onclick="toggleAllowance({{ result.employee.pk }})" 
-              class="ml-2 text-xs text-blue-500 hover:underline">+ 加給</button>
-          <!-- 小表單（預設隱藏）-->
-            <div id="allowance_{{ result.employee.pk }}" class="hidden mt-2">
-                <form method="post" action="{% url 'dashboard:add_allowance' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="employee_id" value="{{ result.employee.pk }}">
-                    <input type="hidden" name="year" value="{{ year }}">
-                    <input type="hidden" name="month" value="{{ month }}">
-                    <input type="number" name="amount" placeholder="金額" required min="1" step="1"
-                        class="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-                    <input type="text" name="note" placeholder="備註（如電話費）"
-                        class="w-40 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
-                    <button type="submit"
-                        class="px-3 py-1 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-700">送出</button>
-                </form>
-            </div>
-      </td>
-        <td class="px-5 py-3 text-gray-600">
-          {{ result.overtime|floatformat:0 }} 元
-          {% if result.overtime_detail %}
-          <button onclick="this.nextElementSibling.classList.toggle('hidden')"
-            class="ml-1 text-xs text-gray-400 hover:text-gray-600">明細 ▾</button>
-          <div class="hidden mt-2 text-xs text-gray-500 font-normal space-y-0.5 bg-gray-50 rounded-lg p-2">
-            {% for row in result.overtime_detail %}
-            <div>{{ row.date }}（{{ row.cls }}）{{ row.hours }}h → <span class="font-medium text-gray-700">${{ row.amount }}</span></div>
-            {% endfor %}
-          </div>
-          {% endif %}
-        </td>
-        <td class="px-5 py-3 text-red-500">{{ result.deduction|floatformat:0 }} 元</td>
-        <td class="px-5 py-3 font-semibold text-gray-800">
-          {{ result.total|floatformat:0 }} 元
-          {% if result.day_hours %}
-          <button onclick="this.nextElementSibling.classList.toggle('hidden')"
-            class="ml-2 text-xs text-gray-400 hover:text-gray-600">明細 ▾</button>
-          <div class="hidden mt-2 text-xs text-gray-500 font-normal space-y-0.5 bg-gray-50 rounded-lg p-2">
-            <div class="font-medium text-gray-600 mb-1">時薪 ${{ result.hourly|floatformat:0 }} × {{ result.total_hours|floatformat:1 }}h</div>
-            {% for d, h in result.day_hours %}
-            <div>{{ d }} → <span class="font-medium text-gray-700">{{ h }}h</span></div>
-            {% endfor %}
-          </div>
-          {% endif %}
+        <td class="px-5 py-3 text-gray-300" colspan="6">
+          <span class="inline-block w-24 h-3 bg-gray-100 rounded animate-pulse"></span>
         </td>
       </tr>
       {% empty %}
-      <tr>
-        <td colspan="7" class="px-5 py-10 text-center text-gray-400">尚無薪資紀錄</td>
-      </tr>
+      <tr><td colspan="7" class="px-5 py-10 text-center text-gray-400">尚無員工資料</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
-function toggleAllowance(pk) {
-    const el = document.getElementById('allowance_' + pk);
-    el.classList.toggle('hidden');
+const YEAR  = {{ year }};
+const MONTH = {{ month }};
+const EMP_IDS = [{% for emp in employees %}{{ emp.pk }}{% if not forloop.last %},{% endif %}{% endfor %}];
+const CALC_URL = "{% url 'dashboard:salary_calc_api' %}";
+const DETAIL_URL = "{% url 'dashboard:salary_detail' 0 %}";
+const ADD_ALLOWANCE_URL = "{% url 'dashboard:add_allowance' %}";
+const CSRF = "{{ csrf_token }}";
+
+const money = n => Number(n).toLocaleString();
+
+function renderRow(d) {
+  const row = document.getElementById('row-' + d.employee_id);
+  if (!row) return;
+  const detailUrl = DETAIL_URL.replace('/0/', `/${d.employee_id}/`) + `?year=${YEAR}&month=${MONTH}`;
+
+  const otDetail = d.overtime_detail.length ? `
+    <button onclick="this.nextElementSibling.classList.toggle('hidden')"
+      class="ml-1 text-xs text-gray-400 hover:text-gray-600">明細 ▾</button>
+    <div class="hidden mt-2 text-xs text-gray-500 font-normal space-y-0.5 bg-gray-50 rounded-lg p-2">
+      ${d.overtime_detail.map(x => `<div>${x.date}（${x.cls}）${x.hours}h → <span class="font-medium text-gray-700">$${money(x.amount)}</span></div>`).join('')}
+    </div>` : '';
+
+  const dayDetail = d.day_hours.length ? `
+    <button onclick="this.nextElementSibling.classList.toggle('hidden')"
+      class="ml-2 text-xs text-gray-400 hover:text-gray-600">明細 ▾</button>
+    <div class="hidden mt-2 text-xs text-gray-500 font-normal space-y-0.5 bg-gray-50 rounded-lg p-2">
+      <div class="font-medium text-gray-600 mb-1">時薪 $${money(d.hourly)}｜共 ${d.total_hours}h</div>
+      ${d.day_hours.map(x => `<div>${x.date} → <span class="font-medium text-gray-700">${x.hours}h</span></div>`).join('')}
+    </div>` : '';
+
+  row.innerHTML = `
+    <td class="px-5 py-3 font-medium text-gray-800">
+      ${d.name}
+      <a href="${detailUrl}" class="block text-xs text-blue-500 hover:underline mt-0.5">明細報表 →</a>
+    </td>
+    <td class="px-5 py-3 text-gray-600">${money(d.base)} 元</td>
+    <td class="px-5 py-3 text-gray-600">${money(d.maintenance)} 元</td>
+    <td class="px-5 py-3 text-gray-600">
+      ${money(d.allowance)} 元
+      <button onclick="document.getElementById('allowance_${d.employee_id}').classList.toggle('hidden')"
+        class="ml-2 text-xs text-blue-500 hover:underline">+ 加給</button>
+      <div id="allowance_${d.employee_id}" class="hidden mt-2">
+        <form method="post" action="${ADD_ALLOWANCE_URL}">
+          <input type="hidden" name="csrfmiddlewaretoken" value="${CSRF}">
+          <input type="hidden" name="employee_id" value="${d.employee_id}">
+          <input type="hidden" name="year" value="${YEAR}">
+          <input type="hidden" name="month" value="${MONTH}">
+          <input type="number" name="amount" placeholder="金額" required min="1" step="1"
+            class="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm">
+          <input type="text" name="note" placeholder="備註（如電話費）"
+            class="w-40 px-2 py-1 border border-gray-200 rounded-lg text-sm">
+          <button type="submit" class="px-3 py-1 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-700">送出</button>
+        </form>
+      </div>
+    </td>
+    <td class="px-5 py-3 text-gray-600">${money(d.overtime)} 元${otDetail}</td>
+    <td class="px-5 py-3 text-red-500">${money(d.deduction)} 元</td>
+    <td class="px-5 py-3 font-semibold text-gray-800">${money(d.total)} 元${dayDetail}</td>`;
 }
+
+async function runCalc() {
+  const total = EMP_IDS.length;
+  const panel = document.getElementById('calc-panel');
+  if (!total) { panel.style.display = 'none'; return; }
+
+  let done = 0;
+  for (const id of EMP_IDS) {
+    const row = document.getElementById('row-' + id);
+    const name = row ? row.querySelector('td').childNodes[0].textContent.trim() : '';
+    document.getElementById('calc-current').textContent = `計算中：${name}`;
+    try {
+      const resp = await fetch(`${CALC_URL}?employee_id=${id}&year=${YEAR}&month=${MONTH}`);
+      const data = await resp.json();
+      if (data.ok) renderRow(data);
+    } catch (e) {
+      console.error('[salary calc]', e);
+    }
+    done++;
+    document.getElementById('calc-done').textContent = done;
+    document.getElementById('calc-bar').style.width = (done / total * 100) + '%';
+  }
+
+  // 完成
+  document.getElementById('calc-spinner').classList.remove('animate-spin');
+  document.getElementById('calc-current').textContent = '計算完成';
+  setTimeout(() => { panel.style.display = 'none'; }, 800);
+}
+
+document.addEventListener('DOMContentLoaded', runCalc);
 </script>
-
-
-
 {% endblock %}

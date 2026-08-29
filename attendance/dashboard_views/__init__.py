@@ -17,7 +17,7 @@ from .delivery_views import (
     approve_clockout,
 )
 from .salary_views import (
-    salary, add_allowance, export_salary_excel, salary_detail,
+    salary, add_allowance, export_salary_excel, salary_detail, salary_calc_api,
 )
 from .leave_views import (
     leave_calendar, leave_add_api, leave_delete_api, leave_add, leave_delete,
@@ -39,7 +39,7 @@ __all__ = [
     'import_customers', 'search_customer', 'customer_list', 'customer_edit', 'geocode_customers', 'parse_gmaps_url',
     'location_correction_list', 'location_correction_review',
     'delivery_push', 'delivery_add_task', 'delivery_delete_task', 'delivery_reorder', 'delivery_plan', 'delivery_today', 'approve_clockout',
-    'salary', 'add_allowance', 'export_salary_excel', 'salary_detail',
+    'salary', 'add_allowance', 'export_salary_excel', 'salary_detail', 'salary_calc_api',
     'leave_calendar', 'leave_add_api', 'leave_delete_api', 'leave_add', 'leave_delete',
     'leave_request_list', 'leave_request_approve', 'leave_request_deny', 'pending_items',
     'analytics_attendance', 'analytics_delivery', 'analytics_customer',
