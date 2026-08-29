@@ -157,17 +157,19 @@ def calculate_salary(emp, year, month):
         timestamp__month=month
     )
 
+    from attendance.utils import payroll
+    ot = payroll.monthly_overtime(emp, year, month)
+    overtime = ot['amount']
+    normal_hours = ot['normal_hours']
+
     if emp.employment_type == 'monthly':
         base = float(emp.monthly_salary) if emp.monthly_salary else 0
         maintenance = 0
         deduction = 0
     else:
-        total_hours = sum(
-            get_work_hours(emp, d)
-            for d in records.filter(record_type='clock_in').dates('timestamp', 'day')
-        )
         hourly = float(emp.hourly_rate) if emp.hourly_rate else 0
-        base = total_hours * hourly
+        # 底薪只計「正常工時」，加班時數改由加班費（全額）計算，避免重複
+        base = normal_hours * hourly
         maintenance = sum(
             100 if get_work_hours(emp, d) >= 4 else 50
             for d in records.filter(record_type='clock_in').dates('timestamp', 'day')
@@ -176,14 +178,11 @@ def calculate_salary(emp, year, month):
         health = float(emp.health_insurance_amount) if emp.health_insurance_amount else 0
         deduction = labor + health
 
-    from attendance.utils import payroll
-    ot = payroll.monthly_overtime(emp, year, month)
-    overtime = ot['amount']
-
     total = base + maintenance + allowance_amount + overtime - deduction
     return {
         'employee': emp,
         'base': base,
+        'normal_hours': normal_hours,
         'maintenance': maintenance,
         'allowance': allowance_amount,
         'overtime': overtime,

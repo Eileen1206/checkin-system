@@ -586,22 +586,24 @@ class PayrollLaborLawTest(TestCase):
         self.assertEqual(payroll.classify_day(self.monthly, monday, {monday}, set()), '國定假日')
         self.assertEqual(payroll.classify_day(self.monthly, monday, set(), {monday}), '休息日')
 
-    def test_weekday_ot(self):
-        # 11h → 3h 加班；月薪全額 vs 時薪只補加成
-        self.assertAlmostEqual(payroll.weekday_ot(11, 200, True),
+    def test_weekday_ot_full(self):
+        # 全額：11h → 3h 加班（前2×4/3 + 1×5/3）
+        self.assertAlmostEqual(payroll.weekday_ot(11, 200),
                                200 * (2 * 4 / 3 + 1 * 5 / 3), places=2)
-        self.assertAlmostEqual(payroll.weekday_ot(11, 200, False),
-                               200 * (2 * 1 / 3 + 1 * 2 / 3), places=2)
-        self.assertEqual(payroll.weekday_ot(8, 200, True), 0)   # 未超過 8h 無加班
+        # 勞動部範例：時薪196、8.5h → 0.5h 加班 = 130.67
+        self.assertAlmostEqual(payroll.weekday_ot(8.5, 196), 0.5 * 196 * 4 / 3, places=2)
+        self.assertEqual(payroll.weekday_ot(8, 200), 0)         # 未超過 8h 無加班
 
-    def test_restday_ot_monthly(self):
+    def test_restday_ot_full(self):
         # 10h 休息日：前2×4/3、3~8(6h)×5/3、9~10(2h)×8/3
-        self.assertAlmostEqual(payroll.restday_ot(10, 200, True),
+        self.assertAlmostEqual(payroll.restday_ot(10, 200),
                                200 * (2 * 4 / 3 + 6 * 5 / 3 + 2 * 8 / 3), places=2)
 
-    def test_holiday_ot_monthly(self):
-        # 8h 國定假日（月薪）→ 加發一日日薪
+    def test_holiday_ot(self):
+        # 月薪 8h 國定假日 → 加發一日日薪
         self.assertAlmostEqual(payroll.holiday_ot(8, 150, 1200, True), 1200, places=2)
+        # 時薪 8h → 加倍
+        self.assertAlmostEqual(payroll.holiday_ot(8, 196, 0, False), 8 * 196 * 2, places=2)
 
 
 class PayrollViewTest(TestCase):

@@ -91,42 +91,38 @@ def classify_day(emp, d, holiday_set, leave_dates):
 
 # ───────────────────── 加班費（回傳「加在 base 之上」的金額）─────────────────────
 
-def weekday_ot(hours, hourly, is_monthly):
-    """平日延長工時：前 2h ×4/3、其後 ×5/3（超過 8h 的部分）。"""
+def weekday_ot(hours, hourly):
+    """平日延長工時加班費（全額）：前 2h ×4/3、其後 ×5/3（超過 8h 的部分）。"""
     ot = max(hours - 8, 0)
     if ot <= 0:
         return 0.0
     first = min(ot, 2.0)
     rest = ot - first
-    if is_monthly:
-        return hourly * (first * 4 / 3 + rest * 5 / 3)
-    return hourly * (first * 1 / 3 + rest * 2 / 3)   # 時薪 base 已含 ×1，只補加成
+    return hourly * (first * 4 / 3 + rest * 5 / 3)
 
 
-def restday_ot(hours, hourly, is_monthly):
-    """休息日出勤：前 2h ×4/3、第 3~8h ×5/3、第 9~12h ×8/3。"""
+def restday_ot(hours, hourly):
+    """休息日出勤加班費（全額）：前 2h ×4/3、第 3~8h ×5/3、第 9~12h ×8/3。"""
     if hours <= 0:
         return 0.0
     t1 = min(hours, 2.0)
     t2 = min(max(hours - 2, 0), 6.0)   # 第 3~8 小時
     t3 = min(max(hours - 8, 0), 4.0)   # 第 9~12 小時
-    if is_monthly:
-        return hourly * (t1 * 4 / 3 + t2 * 5 / 3 + t3 * 8 / 3)
-    return hourly * (t1 * 1 / 3 + t2 * 2 / 3 + t3 * 5 / 3)
+    return hourly * (t1 * 4 / 3 + t2 * 5 / 3 + t3 * 8 / 3)
 
 
 def holiday_ot(hours, hourly, daily, is_monthly):
-    """例假 / 國定假日出勤：工資加倍（§39）。"""
+    """例假 / 國定假日出勤：工資加倍（§39，全額）。"""
     if hours <= 0:
         return 0.0
-    over = max(hours - 8, 0)
-    first = min(over, 2.0)
-    rest = over - first
     if is_monthly:
-        # 月薪 base 未含當日時薪 → 加發一日日薪 + 超過 8h 比照平日延長全額
+        # 月薪：當日工資已含在月薪 → 加發一日日薪 + 超過 8h 比照平日延長
+        over = max(hours - 8, 0)
+        first = min(over, 2.0)
+        rest = over - first
         return daily + hourly * (first * 4 / 3 + rest * 5 / 3)
-    # 時薪 base 已含 ×1 → 補到 ×2（+1 倍）；超過 8h 再補加成
-    return hourly * hours + hourly * (first * 1 / 3 + rest * 2 / 3)
+    # 時薪：整日工時加倍
+    return hourly * hours * 2
 
 
 # ───────────────────── 每月加班費彙總 ─────────────────────
@@ -154,6 +150,7 @@ def monthly_overtime(emp, year, month):
     ).dates('timestamp', 'day')
 
     total = 0.0
+    normal_hours = 0.0   # 正常工時（非加班），時薪制底薪用
     detail = []
     tiers = {
         'weekday_1_2': 0.0, 'weekday_3plus': 0.0,
@@ -166,12 +163,13 @@ def monthly_overtime(emp, year, month):
             continue
         cls = classify_day(emp, d, holiday_set, leave_dates)
         if cls == '平日':
-            amt = weekday_ot(h, hourly, is_monthly)
+            amt = weekday_ot(h, hourly)
+            normal_hours += min(h, 8.0)          # 平日前 8 小時為正常工時
             ot = max(h - 8, 0)
             tiers['weekday_1_2'] += min(ot, 2.0)
             tiers['weekday_3plus'] += max(ot - 2, 0)
         elif cls == '休息日':
-            amt = restday_ot(h, hourly, is_monthly)
+            amt = restday_ot(h, hourly)           # 休息日整日皆加班
             tiers['restday_1_2'] += min(h, 2.0)
             tiers['restday_3_8'] += min(max(h - 2, 0), 6.0)
             tiers['restday_9_12'] += min(max(h - 8, 0), 4.0)
@@ -181,7 +179,8 @@ def monthly_overtime(emp, year, month):
         if amt > 0:
             total += amt
             detail.append({'date': d, 'cls': cls, 'hours': h, 'amount': round(amt)})
-    return {'amount': round(total), 'detail': detail, 'tiers': tiers}
+    return {'amount': round(total), 'detail': detail, 'tiers': tiers,
+            'normal_hours': round(normal_hours, 1)}
 
 
 # ───────────────────── 特休結算（全額折現）─────────────────────
