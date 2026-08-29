@@ -22,6 +22,7 @@ urlpatterns = [
     path('delivery/approve-clockout/', dashboard_views.approve_clockout, name='approve_clockout'),
     path('salary/', dashboard_views.salary, name='salary'),
     path('salary/<int:pk>/detail/', dashboard_views.salary_detail, name='salary_detail'),
+    path('salary/api/calc/', dashboard_views.salary_calc_api, name='salary_calc_api'),
     path('salary/allowance/add/', dashboard_views.add_allowance, name='add_allowance'),
     path('employees/', dashboard_views.employee_list, name='employee_list'),
     path('employees/add/', dashboard_views.employee_add, name='employee_add'),
