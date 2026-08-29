@@ -32,20 +32,16 @@ def salary(request):
             day_hours = [(d, get_work_hours(emp, d)) for d in days]
             total_hours = sum(h for _, h in day_hours)
             hourly = float(emp.hourly_rate) if emp.hourly_rate else 0
+            normal_hours = result.get('normal_hours', 0)
 
-            # 以這裡算好的 total_hours 重算 base，確保顯示與計算一致（不四捨五入）
-            base = total_hours * hourly
-            result['base']  = base
-            result['total'] = (base + result['maintenance'] + result['allowance']
-                               + result.get('overtime', 0) - result['deduction'])
-
+            # 底薪只算正常工時（加班另計全額加班費），total 已由 calculate_salary 算好
             day_detail = '\n'.join(f'  {d} → {h}h' for d, h in day_hours)
             result['detail'] = (
-                f'時薪 ${hourly:.0f} × {total_hours:.1f}小時 = ${base:,.0f}\n'
-                f'加班費：${result.get("overtime", 0):,.0f}\n'
+                f'時薪 ${hourly:.0f}｜正常工時 {normal_hours:.1f}h = ${result["base"]:,.0f}\n'
+                f'加班費（全額）：${result.get("overtime", 0):,.0f}\n'
                 f'保養費：${result["maintenance"]:,.0f}\n'
                 f'勞健保扣除：-${result["deduction"]:,.0f}\n'
-                f'--- 每日明細 ---\n{day_detail}'
+                f'--- 每日工時 ---\n{day_detail}'
             )
             result['day_hours'] = day_hours
             result['total_hours'] = total_hours
