@@ -25,6 +25,13 @@ def _build_day(employee, d):
 
     is_weekend = d.weekday() >= 5
 
+    # 當天的排休／請假（整天不來者會蓋掉「缺勤」判定）
+    leave = LeaveRecord.objects.filter(employee=employee, date=d).first()
+    leave_kind   = leave.kind if leave else None
+    leave_label  = leave.short_label if leave else None
+    leave_hours  = (leave.hours or 0) if (leave and not leave.is_rest) else 0
+    leave_is_full = leave.is_full_day if leave else False
+
     # 判斷狀態
     today = timezone.localdate()
     if clock_in:
@@ -43,6 +50,9 @@ def _build_day(employee, d):
             status = 'missing_breakend'
         else:
             status = 'late' if is_late else 'normal'
+    elif leave_is_full:
+        # 整天排休／請假 → 不是缺勤
+        status = 'rest' if leave_kind == LeaveRecord.KIND_REST else 'leave'
     elif is_weekend:
         status = 'weekend'
     else:
@@ -75,6 +85,11 @@ def _build_day(employee, d):
         'status':         status,
         'hours':          hours,
         'is_today':       d == timezone.localdate(),
+        # 休假資訊（排休／請假一起帶出，報表只顯示「休假／請假」不露原因）
+        'leave_kind':     leave_kind,
+        'leave_label':    leave_label,
+        'leave_hours':    leave_hours,
+        'leave_is_full':  leave_is_full,
     }
 
 
@@ -103,13 +118,20 @@ def report(request):
         month_data = [_build_day(selected, date(year, month, d))
                       for d in range(1, days_in_month + 1)]
 
-        # 統計
+        # 統計（排休／請假不列入缺勤，另計休假天數）
         worked_days = [d for d in month_data if d['status'] in ('normal', 'late', 'missing_clockout', 'missing_breakend')]
         stats = {
             'worked':    len(worked_days),
             'absent':    sum(1 for d in month_data if d['status'] == 'absent'),
             'late':      sum(1 for d in month_data if d['status'] == 'late'),
             'anomaly':   sum(1 for d in month_data if d['status'] in ('missing_clockout', 'missing_breakend')),
+            'rest':      sum(1 for d in month_data if d['status'] == 'rest'),
+            'leave':     sum(1 for d in month_data if d['status'] == 'leave'),
+            'off_total': sum(1 for d in month_data if d['status'] in ('rest', 'leave')),
+            # 部分時數請假（當天仍有出勤）累計時數
+            'partial_leave_hours': round(
+                sum(d['leave_hours'] for d in month_data
+                    if d['leave_hours'] and not d['leave_is_full']), 1),
             'total_hours': round(sum(d['hours'] for d in month_data), 1),
         }
 
@@ -198,6 +220,8 @@ def export_attendance_csv(request):
         'missing_clockout': '缺下班打卡',
         'missing_breakend': '缺午休結束',
         'weekend':          '假日',
+        'rest':             '休假',
+        'leave':            '請假',
     }
 
     # ── 建立 CSV 回應 ──────────────────────────────────────
@@ -210,7 +234,7 @@ def export_attendance_csv(request):
         '工號', '姓名', '部門',
         '日期', '星期',
         '上班打卡', '下班打卡', '午休開始', '午休結束',
-        '工時(h)', '狀態', '請假類型',
+        '工時(h)', '狀態', '休假', '請假時數',
     ])
 
     for emp in employees:
@@ -226,9 +250,14 @@ def export_attendance_csv(request):
 
                 day_data = _build_day(emp, d)
 
-                # 請假事由
-                leave = LeaveRecord.objects.filter(employee=emp, date=d).first()
-                leave_type = (leave.reason or '請假') if leave else '—'
+                # 休假欄：排休／請假（不輸出假別與原因）
+                if day_data['leave_kind'] == LeaveRecord.KIND_REST:
+                    leave_col = '休假'
+                elif day_data['leave_kind'] == LeaveRecord.KIND_LEAVE:
+                    leave_col = '請假'
+                else:
+                    leave_col = '—'
+                leave_hours_col = day_data['leave_hours'] or ''
 
                 writer.writerow([
                     emp.employee_id,
@@ -242,7 +271,8 @@ def export_attendance_csv(request):
                     day_data.get('break_end')   or '',
                     day_data.get('hours')       or '',
                     STATUS_LABELS.get(day_data['status'], day_data['status']),
-                    leave_type,
+                    leave_col,
+                    leave_hours_col,
                 ])
 
     return response

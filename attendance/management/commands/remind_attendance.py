@@ -39,8 +39,9 @@ class Command(BaseCommand):
             if today.weekday() not in work_days:
                 continue
 
-            # ② 確認今天沒有請假紀錄
-            if LeaveRecord.objects.filter(employee=emp, date=today).exists():
+            # ② 確認今天不是整天休假（部分時數請假當天仍要上班，照常提醒）
+            leave_today = LeaveRecord.objects.filter(employee=emp, date=today).first()
+            if leave_today and leave_today.is_full_day:
                 continue
 
             records = AttendanceRecord.objects.filter(

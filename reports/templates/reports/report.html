@@ -40,14 +40,20 @@
   {% if selected %}
 
   {# ── 統計卡片 ── #}
-  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+  <div class="grid grid-cols-2 sm:grid-cols-6 gap-3">
     <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-emerald-500">{{ stats.worked }}</p>
       <p class="text-xs text-gray-400 mt-0.5">出勤天數</p>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
+      <p class="text-2xl font-bold text-[#5E6E5E]">{{ stats.off_total }}</p>
+      <p class="text-xs text-gray-400 mt-0.5">休假天數</p>
+      <p class="text-[10px] text-gray-300 mt-0.5">排休 {{ stats.rest }}・請假 {{ stats.leave }}</p>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-red-400">{{ stats.absent }}</p>
       <p class="text-xs text-gray-400 mt-0.5">缺勤天數</p>
+      <p class="text-[10px] text-gray-300 mt-0.5">未打卡也未請假</p>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-orange-400">{{ stats.late }}</p>
@@ -61,6 +67,9 @@
     <div class="col-span-2 sm:col-span-1 bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-blue-400">{{ stats.total_hours }}</p>
       <p class="text-xs text-gray-400 mt-0.5">總工時（時）</p>
+      {% if stats.partial_leave_hours %}
+      <p class="text-[10px] text-gray-300 mt-0.5">另請假 {{ stats.partial_leave_hours }}h</p>
+      {% endif %}
     </div>
   </div>
 
@@ -134,6 +143,7 @@
         <div class="flex flex-wrap items-center px-4 py-2.5 gap-x-3 gap-y-1.5
           {% if day.status == 'missing_clockout' or day.status == 'missing_breakend' %}bg-amber-50
           {% elif day.is_today %}bg-blue-50
+          {% elif day.status == 'rest' or day.status == 'leave' %}bg-[#F7F8F6]
           {% elif day.is_weekend %}opacity-40{% endif %}">
 
           {# 日期 #}
@@ -163,6 +173,10 @@
             <span class="w-1.5 h-8 rounded-full bg-amber-400 shrink-0"></span>
           {% elif day.status == 'absent' %}
             <span class="w-1.5 h-8 rounded-full bg-red-200 shrink-0"></span>
+          {% elif day.status == 'rest' %}
+            <span class="w-1.5 h-8 rounded-full bg-[#8A9A8A] shrink-0"></span>
+          {% elif day.status == 'leave' %}
+            <span class="w-1.5 h-8 rounded-full bg-[#C7AD34] shrink-0"></span>
           {% else %}
             <span class="w-1.5 h-8 rounded-full bg-gray-100 shrink-0"></span>
           {% endif %}
@@ -193,7 +207,14 @@
                 {% if is_admin %}<button type="button" onclick="openEdit({{ day.clock_out_id }}, '{{ day.clock_out }}')" class="ml-0.5 text-gray-300 hover:text-gray-500 leading-none">✎</button>{% endif %}
               </span>
             {% endif %}
-            {% if not day.clock_in and not day.is_weekend %}
+            {# 休假／請假（只顯示類別，不顯示假別與原因） #}
+            {% if day.leave_kind == 'rest' %}
+              <span class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-[#BECEBE] text-[#2F3B2F] font-medium">休假</span>
+            {% elif day.leave_kind == 'leave' %}
+              <span class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-[#FBF3D8] text-[#7A5E12] border border-[#E0C64F] font-medium">
+                請假{% if not day.leave_is_full %} {{ day.leave_hours|floatformat:"-1" }}h{% endif %}
+              </span>
+            {% elif not day.clock_in and not day.is_weekend %}
               <span class="text-gray-300">— 缺勤</span>
             {% endif %}
           </div>
@@ -254,11 +275,22 @@
               {% elif day.status == 'late' %}bg-orange-100 text-orange-700
               {% elif day.status == 'missing_clockout' or day.status == 'missing_breakend' %}bg-amber-100 text-amber-700
               {% elif day.status == 'absent' %}bg-red-50 text-red-300
+              {% elif day.status == 'rest' %}bg-[#BECEBE] text-[#2F3B2F]
+              {% elif day.status == 'leave' %}bg-[#F4ECC9] text-[#7A5E12]
               {% elif day.status == 'weekend' %}bg-gray-50 text-gray-300
               {% else %}bg-gray-50 text-gray-300{% endif %}">
+              {# 部分時數請假（當天仍有出勤）以右上角小點標示 #}
+              {% if day.leave_kind and not day.leave_is_full %}
+                <span class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#C7AD34]"
+                      title="請假 {{ day.leave_hours|floatformat:'-1' }} 小時"></span>
+              {% endif %}
               <span class="font-semibold leading-none">{{ day.date|date:"j" }}</span>
               {% if day.hours %}
                 <span class="text-[9px] leading-none mt-0.5 opacity-70">{{ day.hours }}h</span>
+              {% elif day.status == 'rest' %}
+                <span class="text-[9px] leading-none mt-0.5 opacity-80">休</span>
+              {% elif day.status == 'leave' %}
+                <span class="text-[9px] leading-none mt-0.5 opacity-80">假</span>
               {% endif %}
             </div>
           {% else %}
@@ -274,6 +306,8 @@
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-orange-100 inline-block"></span>遲到</span>
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-100 inline-block"></span>異常</span>
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-50 inline-block"></span>缺勤</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-[#BECEBE] inline-block"></span>休假</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-[#F4ECC9] inline-block"></span>請假</span>
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-100 inline-block"></span>假日</span>
         </div>
       </div>

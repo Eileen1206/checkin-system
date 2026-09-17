@@ -176,19 +176,78 @@ class Holiday(models.Model):
 
 
 class LeaveRecord(models.Model):
+    """員工當天不上班的紀錄，分兩種：
+    - 排休：整天不來，滿足一例一休，不需原因、沒有時數。
+    - 請假：原本要上班但臨時有事，有假別與時數（整天／半天／小時）。
+    兩者在月曆與出勤報表一起顯示，但看得出差別。
+    """
+    KIND_REST = 'rest'
+    KIND_LEAVE = 'leave'
+    KIND_CHOICES = [
+        (KIND_REST,  '排休'),
+        (KIND_LEAVE, '請假'),
+    ]
+    # 特休僅供老闆後台標記，員工端不開放選擇
+    LEAVE_TYPE_CHOICES = [
+        ('annual',   '特休'),
+        ('personal', '事假'),
+        ('sick',     '病假'),
+        ('funeral',  '喪假'),
+    ]
+    FULL_DAY_HOURS = 8.0
+    HALF_DAY_HOURS = 4.0
+
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_records', verbose_name='員工')
-    date = models.DateField('請假日期')
-    reason = models.CharField('原因', max_length=100, blank=True)
+    date = models.DateField('日期')
+    kind = models.CharField('類別', max_length=10, choices=KIND_CHOICES, default=KIND_REST)
+    leave_type = models.CharField('假別', max_length=10, choices=LEAVE_TYPE_CHOICES, blank=True,
+                                  help_text='僅請假需要；排休留空')
+    hours = models.FloatField('請假時數', null=True, blank=True,
+                              help_text='排休為整天（留空）；請假填時數，整天為 8、半天為 4')
+    reason = models.CharField('備註', max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = '請假紀錄'
-        verbose_name_plural = '請假紀錄'
+        verbose_name = '休假紀錄'
+        verbose_name_plural = '休假紀錄'
         unique_together = [['employee', 'date']]
         ordering = ['-date']
 
     def __str__(self):
-        return f"{self.employee} - {self.date}"
+        return f"{self.employee} - {self.date}（{self.get_kind_display()}）"
+
+    @property
+    def is_rest(self):
+        return self.kind == self.KIND_REST
+
+    @property
+    def is_full_day(self):
+        """整天不來。排休一律整天；請假需時數達整天。
+        一例一休只採計整天，請 2 小時不算「有休到」。"""
+        if self.is_rest:
+            return True
+        return (self.hours or 0) >= self.FULL_DAY_HOURS
+
+    @property
+    def short_label(self):
+        """月曆標籤用的簡短標示：排休→休、整天請假→假、部分時數→2h"""
+        if self.is_rest:
+            return '休'
+        if self.is_full_day:
+            return '假'
+        return f'{self.hours or 0:g}h'
+
+    @property
+    def hours_label(self):
+        """人看的時數說法：整天 / 半天 / 2 小時"""
+        if self.is_rest:
+            return '整天'
+        h = self.hours or 0
+        if h >= self.FULL_DAY_HOURS:
+            return '整天'
+        if h == self.HALF_DAY_HOURS:
+            return '半天'
+        return f'{h:g} 小時'
 
 
 class LeaveRequest(models.Model):

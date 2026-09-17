@@ -215,7 +215,11 @@ def handle_postback(event):
                 leave_req.processed_at = timezone.now()
                 leave_req.save()
                 for d in leave_req.dates:
-                    LeaveRecord.objects.get_or_create(employee=emp, date=d)
+                    # LINE 端目前申請的都是整天不來 → 建立排休
+                    LeaveRecord.objects.get_or_create(
+                        employee=emp, date=d,
+                        defaults={'kind': LeaveRecord.KIND_REST},
+                    )
                 dates_display = '\n'.join(leave_req.dates)
                 # ✅ 通知員工在 if 裡面，只執行一次
                 if emp.line_user_id:

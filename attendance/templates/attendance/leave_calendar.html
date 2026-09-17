@@ -56,13 +56,23 @@
         {% endfor %}
       {% endfor %}
     </div>
+
+    <!-- 圖例 -->
+    <div class="flex flex-wrap items-center gap-4 px-4 py-3 border-t border-gray-100 text-xs text-gray-500">
+      <span class="flex items-center gap-1.5">
+        <span class="inline-block w-6 h-3.5 rounded-md bg-[#5E6E5E]"></span>排休（整天不來）
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="inline-block w-6 h-3.5 rounded-md border-2 border-[#5E6E5E] bg-white"></span>請假（附時數）
+      </span>
+    </div>
   </div>
 
   <!-- ── 右：員工名單 ── -->
   <div class="w-44 shrink-0">
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sticky top-6">
       <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">員工</p>
-      <p class="text-xs text-gray-400 mb-3">拖拉到日期新增請假</p>
+      <p class="text-xs text-gray-400 mb-3">拖拉到日期安排休假<br>點標籤可修改</p>
       <div class="flex flex-col gap-2">
         {% for emp in employees %}
         <div class="emp-chip px-3 py-2 rounded-xl text-sm font-medium text-center
@@ -149,6 +159,81 @@
   {% endif %}
 </div>
 
+<!-- ── 排休／請假設定 Modal（全部用點的，不需打字） ── -->
+<div id="leaveModal" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+
+    <div class="px-5 py-4 border-b border-gray-100">
+      <p class="text-base font-bold text-gray-800" id="lmTitle">安排休假</p>
+      <p class="text-xs text-gray-400 mt-0.5" id="lmSubtitle"></p>
+    </div>
+
+    <div class="px-5 py-4 space-y-4">
+
+      <!-- 類別 -->
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" data-kind="rest" onclick="lmSetKind('rest')"
+                class="lm-kind rounded-xl border-2 px-3 py-3 text-left transition-colors">
+          <span class="block text-sm font-bold">排休</span>
+          <span class="block text-[11px] opacity-70 leading-tight mt-0.5">整天不來<br>滿足一例一休</span>
+        </button>
+        <button type="button" data-kind="leave" onclick="lmSetKind('leave')"
+                class="lm-kind rounded-xl border-2 px-3 py-3 text-left transition-colors">
+          <span class="block text-sm font-bold">請假</span>
+          <span class="block text-[11px] opacity-70 leading-tight mt-0.5">原本要上班<br>臨時有事</span>
+        </button>
+      </div>
+
+      <!-- 請假細節 -->
+      <div id="lmLeaveDetail" class="hidden space-y-4">
+
+        <div>
+          <p class="text-xs font-semibold text-gray-400 mb-1.5">時數</p>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" data-hours="8" onclick="lmSetHours(8)"
+                    class="lm-hours rounded-lg border px-2 py-2 text-sm">整天</button>
+            <button type="button" data-hours="4" onclick="lmSetHours(4)"
+                    class="lm-hours rounded-lg border px-2 py-2 text-sm">半天</button>
+            <button type="button" data-hours="custom" onclick="lmSetHours('custom')"
+                    class="lm-hours rounded-lg border px-2 py-2 text-sm">指定小時</button>
+          </div>
+          <div id="lmHourStepper" class="hidden mt-2 flex items-center justify-center gap-4">
+            <button type="button" onclick="lmStep(-1)"
+                    class="w-9 h-9 rounded-full border border-gray-200 text-lg leading-none text-gray-600 hover:bg-gray-50">−</button>
+            <span class="text-xl font-bold text-gray-800 w-16 text-center"><span id="lmHourValue">2</span> h</span>
+            <button type="button" onclick="lmStep(1)"
+                    class="w-9 h-9 rounded-full border border-gray-200 text-lg leading-none text-gray-600 hover:bg-gray-50">＋</button>
+          </div>
+        </div>
+
+        <div>
+          <p class="text-xs font-semibold text-gray-400 mb-1.5">假別</p>
+          <div class="grid grid-cols-4 gap-2">
+            <button type="button" data-type="personal" onclick="lmSetType('personal')"
+                    class="lm-type rounded-lg border px-2 py-2 text-sm">事假</button>
+            <button type="button" data-type="sick" onclick="lmSetType('sick')"
+                    class="lm-type rounded-lg border px-2 py-2 text-sm">病假</button>
+            <button type="button" data-type="funeral" onclick="lmSetType('funeral')"
+                    class="lm-type rounded-lg border px-2 py-2 text-sm">喪假</button>
+            <button type="button" data-type="annual" onclick="lmSetType('annual')"
+                    class="lm-type rounded-lg border px-2 py-2 text-sm">特休</button>
+          </div>
+          <p class="text-[11px] text-gray-400 mt-1.5">特休僅老闆可標記（員工端不開放選擇）。</p>
+        </div>
+      </div>
+
+      <p id="lmError" class="hidden text-xs text-[#B0382A]"></p>
+    </div>
+
+    <div class="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+      <button type="button" onclick="lmClose()"
+              class="px-4 py-2 rounded-xl text-sm text-gray-500 hover:bg-gray-50">取消</button>
+      <button type="button" onclick="lmSave()"
+              class="px-5 py-2 rounded-xl text-sm font-semibold text-white bg-[#1F1E21] hover:bg-[#4A4A4E]">儲存</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -170,13 +255,13 @@ const CSRF_TOKEN  = "{{ csrf_token }}";
 
 // ── 初始渲染 ──
 document.addEventListener('DOMContentLoaded', () => {
-  // 渲染已有的請假資料
+  // 渲染已有的休假資料
   Object.entries(LEAVE_DATA).forEach(([day, leaves]) => {
     const dateStr = `${YEAR}-${String(MONTH).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const cell = document.querySelector(`.day-cell[data-date="${dateStr}"]`);
     if (!cell) return;
     const container = cell.querySelector('.leave-tags');
-    leaves.forEach(lr => addTag(container, lr.id, lr.emp_id, lr.name));
+    leaves.forEach(lr => addTag(container, lr));
   });
 
   // 用 JS 統一綁定所有格子的拖放事件（避免子元素擋住 inline ondrop）
@@ -194,27 +279,12 @@ document.addEventListener('DOMContentLoaded', () => {
     cell.addEventListener('drop', e => {
       e.preventDefault();
       cell.classList.remove('ring-2', 'ring-[#8A9A8A]');
-      console.log('[drop] dragEmpId:', dragEmpId, 'date:', cell.dataset.date);
-      if (!dragEmpId) { console.warn('[drop] dragEmpId 是空的，取消'); return; }
-
-      fetch(ADD_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-        body: JSON.stringify({ employee_id: dragEmpId, date: cell.dataset.date }),
-      })
-      .then(r => r.json())
-      .then(data => {
-        console.log('[drop] API 回應:', data);
-        if (data.ok) {
-          const container = cell.querySelector('.leave-tags');
-          if (!container.querySelector(`[data-leave-id="${data.id}"]`)) {
-            addTag(container, data.id, dragEmpId, dragEmpName);
-          }
-        } else {
-          console.error('[drop] API 錯誤:', data.error);
-        }
-      })
-      .catch(err => console.error('[drop] fetch 失敗:', err));
+      if (!dragEmpId) return;
+      // 拖進來後先問是排休還是請假，不直接寫入
+      lmOpen({
+        empId: dragEmpId, empName: dragEmpName,
+        date: cell.dataset.date, cell: cell,
+      });
     });
   });
 });
@@ -228,23 +298,50 @@ function handleDragStart(event, el) {
   event.dataTransfer.effectAllowed = 'copy';
 }
 
-// ── 新增標籤 ──
-function addTag(container, leaveId, empId, name) {
-  const color = EMP_COLORS[String(empId)] || '#4A4A4E';
-  const textColor = EMP_TEXT_COLORS[String(empId)] || '#FFFFFF';
+// ── 標籤 ──
+// 排休＝實心色塊；請假＝同色外框（看得出差別），右側顯示簡短標示（休／假／2h）
+function addTag(container, lr) {
+  const color     = EMP_COLORS[String(lr.emp_id)] || '#4A4A4E';
+  const textColor = EMP_TEXT_COLORS[String(lr.emp_id)] || '#FFFFFF';
+  const isRest    = lr.kind !== 'leave';
+
   const tag = document.createElement('div');
-  tag.className = 'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs w-full';
-  tag.style.backgroundColor = color;
-  tag.style.color = textColor;
+  tag.className = 'leave-tag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs w-full cursor-pointer';
+  if (isRest) {
+    tag.style.backgroundColor = color;
+    tag.style.color = textColor;
+    tag.style.border = '2px solid ' + color;
+  } else {
+    tag.style.backgroundColor = '#FFFFFF';
+    tag.style.color = color;
+    tag.style.border = '2px solid ' + color;
+  }
   tag.style.pointerEvents = 'none';  // 拖放時標籤透明，事件傳到格子
-  tag.title = name;
-  tag.dataset.leaveId = leaveId;
+  tag.title = isRest ? `${lr.name}：排休（整天）`
+                     : `${lr.name}：請假 ${lr.label}${lr.type ? '・' + lr.type : ''}`;
+  tag.dataset.leaveId = lr.id;
   tag.innerHTML = `
-    <span class="truncate min-w-0 flex-1">${name}</span>
-    <button onclick="removeTag(${leaveId}, this.parentElement)"
-      style="pointer-events: auto;"
-      class="shrink-0 hover:opacity-70 leading-none ml-0.5">✕</button>`;
+    <span class="truncate min-w-0 flex-1 leave-tag-name"
+          style="pointer-events: auto;">${lr.name}</span>
+    <span class="shrink-0 font-semibold opacity-80">${lr.label}</span>
+    <button class="leave-tag-del shrink-0 hover:opacity-70 leading-none ml-0.5"
+            style="pointer-events: auto;">✕</button>`;
+
+  tag.querySelector('.leave-tag-name').addEventListener('click', () => {
+    lmOpen({
+      empId: lr.emp_id, empName: lr.name, date: tagDate(tag),
+      cell: tag.closest('.day-cell'), existing: lr, tagEl: tag,
+    });
+  });
+  tag.querySelector('.leave-tag-del').addEventListener('click', () => removeTag(lr.id, tag));
+
   container.appendChild(tag);
+  return tag;
+}
+
+function tagDate(tagEl) {
+  const cell = tagEl.closest('.day-cell');
+  return cell ? cell.dataset.date : null;
 }
 
 // ── 刪除標籤 ──
@@ -255,6 +352,129 @@ function removeTag(leaveId, tagEl) {
   })
   .then(r => r.json())
   .then(data => { if (data.ok) tagEl.remove(); });
+}
+
+// ══ 排休／請假 Modal ══
+const LM = { empId: null, empName: null, date: null, cell: null, tagEl: null,
+             kind: 'rest', hours: 8, hourMode: 8, leaveType: '' };
+
+const WEEKDAY_TXT = ['日', '一', '二', '三', '四', '五', '六'];
+
+function lmOpen(opts) {
+  LM.empId   = opts.empId;
+  LM.empName = opts.empName;
+  LM.date    = opts.date;
+  LM.cell    = opts.cell;
+  LM.tagEl   = opts.tagEl || null;
+
+  const ex = opts.existing || null;
+  LM.kind      = ex ? (ex.kind || 'rest') : 'rest';
+  LM.leaveType = ex ? (ex.leave_type || '') : '';
+  const h = ex && ex.hours ? Number(ex.hours) : 8;
+  LM.hours    = h;
+  LM.hourMode = (h === 8 || h === 4) ? h : 'custom';
+
+  const d = new Date(LM.date + 'T00:00:00');
+  document.getElementById('lmTitle').textContent = LM.empName;
+  document.getElementById('lmSubtitle').textContent =
+    `${d.getMonth() + 1} 月 ${d.getDate()} 日（${WEEKDAY_TXT[d.getDay()]}）` +
+    (ex ? '・修改' : '');
+
+  lmError('');
+  lmRender();
+  document.getElementById('leaveModal').classList.remove('hidden');
+}
+
+function lmClose() {
+  document.getElementById('leaveModal').classList.add('hidden');
+}
+
+function lmSetKind(kind) { LM.kind = kind; lmRender(); }
+
+function lmSetHours(mode) {
+  LM.hourMode = mode;
+  if (mode === 'custom') {
+    if (LM.hours === 8 || LM.hours === 4) LM.hours = 2;
+  } else {
+    LM.hours = mode;
+  }
+  lmRender();
+}
+
+function lmStep(delta) {
+  LM.hours = Math.min(7, Math.max(1, (LM.hours || 2) + delta));
+  lmRender();
+}
+
+function lmSetType(t) { LM.leaveType = (LM.leaveType === t) ? '' : t; lmRender(); }
+
+// 選取狀態一律用 Castiglioni 灰綠／赭黃，維持整體調性
+function lmRender() {
+  document.querySelectorAll('.lm-kind').forEach(btn => {
+    const on = btn.dataset.kind === LM.kind;
+    btn.style.borderColor     = on ? '#5E6E5E' : '#E5E7EB';
+    btn.style.backgroundColor = on ? '#EDF1ED' : '#FFFFFF';
+    btn.style.color           = on ? '#2F3B2F' : '#6B7280';
+  });
+
+  const detail = document.getElementById('lmLeaveDetail');
+  detail.classList.toggle('hidden', LM.kind !== 'leave');
+
+  document.querySelectorAll('.lm-hours').forEach(btn => {
+    const on = String(btn.dataset.hours) === String(LM.hourMode);
+    btn.style.borderColor     = on ? '#9C8428' : '#E5E7EB';
+    btn.style.backgroundColor = on ? '#FBF3D8' : '#FFFFFF';
+    btn.style.color           = on ? '#7A5E12' : '#6B7280';
+  });
+  document.getElementById('lmHourStepper').classList.toggle('hidden', LM.hourMode !== 'custom');
+  document.getElementById('lmHourValue').textContent = LM.hours;
+
+  document.querySelectorAll('.lm-type').forEach(btn => {
+    const on = btn.dataset.type === LM.leaveType;
+    btn.style.borderColor     = on ? '#9C8428' : '#E5E7EB';
+    btn.style.backgroundColor = on ? '#FBF3D8' : '#FFFFFF';
+    btn.style.color           = on ? '#7A5E12' : '#6B7280';
+  });
+}
+
+function lmError(msg) {
+  const el = document.getElementById('lmError');
+  el.textContent = msg;
+  el.classList.toggle('hidden', !msg);
+}
+
+function lmSave() {
+  const payload = {
+    employee_id: LM.empId,
+    date: LM.date,
+    kind: LM.kind,
+  };
+  if (LM.kind === 'leave') {
+    payload.hours = LM.hours;
+    payload.leave_type = LM.leaveType;
+  }
+
+  fetch(ADD_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) { lmError(data.error || '儲存失敗'); return; }
+    const lr = {
+      id: data.id, emp_id: LM.empId, name: data.name,
+      kind: data.kind, label: data.label,
+      hours: data.hours, leave_type: data.leave_type, type: data.type,
+    };
+    if (LM.tagEl) LM.tagEl.remove();
+    const container = LM.cell.querySelector('.leave-tags');
+    const existingEl = container.querySelector(`[data-leave-id="${data.id}"]`);
+    if (existingEl) existingEl.remove();
+    addTag(container, lr);
+    lmClose();
+  })
+  .catch(() => lmError('連線失敗，請再試一次'));
 }
 </script>
 {% endblock %}
