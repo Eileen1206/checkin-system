@@ -122,20 +122,52 @@
   </table>
 </div>
 
-{% if not is_monthly and day_hours %}
+{% if not is_monthly and day_detail %}
 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-  <div class="px-6 py-4 border-b border-gray-100">
-    <h2 class="font-bold text-gray-800">每日工時（時薪 ${{ hourly|floatformat:0 }}／時，共 {{ total_hours|floatformat:1 }}h）</h2>
+  <div class="px-6 py-4 border-b border-gray-100 flex items-baseline justify-between flex-wrap gap-2">
+    <h2 class="font-bold text-gray-800">每日工時與金額</h2>
+    <span class="text-xs text-gray-400">
+      時薪 ${{ hourly|floatformat:0 }}／時・共 {{ work_hm }}
+      {% if late_days %}・遲到 {{ late_days }} 次 {{ late_hm }}（不扣薪）{% endif %}
+    </span>
   </div>
   <table class="w-full text-sm">
+    <thead>
+      <tr class="text-xs text-gray-400 border-b border-gray-100">
+        <th class="px-6 py-2 text-left font-medium">日期</th>
+        <th class="px-3 py-2 text-left font-medium">日別</th>
+        <th class="px-3 py-2 text-right font-medium">工時</th>
+        <th class="px-3 py-2 text-right font-medium">底薪</th>
+        <th class="px-3 py-2 text-right font-medium">加班費</th>
+        <th class="px-6 py-2 text-right font-medium">小計</th>
+      </tr>
+    </thead>
     <tbody class="divide-y divide-gray-50">
-      {% for d, h in day_hours %}
+      {% for x in day_detail %}
       <tr class="hover:bg-amber-50/30">
-        <td class="px-6 py-2.5 text-gray-700">{{ d|date:"Y-m-d" }}</td>
-        <td class="px-6 py-2.5 text-right text-gray-600">{{ h }} 小時</td>
+        <td class="px-6 py-2.5 text-gray-700">
+          {{ x.date|date:"Y-m-d" }}
+          {% if x.late_minutes %}
+          <span class="ml-1 text-[11px] text-[#B0382A]">遲 {{ x.late_minutes }} 分</span>
+          {% endif %}
+        </td>
+        <td class="px-3 py-2.5 text-gray-400 text-xs">{{ x.cls }}</td>
+        <td class="px-3 py-2.5 text-right text-gray-600">{{ x.hm }}</td>
+        <td class="px-3 py-2.5 text-right text-gray-500">{% if x.base_amount %}{{ x.base_amount|floatformat:0 }}{% else %}—{% endif %}</td>
+        <td class="px-3 py-2.5 text-right text-gray-500">{% if x.ot_amount %}{{ x.ot_amount|floatformat:0 }}{% else %}—{% endif %}</td>
+        <td class="px-6 py-2.5 text-right font-semibold text-gray-800">{{ x.amount|floatformat:0 }}</td>
       </tr>
       {% endfor %}
     </tbody>
+    <tfoot>
+      <tr class="border-t-2 border-gray-100 bg-gray-50/50">
+        <td class="px-6 py-3 font-semibold text-gray-700" colspan="2">合計</td>
+        <td class="px-3 py-3 text-right font-semibold text-gray-700">{{ work_hm }}</td>
+        <td class="px-3 py-3 text-right font-semibold text-gray-700">{{ result.base|floatformat:0 }}</td>
+        <td class="px-3 py-3 text-right font-semibold text-gray-700">{{ result.overtime|floatformat:0 }}</td>
+        <td class="px-6 py-3 text-right font-bold text-gray-900">{{ result.base|add:result.overtime|floatformat:0 }}</td>
+      </tr>
+    </tfoot>
   </table>
 </div>
 {% endif %}

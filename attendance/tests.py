@@ -1177,3 +1177,177 @@ class DictGetFilterTest(TestCase):
         self.assertEqual(dict_get({1: 'a'}, 1), 'a')
         self.assertIsNone(dict_get({1: 'a'}, 2))
         self.assertIsNone(dict_get(None, 1))
+
+
+class HourlyMinuteBasedPayrollTest(TestCase):
+    """時薪制改為分鐘制：工時不進位，金額逐日四捨五入"""
+
+    def setUp(self):
+        from datetime import time as _time
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='mp1', password='x',
+                                          first_name='庚', last_name='許'),
+            employee_id='MP1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_days='0,1,2,3,4,5',
+        )
+
+    def _punch(self, d, in_hm, out_hm, break_hm=None):
+        def mk(kind, hm):
+            AttendanceRecord.objects.create(
+                employee=self.emp, record_type=kind,
+                timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+                latitude=0, longitude=0, is_valid=True, distance_meters=0)
+        mk('clock_in', in_hm)
+        if break_hm:
+            mk('break_start', break_hm[0])
+            mk('break_end', break_hm[1])
+        mk('clock_out', out_hm)
+
+    def _minutes(self, d):
+        from attendance.dashboard_views.base import get_work_minutes
+        return get_work_minutes(self.emp, d)
+
+    # ── 工時不再進位 ──────────────────────────────────
+    def test_no_half_hour_rounding_on_clock_out(self):
+        """9:00–17:50 → 530 分，不會被進位成 9 小時"""
+        d = date(2026, 11, 3)   # 週二
+        self._punch(d, (9, 0), (17, 50))
+        self.assertEqual(self._minutes(d), 530)
+
+    def test_odd_minutes_are_kept(self):
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (17, 7))
+        self.assertEqual(self._minutes(d), 487)
+
+    def test_break_is_deducted_by_minute(self):
+        d = date(2026, 11, 5)
+        self._punch(d, (9, 0), (18, 0), break_hm=[(12, 10), (12, 55)])
+        self.assertEqual(self._minutes(d), 540 - 45)
+
+    # ── 早到 / 遲到 ───────────────────────────────────
+    def test_early_arrival_does_not_add_time(self):
+        """8:30 到，仍從排班 9:00 起算"""
+        d = date(2026, 11, 6)
+        self._punch(d, (8, 30), (18, 0))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_late_within_grace_starts_from_schedule(self):
+        """9:08 到（寬限內）→ 仍從 9:00 起算，不扣"""
+        d = date(2026, 11, 9)
+        self._punch(d, (9, 8), (18, 0))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_late_beyond_grace_starts_from_actual(self):
+        """9:20 到 → 從 9:20 起算，只少 20 分，不是罰半小時"""
+        d = date(2026, 11, 10)
+        self._punch(d, (9, 20), (18, 0))
+        self.assertEqual(self._minutes(d), 520)
+
+    def test_late_minutes_reported(self):
+        from attendance.dashboard_views.base import get_late_minutes
+        d = date(2026, 11, 11)
+        self._punch(d, (9, 20), (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, d), 20)
+        self.assertEqual(get_late_minutes(self.emp, date(2026, 11, 12)), 0)
+
+    def test_late_within_grace_is_not_counted_as_late(self):
+        from attendance.dashboard_views.base import get_late_minutes
+        d = date(2026, 11, 13)
+        self._punch(d, (9, 8), (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, d), 0)
+
+    # ── 金額 ─────────────────────────────────────────
+    def test_amount_rounds_per_day(self):
+        """9:00–17:50 = 530 分。前 8h 為底薪，超過的 50 分是加班（×4/3）。"""
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (17, 50))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(len(work['detail']), 1)
+        row = work['detail'][0]
+        self.assertEqual(row['minutes'], 530)
+        self.assertEqual(row['base_amount'], 8 * 200)
+        self.assertEqual(row['ot_amount'], round(200 * (50 / 60) * 4 / 3))
+        self.assertEqual(row['amount'], row['base_amount'] + row['ot_amount'])
+
+    def test_short_day_is_all_base(self):
+        """未滿 8 小時全部算底薪，金額四捨五入到元：287 分 × 200/60 = 956.67 → 957"""
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (13, 47))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        row = work['detail'][0]
+        self.assertEqual(row['minutes'], 287)
+        self.assertEqual(row['ot_amount'], 0)
+        self.assertEqual(row['base_amount'], 957)
+
+    def test_detail_sums_to_total(self):
+        """明細逐日相加要剛好等於底薪與加班費總額"""
+        self._punch(date(2026, 11, 3), (9, 0), (17, 50))
+        self._punch(date(2026, 11, 4), (9, 0), (17, 7))
+        self._punch(date(2026, 11, 5), (9, 0), (19, 23))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(sum(x['base_amount'] for x in work['detail']), work['base'])
+        self.assertEqual(sum(x['ot_amount'] for x in work['detail']), work['overtime'])
+
+    def test_overtime_uses_minutes(self):
+        """9:00–19:30 = 630 分 = 10.5h → 平日加班 2.5h（前 2h ×4/3、0.5h ×5/3）"""
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (19, 30))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        row = work['detail'][0]
+        self.assertEqual(row['minutes'], 630)
+        self.assertEqual(row['normal_hours'], 8.0)
+        self.assertEqual(row['ot_hours'], 2.5)
+        expected = round(200 * (2 * 4 / 3 + 0.5 * 5 / 3))
+        self.assertEqual(row['ot_amount'], expected)
+        self.assertAlmostEqual(work['tiers']['weekday_1_2'], 2.0)
+        self.assertAlmostEqual(work['tiers']['weekday_3plus'], 0.5)
+
+    def test_salary_total_matches_parts(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._punch(date(2026, 11, 3), (9, 0), (17, 50))
+        self._punch(date(2026, 11, 4), (9, 20), (18, 0))
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(
+            r['total'],
+            r['base'] + r['maintenance'] + r['allowance'] + r['overtime'] - r['deduction'])
+        self.assertEqual(r['late_days'], 1)
+        self.assertEqual(r['late_minutes'], 20)
+
+    def test_late_does_not_reduce_pay_beyond_missing_time(self):
+        """遲到 20 分只少 20 分鐘的錢，沒有額外懲罰"""
+        on_time = date(2026, 11, 3)
+        self._punch(on_time, (9, 0), (18, 0))
+        w = payroll.monthly_work_detail(self.emp, 2026, 11)
+        pay_on_time = w['base'] + w['overtime']
+
+        AttendanceRecord.objects.all().delete()
+        late = date(2026, 11, 4)
+        self._punch(late, (9, 20), (18, 0))
+        w = payroll.monthly_work_detail(self.emp, 2026, 11)
+        pay_late = w['base'] + w['overtime']
+
+        # 少的 20 分鐘落在第 9 小時（加班區），所以以 4/3 計，且沒有額外懲罰
+        self.assertEqual(pay_on_time - pay_late, round(200 * (20 / 60) * 4 / 3))
+
+    def test_fmt_hm(self):
+        self.assertEqual(payroll.fmt_hm(530), '8小時50分')
+        self.assertEqual(payroll.fmt_hm(480), '8小時')
+        self.assertEqual(payroll.fmt_hm(45), '45分')
+
+    def test_maintenance_uses_minutes_threshold(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._punch(date(2026, 11, 3), (9, 0), (13, 0))    # 240 分 → 100
+        self._punch(date(2026, 11, 4), (9, 0), (12, 30))   # 210 分 → 50
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(r['maintenance'], 150)
+
+    def test_salary_detail_page_renders(self):
+        User.objects.create_user(username='boss_mp', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mp', password='pass12345')
+        self._punch(date(2026, 11, 3), (9, 0), (17, 50))
+        resp = self.client.get(f'/dashboard/salary/{self.emp.pk}/detail/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('day_detail', resp.context)
+        self.assertIn('8小時50分', resp.content.decode())

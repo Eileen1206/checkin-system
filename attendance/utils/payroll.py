@@ -5,9 +5,14 @@
 - 平日每小時工資（加班基數）：月薪制 = 月薪 / 240（=/30/8）；時薪制 = 時薪。
 - 日薪（特休折現 / 假日加給）：月薪制 = 月薪 / 30；時薪制 = 時薪 × 8。
 
-加班費一律「加在既有 base 之上」：
-- 時薪制 base 已含每一工時 ×1 → 加班只補「加成」部分（倍率 − 1）。
-- 月薪制 base 為固定月薪、未含時薪 → 加班補「全額」。
+工時一律以「分鐘」為精度，不做半小時進位。
+
+金額結構（時薪制與月薪制共用同一套加班函式，皆回傳「全額」）：
+- 底薪：時薪制 = 平日正常工時（每日上限 8 小時）× 時薪；月薪制 = 固定月薪。
+- 加班費：平日超過 8 小時的部分、休息日全日、例假與國定假日全日，
+  都不含在底薪裡，由加班函式一次算足全額，不會重複計算。
+
+時薪制的金額「逐日四捨五入到元」後加總，明細加起來會剛好等於總額。
 """
 import calendar as _calendar
 from datetime import date
@@ -127,14 +132,27 @@ def holiday_ot(hours, hourly, daily, is_monthly):
 
 # ───────────────────── 每月加班費彙總 ─────────────────────
 
-def monthly_overtime(emp, year, month):
-    """
-    回傳 {'amount': 加班費總額, 'detail': [每日明細], 'tiers': {分級時數}}。
-    tiers 依勞基法級距彙總當月加班時數（供明細報表顯示）：
-      weekday_1_2 / weekday_3plus / restday_1_2 / restday_3_8 / restday_9_12 / holiday
+def fmt_hm(minutes):
+    """分鐘 → 「8小時30分」這種給人看的寫法。"""
+    h, m = divmod(int(minutes), 60)
+    if h and m:
+        return f'{h}小時{m}分'
+    if h:
+        return f'{h}小時'
+    return f'{m}分'
+
+
+def monthly_work_detail(emp, year, month):
+    """逐日走過當月出勤，回傳每日明細與彙總。
+
+    每日明細包含：日別（平日／休息日／例假／國定假日）、計薪分鐘、
+    正常工時與加班時數、底薪金額與加班費金額（皆已四捨五入到元），
+    以及遲到分鐘（不影響金額，只供顯示）。
+
+    時薪制每日金額先四捨五入再加總，明細加起來即為總額。
     """
     from attendance.models import AttendanceRecord, LeaveRecord, Holiday
-    from attendance.dashboard_views.base import get_work_hours
+    from attendance.dashboard_views.base import get_work_minutes, get_late_minutes
 
     is_monthly = emp.employment_type == 'monthly'
     hourly = hourly_wage(emp)
@@ -153,38 +171,101 @@ def monthly_overtime(emp, year, month):
         timestamp__year=year, timestamp__month=month,
     ).dates('timestamp', 'day')
 
-    total = 0.0
-    normal_hours = 0.0   # 正常工時（非加班），時薪制底薪用
     detail = []
     tiers = {
         'weekday_1_2': 0.0, 'weekday_3plus': 0.0,
         'restday_1_2': 0.0, 'restday_3_8': 0.0, 'restday_9_12': 0.0,
         'holiday': 0.0,
     }
+    base_total = 0          # 時薪制底薪（逐日四捨五入後加總）
+    ot_total = 0            # 加班費（逐日四捨五入後加總）
+    normal_minutes = 0
+    work_minutes = 0
+    late_minutes_total = 0
+    late_days = 0
+
     for d in days:
-        h = get_work_hours(emp, d)
-        if not h:
+        minutes = get_work_minutes(emp, d)
+        late = get_late_minutes(emp, d)
+        if late:
+            late_days += 1
+            late_minutes_total += late
+        if not minutes:
             continue
+
+        h = minutes / 60.0
         cls = classify_day(emp, d, holiday_set, leave_dates)
+        normal_h = 0.0
+
         if cls == '平日':
-            amt = weekday_ot(h, hourly)
-            normal_hours += min(h, 8.0)          # 平日前 8 小時為正常工時
+            normal_h = min(h, 8.0)               # 平日前 8 小時為正常工時
+            ot_amt = weekday_ot(h, hourly)
             ot = max(h - 8, 0)
             tiers['weekday_1_2'] += min(ot, 2.0)
             tiers['weekday_3plus'] += max(ot - 2, 0)
         elif cls == '休息日':
-            amt = restday_ot(h, hourly)           # 休息日整日皆加班
+            ot_amt = restday_ot(h, hourly)        # 休息日整日皆加班
             tiers['restday_1_2'] += min(h, 2.0)
             tiers['restday_3_8'] += min(max(h - 2, 0), 6.0)
             tiers['restday_9_12'] += min(max(h - 8, 0), 4.0)
-        else:  # 例假 / 國定假日
-            amt = holiday_ot(h, hourly, daily, is_monthly)
+        else:                                     # 例假 / 國定假日
+            ot_amt = holiday_ot(h, hourly, daily, is_monthly)
             tiers['holiday'] += h
-        if amt > 0:
-            total += amt
-            detail.append({'date': d, 'cls': cls, 'hours': h, 'amount': round(amt)})
-    return {'amount': round(total), 'detail': detail, 'tiers': tiers,
-            'normal_hours': round(normal_hours, 1)}
+
+        base_amt = 0 if is_monthly else round(normal_h * hourly)
+        ot_amt = round(ot_amt)
+
+        work_minutes += minutes
+        normal_minutes += int(round(normal_h * 60))
+        base_total += base_amt
+        ot_total += ot_amt
+
+        detail.append({
+            'date': d,
+            'cls': cls,
+            'minutes': minutes,
+            'hours': round(h, 2),
+            'hm': fmt_hm(minutes),
+            'normal_hours': round(normal_h, 2),
+            'ot_hours': round(h - normal_h, 2),
+            'base_amount': base_amt,
+            'ot_amount': ot_amt,
+            'amount': base_amt + ot_amt,
+            'late_minutes': late,
+        })
+
+    return {
+        'detail': detail,
+        'tiers': tiers,
+        'base': base_total,
+        'overtime': ot_total,
+        'work_minutes': work_minutes,
+        'work_hm': fmt_hm(work_minutes),
+        'normal_minutes': normal_minutes,
+        'normal_hours': round(normal_minutes / 60, 2),
+        'late_days': late_days,
+        'late_minutes': late_minutes_total,
+        'late_hm': fmt_hm(late_minutes_total),
+    }
+
+
+def monthly_overtime(emp, year, month):
+    """加班費彙總（薄包裝，明細由 monthly_work_detail 產生）。
+
+    回傳 {'amount': 加班費總額, 'detail': [有加班費的日子], 'tiers': {分級時數},
+          'normal_hours': 平日正常工時}。
+    """
+    d = monthly_work_detail(emp, year, month)
+    return {
+        'amount': d['overtime'],
+        'detail': [
+            {'date': x['date'], 'cls': x['cls'], 'hours': x['hours'],
+             'hm': x['hm'], 'amount': x['ot_amount']}
+            for x in d['detail'] if x['ot_amount'] > 0
+        ],
+        'tiers': d['tiers'],
+        'normal_hours': d['normal_hours'],
+    }
 
 
 # ───────────────────── 特休結算（全額折現）─────────────────────

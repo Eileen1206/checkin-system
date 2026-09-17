@@ -4,9 +4,9 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.urls import reverse
 import openpyxl
-from ..models import Employee, AttendanceRecord, MonthlyAllowance
+from ..models import Employee, MonthlyAllowance
 from ..utils import payroll
-from .base import require_group, get_work_hours, calculate_salary
+from .base import require_group, calculate_salary
 
 
 def _salary_row(emp, year, month):
@@ -16,25 +16,18 @@ def _salary_row(emp, year, month):
     if emp.employment_type == 'monthly':
         result['detail'] = f'月薪制：${int(result["base"]):,}'
     else:
-        records = AttendanceRecord.objects.filter(
-            employee=emp, timestamp__year=year, timestamp__month=month)
-        days = list(records.filter(record_type='clock_in').dates('timestamp', 'day'))
-        day_hours = [(d, get_work_hours(emp, d)) for d in days]
-        total_hours = sum(h for _, h in day_hours)
         hourly = float(emp.hourly_rate) if emp.hourly_rate else 0
-        normal_hours = result.get('normal_hours', 0)
-
-        # 底薪只算正常工時（加班另計全額加班費），total 已由 calculate_salary 算好
-        day_detail = '\n'.join(f'  {d} → {h}h' for d, h in day_hours)
+        day_lines = '\n'.join(
+            f'  {x["date"]} {x["hm"]} → ${x["amount"]:,}' for x in result['day_detail']
+        )
         result['detail'] = (
-            f'時薪 ${hourly:.0f}｜正常工時 {normal_hours:.1f}h = ${result["base"]:,.0f}\n'
+            f'時薪 ${hourly:.0f}｜正常工時 {result["work_hm"]} 中的 '
+            f'{result["normal_hours"]:.2f}h = ${result["base"]:,.0f}\n'
             f'加班費（全額）：${result.get("overtime", 0):,.0f}\n'
             f'保養費：${result["maintenance"]:,.0f}\n'
             f'勞健保扣除：-${result["deduction"]:,.0f}\n'
-            f'--- 每日工時 ---\n{day_detail}'
+            f'--- 每日工時（分鐘制，逐日四捨五入）---\n{day_lines}'
         )
-        result['day_hours'] = day_hours
-        result['total_hours'] = total_hours
         result['hourly'] = hourly
     return result
 
@@ -89,12 +82,24 @@ def salary_calc_api(request):
         'deduction': round(r['deduction']),
         'total': round(r['total']),
         'overtime_detail': [
-            {'date': str(x['date']), 'cls': x['cls'], 'hours': x['hours'], 'amount': x['amount']}
+            {'date': str(x['date']), 'cls': x['cls'], 'hours': x['hours'],
+             'hm': x['hm'], 'amount': x['amount']}
             for x in r.get('overtime_detail', [])
         ],
-        'day_hours': [{'date': str(d), 'hours': h} for d, h in r.get('day_hours', [])],
+        'day_hours': [
+            {'date': str(x['date']), 'hours': x['hours'], 'hm': x['hm'],
+             'minutes': x['minutes'], 'amount': x['amount'],
+             'base_amount': x['base_amount'], 'ot_amount': x['ot_amount'],
+             'late_minutes': x['late_minutes']}
+            for x in r.get('day_detail', [])
+        ],
         'hourly': r.get('hourly', 0),
-        'total_hours': r.get('total_hours', 0),
+        'work_hm': r.get('work_hm', ''),
+        'work_minutes': r.get('work_minutes', 0),
+        'total_hours': round(r.get('work_minutes', 0) / 60, 2),
+        'late_days': r.get('late_days', 0),
+        'late_minutes': r.get('late_minutes', 0),
+        'late_hm': r.get('late_hm', ''),
     })
 
 
@@ -125,14 +130,9 @@ def salary_detail(request, pk):
 
     result = calculate_salary(emp, year, month)
 
-    # 時薪制：補上每日工時明細（與薪資頁一致）
-    day_hours, total_hours = [], 0
-    if emp.employment_type == 'hourly':
-        records = AttendanceRecord.objects.filter(
-            employee=emp, timestamp__year=year, timestamp__month=month)
-        days = list(records.filter(record_type='clock_in').dates('timestamp', 'day'))
-        day_hours = [(d, get_work_hours(emp, d)) for d in days]
-        total_hours = sum(h for _, h in day_hours)
+    # 每日工時明細（分鐘制，金額已逐日四捨五入）
+    day_detail = result['day_detail']
+    total_hours = round(result['work_minutes'] / 60, 2)
 
     def _hm(x):
         h = int(x)
@@ -156,7 +156,10 @@ def salary_detail(request, pk):
         'restday_tiers': restday_tiers,
         'holiday_hm': _hm(t['holiday']),
         'overtime_detail': result['overtime_detail'],
-        'day_hours': day_hours, 'total_hours': total_hours,
+        'day_detail': day_detail, 'total_hours': total_hours,
+        'work_hm': result['work_hm'],
+        'late_days': result['late_days'],
+        'late_hm': result['late_hm'],
         'hourly': float(emp.hourly_rate or 0),
         'hourly_wage': round(payroll.hourly_wage(emp), 2),
         'daily_wage': round(payroll.daily_wage(emp)),
@@ -176,7 +179,8 @@ def export_salary_excel(request):
     ws = wb.active
     ws.title = f"{year}-{month:02d} 薪資表"
 
-    ws.append(['工號', '姓名', '部門', '底薪', '保養費', '勞務加給', '加班費', '勞健保扣除', '實領'])
+    ws.append(['工號', '姓名', '部門', '工時', '遲到次數', '遲到分鐘',
+               '底薪', '保養費', '勞務加給', '加班費', '勞健保扣除', '實領'])
 
     emp_qs = Employee.objects if request.GET.get('show_inactive') == '1' else Employee.tracked
     employees = emp_qs.select_related('user').order_by('employee_id')
@@ -186,6 +190,9 @@ def export_salary_excel(request):
             emp.employee_id,
             emp.user.get_full_name() or emp.user.username,
             emp.department,
+            result['work_hm'],
+            result['late_days'],
+            result['late_minutes'],
             float(result['base']),
             float(result['maintenance']),
             float(result['allowance']),
