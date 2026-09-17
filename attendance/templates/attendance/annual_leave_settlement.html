@@ -20,7 +20,7 @@
     <input type="date" name="as_of" value="{{ as_of }}"
            class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-300">
     <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700 whitespace-nowrap">結算</button>
-    <span class="text-xs text-gray-400">（結算日空白＝今天；離職結算填離職日）</span>
+    <span class="text-xs text-gray-400">（空白＝今天）</span>
   </form>
 </div>
 
@@ -57,7 +57,7 @@
     </div>
     <p class="text-3xl font-extrabold text-teal-700">${{ settlement.payout }}</p>
   </div>
-  <p class="text-xs text-gray-400 mt-3">※ 本頁採「全額折現」（不扣抵已休特休）。特休天數依勞基法第 38 條、週年制計算。</p>
+  <p class="text-xs text-gray-400 mt-3">全額折現，依勞基法第 38 條週年制計算</p>
   {% endif %}
 {% else %}
 <p class="text-gray-400">尚無員工資料。</p>
