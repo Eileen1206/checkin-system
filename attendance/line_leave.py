@@ -147,7 +147,6 @@ def _ask_rest_date(draft):
         body = [
             _text('已選日期', size='xs', color=COLOR_MUTED, weight='bold'),
             *[_text(f'・{_fmt_date(d)}') for d in dates],
-            _text('可以再加幾天，選好按送出。', size='xs', color=COLOR_MUTED),
         ]
         footer = [
             _date_picker_button('＋ 再加一天', 'action=lv_date', COLOR_REST),
@@ -155,10 +154,7 @@ def _ask_rest_date(draft):
             _button('✖ 取消', 'action=lv_cancel', style='secondary'),
         ]
     else:
-        body = [
-            _text('整天不來的日子，選好日期就送出給老闆。', color=COLOR_MUTED),
-            _text('可以一次選好幾天。', size='xs', color=COLOR_MUTED),
-        ]
+        body = [_text('選擇要休的日期', color=COLOR_MUTED)]
         footer = [
             _date_picker_button('📅 選擇日期', 'action=lv_date', COLOR_REST),
             _button('✖ 取消', 'action=lv_cancel', style='secondary'),
@@ -167,10 +163,7 @@ def _ask_rest_date(draft):
 
 
 def _ask_leave_date():
-    body = [
-        _text('原本要上班、臨時有事的時候用這個。', color=COLOR_MUTED),
-        _text('先選哪一天，再選請多久。', size='xs', color=COLOR_MUTED),
-    ]
+    body = [_text('選擇請假日期', color=COLOR_MUTED)]
     footer = [
         _date_picker_button('📅 選擇日期', 'action=lv_date', COLOR_LEAVE),
         _button('✖ 取消', 'action=lv_cancel', style='secondary'),
@@ -181,7 +174,7 @@ def _ask_leave_date():
 def _ask_hours(draft):
     body = [
         _text(_fmt_date(draft['dates'][0]), size='md', weight='bold'),
-        _text('要請多久？', color=COLOR_MUTED),
+        _text('請多久？', color=COLOR_MUTED),
     ]
     # 兩個一列，手機上好按
     rows = []
@@ -204,8 +197,7 @@ def _ask_type(draft):
     body = [
         _text(f"{_fmt_date(draft['dates'][0])}・{_hours_label(draft.get('hours'))}",
               size='md', weight='bold'),
-        _text('是什麼假？', color=COLOR_MUTED),
-        _text('特休要跟老闆說，這裡不開放自己選。', size='xs', color=COLOR_MUTED),
+        _text('選擇假別', color=COLOR_MUTED),
     ]
     type_labels = dict(LeaveRecord.LEAVE_TYPE_CHOICES)
     footer = [
@@ -224,7 +216,7 @@ def _ask_type(draft):
 def _confirm_leave(draft):
     type_labels = dict(LeaveRecord.LEAVE_TYPE_CHOICES)
     body = [
-        _text('確認以下內容送出給老闆', size='xs', color=COLOR_MUTED, weight='bold'),
+        _text('確認送出', size='xs', color=COLOR_MUTED, weight='bold'),
         _text(f"日期　{_fmt_date(draft['dates'][0])}", size='md'),
         _text(f"時數　{_hours_label(draft.get('hours'))}", size='md'),
         _text(f"假別　{type_labels.get(draft.get('leave_type'), '—')}", size='md'),
@@ -404,11 +396,7 @@ def notify_employee(leave_req, approved):
 
 def menu_message():
     """「休假」入口：讓員工選排休還是請假。"""
-    body = [
-        _text('要做哪一種？', color=COLOR_MUTED),
-        _text('排休：整天不來', size='xs', color=COLOR_MUTED),
-        _text('請假：原本要上班，臨時有事', size='xs', color=COLOR_MUTED),
-    ]
+    body = [_text('要排休還是請假？', color=COLOR_MUTED)]
     footer = [
         _button('🗓 排休', f'action=lv_start&kind={LeaveRecord.KIND_REST}', COLOR_REST),
         _button('📝 請假', f'action=lv_start&kind={LeaveRecord.KIND_LEAVE}', COLOR_LEAVE),

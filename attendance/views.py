@@ -89,14 +89,14 @@ def _welcome_flex():
                             "type": "box", "layout": "horizontal",
                             "contents": [
                                 {"type": "text", "text": "排休", "flex": 5, "size": "sm", "color": "#333333"},
-                                {"type": "text", "text": "整天不來，可一次選好幾天", "flex": 8, "size": "sm", "color": "#888888", "wrap": True}
+                                {"type": "text", "text": "整天不來，可選多天", "flex": 8, "size": "sm", "color": "#888888", "wrap": True}
                             ]
                         },
                         {
                             "type": "box", "layout": "horizontal",
                             "contents": [
                                 {"type": "text", "text": "請假", "flex": 5, "size": "sm", "color": "#333333"},
-                                {"type": "text", "text": "原本要上班但臨時有事，選時數與假別", "flex": 8, "size": "sm", "color": "#888888", "wrap": True}
+                                {"type": "text", "text": "選日期、時數與假別", "flex": 8, "size": "sm", "color": "#888888", "wrap": True}
                             ]
                         },
                         {
