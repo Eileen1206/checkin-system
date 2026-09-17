@@ -263,7 +263,7 @@ def leave_delete(request, pk):
 @login_required
 @require_group('admin')
 def leave_request_list(request):
-    """請假申請審核列表"""
+    """休假申請審核列表（排休與請假一起列，看得出差別）"""
     pending = LeaveRequest.objects.filter(status='pending').select_related('employee__user')
     recent  = LeaveRequest.objects.exclude(status='pending').select_related('employee__user')[:30]
     return render(request, 'attendance/leave_requests.html', {
@@ -272,63 +272,38 @@ def leave_request_list(request):
     })
 
 
+def _process_leave_request(request, pk, approved):
+    """核准／拒絕休假申請，核准時依申請的類別寫入休假紀錄。"""
+    from .. import line_leave
+
+    leave_req = get_object_or_404(LeaveRequest, pk=pk)
+    emp = leave_req.employee
+    emp_name = emp.user.get_full_name() or emp.user.username
+    kind_label = leave_req.get_kind_display()
+
+    if leave_req.status == 'pending':
+        leave_req.status = 'approved' if approved else 'denied'
+        leave_req.processed_at = timezone.now()
+        leave_req.save()
+        if approved:
+            leave_req.apply_to_records()
+        line_leave.notify_employee(leave_req, approved)
+        if approved:
+            messages.success(request, f'已核准 {emp_name} 的{kind_label}申請')
+        else:
+            messages.warning(request, f'已拒絕 {emp_name} 的{kind_label}申請')
+    return redirect('dashboard:leave_request_list')
+
+
 @login_required
 @require_group('admin')
 def leave_request_approve(request, pk):
-    """核准請假申請"""
-    leave_req = get_object_or_404(LeaveRequest, pk=pk)
-    if leave_req.status == 'pending':
-        leave_req.status = 'approved'
-        leave_req.processed_at = timezone.now()
-        leave_req.save()
-        emp = leave_req.employee
-        # 目前 LINE 端申請的是「整天不來」→ 一律建立排休；
-        # 之後 LINE 會拆成排休／請假兩個入口，屆時再依申請帶入 kind。
-        for d in leave_req.dates:
-            LeaveRecord.objects.get_or_create(
-                employee=emp, date=d,
-                defaults={'kind': LeaveRecord.KIND_REST},
-            )
-        # 通知員工 LINE
-        from django.conf import settings
-        from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
-        if emp.line_user_id:
-            dates_display = '\n'.join(leave_req.dates)
-            try:
-                cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-                with ApiClient(cfg) as api_client:
-                    MessagingApi(api_client).push_message(PushMessageRequest(
-                        to=emp.line_user_id,
-                        messages=[TextMessage(text=f'✅ 以下請假申請已核准：\n{dates_display}')]
-                    ))
-            except Exception:
-                pass
-        messages.success(request, f'已核准 {emp.user.get_full_name() or emp.user.username} 的請假申請')
-    return redirect('dashboard:leave_request_list')
+    """核准休假申請"""
+    return _process_leave_request(request, pk, approved=True)
 
 
 @login_required
 @require_group('admin')
 def leave_request_deny(request, pk):
-    """拒絕請假申請"""
-    leave_req = get_object_or_404(LeaveRequest, pk=pk)
-    if leave_req.status == 'pending':
-        leave_req.status = 'denied'
-        leave_req.processed_at = timezone.now()
-        leave_req.save()
-        emp = leave_req.employee
-        if emp.line_user_id:
-            dates_display = '\n'.join(leave_req.dates)
-            from django.conf import settings
-            from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
-            try:
-                cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-                with ApiClient(cfg) as api_client:
-                    MessagingApi(api_client).push_message(PushMessageRequest(
-                        to=emp.line_user_id,
-                        messages=[TextMessage(text=f'❌ 以下請假申請已被拒絕：\n{dates_display}')]
-                    ))
-            except Exception:
-                pass
-        messages.warning(request, f'已拒絕 {emp.user.get_full_name() or emp.user.username} 的請假申請')
-    return redirect('dashboard:leave_request_list')
+    """拒絕休假申請"""
+    return _process_leave_request(request, pk, approved=False)

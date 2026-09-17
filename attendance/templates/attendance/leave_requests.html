@@ -1,12 +1,12 @@
 {% extends "attendance/base.html" %}
-{% block title %}請假審核{% endblock %}
-{% block page_title %}請假審核{% endblock %}
+{% block title %}休假審核{% endblock %}
+{% block page_title %}休假審核{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-gray-800">請假審核</h1>
+  <h1 class="text-2xl font-bold text-gray-800">休假審核</h1>
   <a href="{% url 'dashboard:leave_calendar' %}"
-     class="text-sm text-blue-500 hover:underline">← 請假月曆</a>
+     class="text-sm text-blue-500 hover:underline">← 休假月曆</a>
 </div>
 
 {% if messages %}
@@ -36,12 +36,21 @@
     {% for req in pending %}
     <div class="px-5 py-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div class="min-w-0">
-        <div class="font-semibold text-gray-800 text-sm">
-          {{ req.employee.user.get_full_name|default:req.employee.user.username }}
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-gray-800 text-sm">
+            {{ req.employee.user.get_full_name|default:req.employee.user.username }}
+          </span>
+          {% if req.is_rest %}
+          <span class="text-xs px-2 py-0.5 rounded-full bg-[#BECEBE] text-[#2F3B2F] font-medium">排休・整天</span>
+          {% else %}
+          <span class="text-xs px-2 py-0.5 rounded-full bg-[#FBF3D8] text-[#7A5E12] border border-[#E0C64F] font-medium">
+            請假・{{ req.hours_label }}{% if req.leave_type %}・{{ req.get_leave_type_display }}{% endif %}
+          </span>
+          {% endif %}
         </div>
         <div class="mt-2 flex flex-wrap gap-1.5">
           {% for d in req.dates %}
-          <span class="inline-block bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-2.5 py-1 text-xs font-medium">{{ d }}</span>
+          <span class="inline-block bg-gray-50 border border-gray-200 text-gray-600 rounded-lg px-2.5 py-1 text-xs font-medium">{{ d }}</span>
           {% endfor %}
         </div>
         <div class="text-xs text-gray-400 mt-2">
@@ -68,7 +77,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <div class="px-6 py-10 text-center text-gray-400 text-sm">目前沒有待審核的請假申請</div>
+  <div class="px-6 py-10 text-center text-gray-400 text-sm">目前沒有待審核的休假申請</div>
   {% endif %}
 </div>
 
@@ -85,6 +94,8 @@
         <span class="font-medium text-gray-700">
           {{ req.employee.user.get_full_name|default:req.employee.user.username }}
         </span>
+        <span class="mx-2 text-gray-300">|</span>
+        <span class="text-xs text-gray-500">{{ req.summary_label }}</span>
         <span class="mx-2 text-gray-300">|</span>
         {% for d in req.dates %}
         <span class="text-gray-500">{{ d }}</span>{% if not forloop.last %}、{% endif %}
