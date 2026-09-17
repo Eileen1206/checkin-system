@@ -1351,3 +1351,84 @@ class HourlyMinuteBasedPayrollTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn('day_detail', resp.context)
         self.assertIn('8小時50分', resp.content.decode())
+
+
+class ClockOutGraceTest(TestCase):
+    """下班後 10 分鐘內收尾不算加班"""
+
+    def setUp(self):
+        from datetime import time as _time
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='og1', password='x',
+                                          first_name='辛', last_name='鄭'),
+            employee_id='OG1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _punch(self, d, in_hm, out_hm):
+        for kind, hm in (('clock_in', in_hm), ('clock_out', out_hm)):
+            AttendanceRecord.objects.create(
+                employee=self.emp, record_type=kind,
+                timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+                latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _minutes(self, d):
+        from attendance.dashboard_views.base import get_work_minutes
+        return get_work_minutes(self.emp, d)
+
+    def test_within_grace_counts_to_scheduled_end(self):
+        """18:07 下班 → 算到 18:00，不多給 7 分鐘"""
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (18, 7))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_exactly_at_grace_edge(self):
+        """18:10 剛好在寬限內"""
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (18, 10))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_beyond_grace_counts_fully(self):
+        """18:25 → 超過寬限，25 分鐘全部照算（不是只算超出寬限的 15 分）"""
+        d = date(2026, 11, 5)
+        self._punch(d, (9, 0), (18, 25))
+        self.assertEqual(self._minutes(d), 565)
+
+    def test_early_leave_is_not_padded(self):
+        """17:40 早退 → 照實際算，寬限不會把時間補回去"""
+        d = date(2026, 11, 6)
+        self._punch(d, (9, 0), (17, 40))
+        self.assertEqual(self._minutes(d), 520)
+
+    def test_grace_removes_trivial_overtime(self):
+        """8 小時班（9:00–17:00）拖到 17:07 下班，不會因此產生加班費"""
+        from datetime import time as _time
+        self.emp.work_end_time = _time(17, 0)
+        self.emp.save()
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (17, 7))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(work['detail'][0]['minutes'], 480)
+        self.assertEqual(work['overtime'], 0)
+        self.assertEqual(work['detail'][0]['ot_hours'], 0)
+
+    def test_beyond_grace_does_produce_overtime(self):
+        """同樣是 8 小時班，拖到 17:25 就確實有加班費"""
+        from datetime import time as _time
+        self.emp.work_end_time = _time(17, 0)
+        self.emp.save()
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (17, 25))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(work['detail'][0]['minutes'], 505)
+        self.assertEqual(work['overtime'], round(200 * (25 / 60) * 4 / 3))
+
+    def test_no_work_end_time_means_no_grace(self):
+        """沒設下班時間的員工不套用寬限"""
+        self.emp.work_end_time = None
+        self.emp.save()
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (18, 7))
+        self.assertEqual(self._minutes(d), 547)

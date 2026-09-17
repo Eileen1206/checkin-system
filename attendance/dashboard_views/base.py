@@ -45,7 +45,8 @@ def get_today_status():
     return status_map
 
 
-LATE_GRACE_SECONDS = 600     # 遲到寬限 10 分鐘（寬限內從排班時間起算）
+LATE_GRACE_SECONDS = 600         # 遲到寬限 10 分鐘（寬限內從排班上班時間起算）
+OVERTIME_GRACE_SECONDS = 600     # 下班寬限 10 分鐘（寬限內算到排班下班時間，不算加班）
 
 
 def get_work_minutes(employee, date=None):
@@ -54,7 +55,8 @@ def get_work_minutes(employee, date=None):
     計薪區間：
     - 起點：排班上班時間與實際打卡取「晚」的那個。
       早到不因此多算；遲到超過寬限則從實際打卡起算（沒做就沒錢，但不額外罰）。
-    - 終點：實際下班打卡時間。今天還沒下班用現在時間估；過去日期缺下班卡視為異常，不計。
+    - 終點：實際下班打卡時間，但排班下班後 10 分鐘內算到排班時間（收個尾不算加班）；
+      超過寬限才照實際打卡算。今天還沒下班用現在時間估；過去日期缺下班卡視為異常，不計。
     - 中間扣掉落在計薪區間內的午休。
     """
     date = date or timezone.localdate()
@@ -70,6 +72,14 @@ def get_work_minutes(employee, date=None):
     ).first()
     if clock_out:
         end_time = clock_out.timestamp
+        if employee.work_end_time:
+            co_local = clock_out.timestamp.astimezone()
+            scheduled_naive = datetime.combine(co_local.date(), employee.work_end_time)
+            co_naive = datetime.combine(co_local.date(), co_local.time())
+            over_seconds = (co_naive - scheduled_naive).total_seconds()
+            if 0 < over_seconds <= OVERTIME_GRACE_SECONDS:
+                # 下班後 10 分鐘內收個尾 → 算到排班下班時間，不算加班
+                end_time = clock_out.timestamp + (scheduled_naive - co_naive)
     elif date == timezone.localdate():
         end_time = timezone.now()
     else:
