@@ -7,7 +7,7 @@ from attendance.models import (
     Employee, Customer, AttendanceRecord, DeliverySession, DeliveryTask, LeaveRecord,
 )
 from django.utils import timezone
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from attendance.utils import routing, scheduling, payroll
 
 
@@ -1082,3 +1082,98 @@ class LeaveRequestApprovalTest(TestCase):
             employee=self.emp, dates=['2026-10-11'],
             kind=LeaveRecord.KIND_LEAVE, leave_type='personal', hours=4)
         self.assertEqual(leave.summary_label, '請假・半天・事假')
+
+
+class HolidayCalendarDisplayTest(TestCase):
+    """國定假日要在日曆見紅，且不算缺勤"""
+
+    def setUp(self):
+        from attendance.models import Holiday
+        self.Holiday = Holiday
+        User.objects.create_user(username='boss_hd', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_hd', password='pass12345')
+        u = User.objects.create_user(username='hd1', password='x', first_name='己', last_name='蔡')
+        self.emp = Employee.objects.create(user=u, employee_id='HD1', department='外送',
+                                           work_days='0,1,2,3,4,5')
+        # 2026/10/10（六）國慶日、10/9（五）補假
+        Holiday.objects.create(date=date(2026, 10, 9), name='國慶日補假')
+        Holiday.objects.create(date=date(2026, 10, 10), name='國慶日')
+
+    def _days(self):
+        resp = self.client.get(f'/reports/?employee_id={self.emp.pk}&year=2026&month=10')
+        self.assertEqual(resp.status_code, 200)
+        return resp, {d['date'].day: d for d in resp.context['month_data']}
+
+    def test_holiday_is_not_absent(self):
+        _, days = self._days()
+        self.assertEqual(days[9]['status'], 'holiday')
+        self.assertTrue(days[9]['is_holiday'])
+        self.assertEqual(days[9]['holiday_name'], '國慶日補假')
+        self.assertFalse(days[9]['holiday_worked'])
+
+    def test_non_holiday_weekday_still_absent(self):
+        _, days = self._days()
+        self.assertEqual(days[8]['status'], 'absent')
+        self.assertFalse(days[8]['is_holiday'])
+
+    def test_holiday_worked_is_flagged(self):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type='clock_in',
+            timestamp=timezone.make_aware(datetime(2026, 10, 10, 9, 0)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type='clock_out',
+            timestamp=timezone.make_aware(datetime(2026, 10, 10, 18, 0)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+        resp, days = self._days()
+        self.assertTrue(days[10]['holiday_worked'])
+        self.assertEqual(days[10]['status'], 'normal')   # 有打卡仍是正常出勤
+        self.assertEqual(resp.context['stats']['holiday_worked'], 1)
+
+    def test_holiday_does_not_count_as_absent_in_stats(self):
+        resp, _ = self._days()
+        stats = resp.context['stats']
+        self.assertEqual(stats['holiday'], 2)
+        # 10/9、10/10 不應被算進缺勤
+        self.assertEqual(stats['absent'],
+                         sum(1 for d in resp.context['month_data'] if d['status'] == 'absent'))
+        self.assertNotIn('holiday', [d['status'] for d in resp.context['month_data']
+                                     if d['status'] == 'absent'])
+
+    def test_report_page_shows_holiday_name(self):
+        resp, _ = self._days()
+        self.assertIn('國慶日', resp.content.decode())
+
+    def test_csv_has_holiday_column(self):
+        resp = self.client.get('/reports/export/csv/'
+                               f'?employee_id={self.emp.pk}&year_from=2026&month_from=10'
+                               '&year_to=2026&month_to=10')
+        body = resp.content.decode('utf-8-sig')
+        self.assertIn('國定假日', body)
+
+    def test_leave_calendar_has_holidays(self):
+        resp = self.client.get('/dashboard/leave/?year=2026&month=10')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['holiday_by_day'][10], '國慶日')
+        self.assertIn('國慶日', resp.content.decode())
+
+    def test_holiday_without_name_falls_back(self):
+        self.Holiday.objects.create(date=date(2026, 10, 20))
+        _, days = self._days()
+        self.assertEqual(days[20]['holiday_name'], '國定假日')
+
+    def test_leave_on_holiday_still_shows_red(self):
+        """國定假日當天有排休 → 狀態仍是休假，但日曆要見紅"""
+        LeaveRecord.objects.create(employee=self.emp, date=date(2026, 10, 9))
+        _, days = self._days()
+        self.assertEqual(days[9]['status'], 'rest')
+        self.assertTrue(days[9]['is_holiday'])
+
+
+class DictGetFilterTest(TestCase):
+    def test_dict_get(self):
+        from attendance.templatetags.attendance_extras import dict_get
+        self.assertEqual(dict_get({1: 'a'}, 1), 'a')
+        self.assertIsNone(dict_get({1: 'a'}, 2))
+        self.assertIsNone(dict_get(None, 1))

@@ -33,6 +33,14 @@ def emp_color(pk):
 
 
 @register.filter
+def dict_get(mapping, key):
+    """樣板裡用變數當 key 取字典值（Django 樣板本身不支援）"""
+    if not mapping:
+        return None
+    return mapping.get(key)
+
+
+@register.filter
 def emp_text_color(pk):
     """依員工底色回傳可讀的文字顏色（淺底用墨黑、深底用白）"""
     return INK if emp_color(pk) in LIGHT_BACKGROUNDS else '#FFFFFF'

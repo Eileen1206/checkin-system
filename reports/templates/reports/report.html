@@ -44,6 +44,9 @@
     <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-emerald-500">{{ stats.worked }}</p>
       <p class="text-xs text-gray-400 mt-0.5">出勤天數</p>
+      {% if stats.holiday_worked %}
+      <p class="text-[10px] text-[#B0382A] mt-0.5">國定假日 {{ stats.holiday_worked }} 天（加倍）</p>
+      {% endif %}
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-[#5E6E5E]">{{ stats.off_total }}</p>
@@ -140,7 +143,8 @@
       <div class="divide-y divide-gray-50">
         {% for day in month_data %}
         <div class="flex flex-wrap items-center px-4 py-2.5 gap-x-3 gap-y-1.5
-          {% if day.status == 'missing_clockout' or day.status == 'missing_breakend' %}bg-amber-50
+          {% if day.is_holiday %}bg-[#F6E4E0]/50
+          {% elif day.status == 'missing_clockout' or day.status == 'missing_breakend' %}bg-amber-50
           {% elif day.is_today %}bg-blue-50
           {% elif day.status == 'rest' or day.status == 'leave' %}bg-[#F7F8F6]
           {% elif day.is_weekend %}opacity-40{% endif %}">
@@ -148,7 +152,8 @@
           {# 日期 #}
           <div class="w-14 shrink-0">
             <span class="text-sm font-bold
-              {% if day.is_today %}text-blue-600
+              {% if day.is_holiday %}text-[#B0382A]
+              {% elif day.is_today %}text-blue-600
               {% elif day.weekday == 6 %}text-red-400
               {% elif day.weekday == 5 %}text-orange-400
               {% else %}text-gray-700{% endif %}">
@@ -164,7 +169,9 @@
           </div>
 
           {# 狀態色塊 #}
-          {% if day.status == 'normal' %}
+          {% if day.is_holiday %}
+            <span class="w-1.5 h-8 rounded-full bg-[#B0382A] shrink-0"></span>
+          {% elif day.status == 'normal' %}
             <span class="w-1.5 h-8 rounded-full bg-emerald-400 shrink-0"></span>
           {% elif day.status == 'late' %}
             <span class="w-1.5 h-8 rounded-full bg-orange-400 shrink-0"></span>
@@ -206,6 +213,12 @@
                 {% if is_admin %}<button type="button" onclick="openEdit({{ day.clock_out_id }}, '{{ day.clock_out }}')" class="ml-0.5 text-gray-300 hover:text-gray-500 leading-none">✎</button>{% endif %}
               </span>
             {% endif %}
+            {# 國定假日 #}
+            {% if day.is_holiday %}
+              <span class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-[#F6E4E0] text-[#B0382A] font-medium">
+                {{ day.holiday_name }}
+              </span>
+            {% endif %}
             {# 休假／請假（只顯示類別，不顯示假別與原因） #}
             {% if day.leave_kind == 'rest' %}
               <span class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-[#BECEBE] text-[#2F3B2F] font-medium">休假</span>
@@ -213,7 +226,7 @@
               <span class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 bg-[#FBF3D8] text-[#7A5E12] border border-[#E0C64F] font-medium">
                 請假{% if not day.leave_is_full %} {{ day.leave_hours|floatformat:"-1" }}h{% endif %}
               </span>
-            {% elif not day.clock_in and not day.is_weekend %}
+            {% elif not day.clock_in and not day.is_weekend and not day.is_holiday %}
               <span class="text-gray-300">— 缺勤</span>
             {% endif %}
           </div>
@@ -224,6 +237,10 @@
               <span class="text-sm font-semibold text-gray-700 w-10 text-right">{{ day.hours }}h</span>
             {% else %}
               <span class="w-10"></span>
+            {% endif %}
+
+            {% if day.holiday_worked %}
+              <span class="text-xs text-white bg-[#B0382A] rounded-lg px-2 py-0.5 font-semibold">加倍</span>
             {% endif %}
 
             {% if day.status == 'missing_clockout' %}
@@ -270,18 +287,24 @@
           {% if day %}
             <div class="aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative
               {% if day.is_today %}ring-2 ring-blue-400 ring-offset-1{% endif %}
-              {% if day.status == 'normal' %}bg-emerald-100 text-emerald-800
+              {% if day.is_holiday %}bg-[#F6E4E0] text-[#B0382A]
+              {% elif day.status == 'normal' %}bg-emerald-100 text-emerald-800
               {% elif day.status == 'late' %}bg-orange-100 text-orange-700
               {% elif day.status == 'missing_clockout' or day.status == 'missing_breakend' %}bg-amber-100 text-amber-700
               {% elif day.status == 'absent' %}bg-red-50 text-red-300
               {% elif day.status == 'rest' %}bg-[#BECEBE] text-[#2F3B2F]
               {% elif day.status == 'leave' %}bg-[#F4ECC9] text-[#7A5E12]
               {% elif day.status == 'weekend' %}bg-gray-50 text-gray-300
-              {% else %}bg-gray-50 text-gray-300{% endif %}">
+              {% else %}bg-gray-50 text-gray-300{% endif %}"
+              {% if day.is_holiday %}title="{{ day.holiday_name }}{% if day.holiday_worked %}（出勤，工資加倍）{% endif %}"{% endif %}>
               {# 部分時數請假（當天仍有出勤）以右上角小點標示 #}
               {% if day.leave_kind and not day.leave_is_full %}
                 <span class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#C7AD34]"
                       title="請假 {{ day.leave_hours|floatformat:'-1' }} 小時"></span>
+              {% endif %}
+              {# 國定假日出勤 → 工資加倍 #}
+              {% if day.holiday_worked %}
+                <span class="absolute top-0.5 left-0.5 text-[8px] font-bold leading-none">×2</span>
               {% endif %}
               <span class="font-semibold leading-none">{{ day.date|date:"j" }}</span>
               {% if day.hours %}
@@ -307,6 +330,7 @@
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-50 inline-block"></span>缺勤</span>
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-[#BECEBE] inline-block"></span>休假</span>
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-[#F4ECC9] inline-block"></span>請假</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-[#F6E4E0] inline-block"></span>國定假日</span>
           <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-100 inline-block"></span>假日</span>
         </div>
       </div>
