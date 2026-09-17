@@ -911,3 +911,174 @@ class LeaveFullDayComplianceTest(TestCase):
         row = {r['employee'].pk: r for r in resp.context['week_compliance']}[self.emp.pk]
         # 9/1, 9/8, 9/15, 9/22, 9/29 皆為週二 → 涵蓋的各週都有整天休
         self.assertLess(row['miss_count'], len(row['cells']))
+
+
+class LineLeaveFlowTest(TestCase):
+    """LINE 員工端：排休與請假是兩個入口，全程按鈕、不需打字"""
+
+    def setUp(self):
+        from attendance.models import LeaveRequest
+        cache.clear()
+        self.LeaveRequest = LeaveRequest
+        u = User.objects.create_user(username='ln1', password='x', first_name='丁', last_name='黃')
+        self.emp = Employee.objects.create(user=u, employee_id='LN1', department='外送',
+                                           line_user_id='U_line_1')
+        self.uid = 'U_line_1'
+
+    def _pb(self, action, params=None, postback_params=None):
+        from attendance import line_leave
+        return line_leave.handle_postback(
+            self.emp, self.uid, action, params or {}, postback_params or {})
+
+    # ── 排休 ──────────────────────────────────────────
+    def test_rest_flow_collects_multiple_days(self):
+        from attendance import line_leave
+        line_leave.start_rest(self.uid)
+        self._pb('lv_date', postback_params={'date': '2026-10-05'})
+        self._pb('lv_date', postback_params={'date': '2026-10-06'})
+        self._pb('lv_submit')
+
+        req = self.LeaveRequest.objects.get(employee=self.emp)
+        self.assertEqual(req.kind, LeaveRecord.KIND_REST)
+        self.assertEqual(req.dates, ['2026-10-05', '2026-10-06'])
+        self.assertIsNone(req.hours)
+        self.assertEqual(req.leave_type, '')
+
+    def test_rest_rejects_duplicate_date(self):
+        from attendance import line_leave
+        line_leave.start_rest(self.uid)
+        self._pb('lv_date', postback_params={'date': '2026-10-05'})
+        self._pb('lv_date', postback_params={'date': '2026-10-05'})
+        self._pb('lv_submit')
+        self.assertEqual(self.LeaveRequest.objects.get(employee=self.emp).dates, ['2026-10-05'])
+
+    def test_submit_without_date_creates_nothing(self):
+        from attendance import line_leave
+        line_leave.start_rest(self.uid)
+        self._pb('lv_submit')
+        self.assertFalse(self.LeaveRequest.objects.exists())
+
+    # ── 請假 ──────────────────────────────────────────
+    def test_leave_flow_date_hours_type(self):
+        from attendance import line_leave
+        line_leave.start_leave(self.uid)
+        self._pb('lv_date', postback_params={'date': '2026-10-07'})
+        self._pb('lv_hours', {'h': '2'})
+        self._pb('lv_type', {'t': 'sick'})
+        self._pb('lv_submit')
+
+        req = self.LeaveRequest.objects.get(employee=self.emp)
+        self.assertEqual(req.kind, LeaveRecord.KIND_LEAVE)
+        self.assertEqual(req.dates, ['2026-10-07'])
+        self.assertEqual(req.hours, 2)
+        self.assertEqual(req.leave_type, 'sick')
+        self.assertEqual(req.hours_label, '2 小時')
+
+    def test_leave_is_single_day(self):
+        """請假有時數，一次只處理一天；再選日期是換日期不是加天"""
+        from attendance import line_leave
+        line_leave.start_leave(self.uid)
+        self._pb('lv_date', postback_params={'date': '2026-10-07'})
+        self._pb('lv_date', postback_params={'date': '2026-10-08'})
+        self._pb('lv_hours', {'h': '8'})
+        self._pb('lv_type', {'t': 'personal'})
+        self._pb('lv_submit')
+        self.assertEqual(self.LeaveRequest.objects.get(employee=self.emp).dates, ['2026-10-08'])
+
+    def test_employee_cannot_pick_annual_leave(self):
+        """特休要跟老闆談，員工端不開放選"""
+        from attendance import line_leave
+        line_leave.start_leave(self.uid)
+        self._pb('lv_date', postback_params={'date': '2026-10-09'})
+        self._pb('lv_hours', {'h': '8'})
+        self._pb('lv_type', {'t': 'annual'})
+        self._pb('lv_submit')
+        req = self.LeaveRequest.objects.get(employee=self.emp)
+        self.assertEqual(req.leave_type, '')   # 沒被設進去
+
+    # ── 共通 ──────────────────────────────────────────
+    def test_cancel_clears_draft(self):
+        from attendance import line_leave
+        line_leave.start_rest(self.uid)
+        self._pb('lv_date', postback_params={'date': '2026-10-05'})
+        self._pb('lv_cancel')
+        self._pb('lv_submit')
+        self.assertFalse(self.LeaveRequest.objects.exists())
+
+    def test_expired_draft_is_handled(self):
+        msgs = self._pb('lv_date', postback_params={'date': '2026-10-05'})
+        self.assertTrue(msgs)
+        self.assertFalse(self.LeaveRequest.objects.exists())
+
+    def test_non_leave_action_passes_through(self):
+        self.assertIsNone(self._pb('query'))
+
+    def test_text_entries_are_separate(self):
+        from attendance.views import _process_message
+        self.assertTrue(_process_message('排休', self.uid))
+        from attendance import line_leave
+        self.assertEqual(line_leave._get_draft(self.uid)['kind'], LeaveRecord.KIND_REST)
+        self.assertTrue(_process_message('請假', self.uid))
+        self.assertEqual(line_leave._get_draft(self.uid)['kind'], LeaveRecord.KIND_LEAVE)
+
+
+class LeaveRequestApprovalTest(TestCase):
+    """核准申請要依類別寫成正確的休假紀錄"""
+
+    def setUp(self):
+        from attendance.models import LeaveRequest
+        self.LeaveRequest = LeaveRequest
+        User.objects.create_user(username='boss_ap', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_ap', password='pass12345')
+        u = User.objects.create_user(username='ap1', password='x', first_name='戊', last_name='張')
+        self.emp = Employee.objects.create(user=u, employee_id='AP1', department='外送')
+
+    def test_approve_rest_creates_rest_records(self):
+        req = self.LeaveRequest.objects.create(
+            employee=self.emp, dates=['2026-10-05', '2026-10-06'],
+            kind=LeaveRecord.KIND_REST,
+        )
+        resp = self.client.post(f'/dashboard/leave/requests/{req.pk}/approve/')
+        self.assertEqual(resp.status_code, 302)
+        records = LeaveRecord.objects.filter(employee=self.emp).order_by('date')
+        self.assertEqual(records.count(), 2)
+        self.assertTrue(all(r.is_rest and r.is_full_day for r in records))
+
+    def test_approve_leave_carries_hours_and_type(self):
+        req = self.LeaveRequest.objects.create(
+            employee=self.emp, dates=['2026-10-07'],
+            kind=LeaveRecord.KIND_LEAVE, leave_type='sick', hours=2,
+        )
+        self.client.post(f'/dashboard/leave/requests/{req.pk}/approve/')
+        lr = LeaveRecord.objects.get(employee=self.emp, date=date(2026, 10, 7))
+        self.assertEqual(lr.kind, LeaveRecord.KIND_LEAVE)
+        self.assertEqual(lr.hours, 2)
+        self.assertEqual(lr.leave_type, 'sick')
+        self.assertFalse(lr.is_full_day)
+
+    def test_deny_creates_no_records(self):
+        req = self.LeaveRequest.objects.create(
+            employee=self.emp, dates=['2026-10-08'], kind=LeaveRecord.KIND_REST,
+        )
+        self.client.post(f'/dashboard/leave/requests/{req.pk}/deny/')
+        req.refresh_from_db()
+        self.assertEqual(req.status, 'denied')
+        self.assertFalse(LeaveRecord.objects.filter(employee=self.emp).exists())
+
+    def test_approve_twice_is_idempotent(self):
+        req = self.LeaveRequest.objects.create(
+            employee=self.emp, dates=['2026-10-09'], kind=LeaveRecord.KIND_REST,
+        )
+        self.client.post(f'/dashboard/leave/requests/{req.pk}/approve/')
+        self.client.post(f'/dashboard/leave/requests/{req.pk}/approve/')
+        self.assertEqual(LeaveRecord.objects.filter(employee=self.emp).count(), 1)
+
+    def test_summary_label(self):
+        rest = self.LeaveRequest.objects.create(
+            employee=self.emp, dates=['2026-10-10'], kind=LeaveRecord.KIND_REST)
+        self.assertEqual(rest.summary_label, '排休・整天')
+        leave = self.LeaveRequest.objects.create(
+            employee=self.emp, dates=['2026-10-11'],
+            kind=LeaveRecord.KIND_LEAVE, leave_type='personal', hours=4)
+        self.assertEqual(leave.summary_label, '請假・半天・事假')

@@ -1,4 +1,5 @@
 import uuid
+from datetime import date as date_cls
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -194,6 +195,8 @@ class LeaveRecord(models.Model):
         ('sick',     '病假'),
         ('funeral',  '喪假'),
     ]
+    # 員工在 LINE 上可以自己選的假別（不含特休，特休要跟老闆談）
+    EMPLOYEE_LEAVE_TYPES = ['personal', 'sick', 'funeral']
     FULL_DAY_HOURS = 8.0
     HALF_DAY_HOURS = 4.0
 
@@ -251,24 +254,73 @@ class LeaveRecord(models.Model):
 
 
 class LeaveRequest(models.Model):
+    """員工從 LINE 送出的休假申請，核准後才會變成 LeaveRecord。
+
+    與 LeaveRecord 一樣分排休（整天不來、可一次選多天）與請假
+    （單天、有時數與假別）。員工端不開放選特休。
+    """
     STATUS_CHOICES = [
         ('pending',  '待審核'),
         ('approved', '已核准'),
         ('denied',   '已拒絕'),
     ]
     employee     = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_requests', verbose_name='員工')
-    dates        = models.JSONField('請假日期')          # ['2026-05-01', '2026-05-02']
+    dates        = models.JSONField('日期')              # ['2026-05-01', '2026-05-02']
+    kind         = models.CharField('類別', max_length=10, choices=LeaveRecord.KIND_CHOICES,
+                                    default=LeaveRecord.KIND_REST)
+    leave_type   = models.CharField('假別', max_length=10, choices=LeaveRecord.LEAVE_TYPE_CHOICES,
+                                    blank=True, help_text='僅請假需要；排休留空')
+    hours        = models.FloatField('請假時數', null=True, blank=True,
+                                     help_text='排休為整天（留空）；請假填時數，整天為 8、半天為 4')
     status       = models.CharField('狀態', max_length=10, choices=STATUS_CHOICES, default='pending')
     requested_at = models.DateTimeField('申請時間', auto_now_add=True)
     processed_at = models.DateTimeField('處理時間', null=True, blank=True)
 
     class Meta:
-        verbose_name = '請假申請'
-        verbose_name_plural = '請假申請'
+        verbose_name = '休假申請'
+        verbose_name_plural = '休假申請'
         ordering = ['-requested_at']
 
     def __str__(self):
         return f"{self.employee} - {','.join(self.dates)} ({self.get_status_display()})"
+
+    @property
+    def is_rest(self):
+        return self.kind == LeaveRecord.KIND_REST
+
+    @property
+    def hours_label(self):
+        """整天 / 半天 / 2 小時"""
+        if self.is_rest:
+            return '整天'
+        h = self.hours or 0
+        if h >= LeaveRecord.FULL_DAY_HOURS:
+            return '整天'
+        if h == LeaveRecord.HALF_DAY_HOURS:
+            return '半天'
+        return f'{h:g} 小時'
+
+    @property
+    def summary_label(self):
+        """一行說明：排休・整天 ／ 請假・2 小時・病假"""
+        parts = [self.get_kind_display(), self.hours_label]
+        if self.leave_type:
+            parts.append(self.get_leave_type_display())
+        return '・'.join(parts)
+
+    def apply_to_records(self):
+        """核准後寫入實際休假紀錄；同一天已有紀錄則以這次核准的內容為準。"""
+        from datetime import datetime as _dt
+        records = []
+        for raw in self.dates:
+            d = raw if isinstance(raw, date_cls) else _dt.strptime(str(raw), '%Y-%m-%d').date()
+            lr, _ = LeaveRecord.objects.update_or_create(
+                employee=self.employee, date=d,
+                defaults={'kind': self.kind, 'leave_type': self.leave_type,
+                          'hours': self.hours},
+            )
+            records.append(lr)
+        return records
 
 
 class AuditLog(models.Model):
