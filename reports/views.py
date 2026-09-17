@@ -9,11 +9,19 @@ from django.utils import timezone
 from django.utils.timezone import localtime
 from django.views.decorators.http import require_POST
 
-from attendance.models import AttendanceRecord, Employee, LeaveRecord
+from attendance.models import AttendanceRecord, Employee, Holiday, LeaveRecord
 
 
-def _build_day(employee, d):
-    """回傳某天的出勤資料 dict"""
+def _holiday_map(year, month):
+    """{date: 假日名稱}，一個月查一次就好。"""
+    return {
+        h.date: (h.name or '國定假日')
+        for h in Holiday.objects.filter(date__year=year, date__month=month)
+    }
+
+
+def _build_day(employee, d, holidays=None):
+    """回傳某天的出勤資料 dict。holidays 可先用 _holiday_map 準備好，避免逐日查詢。"""
     records = AttendanceRecord.objects.filter(
         employee=employee, timestamp__date=d
     ).order_by('timestamp')
@@ -24,6 +32,14 @@ def _build_day(employee, d):
     break_end   = records.filter(record_type='break_end').first()
 
     is_weekend = d.weekday() >= 5
+
+    # 國定假日（見紅；沒打卡也不算缺勤，有打卡則工資加倍）
+    if holidays is None:
+        holiday = Holiday.objects.filter(date=d).first()
+        holiday_name = (holiday.name or '國定假日') if holiday else None
+    else:
+        holiday_name = holidays.get(d)
+    is_holiday = holiday_name is not None
 
     # 當天的排休／請假（整天不來者會蓋掉「缺勤」判定）
     leave = LeaveRecord.objects.filter(employee=employee, date=d).first()
@@ -53,6 +69,9 @@ def _build_day(employee, d):
     elif leave_is_full:
         # 整天排休／請假 → 不是缺勤
         status = 'rest' if leave_kind == LeaveRecord.KIND_REST else 'leave'
+    elif is_holiday:
+        # 國定假日沒來上班是正常的 → 不是缺勤
+        status = 'holiday'
     elif is_weekend:
         status = 'weekend'
     else:
@@ -90,6 +109,10 @@ def _build_day(employee, d):
         'leave_label':    leave_label,
         'leave_hours':    leave_hours,
         'leave_is_full':  leave_is_full,
+        # 國定假日（見紅；當天有出勤代表工資加倍）
+        'is_holiday':     is_holiday,
+        'holiday_name':   holiday_name,
+        'holiday_worked': bool(is_holiday and clock_in),
     }
 
 
@@ -115,7 +138,8 @@ def report(request):
 
     if selected:
         _, days_in_month = calendar.monthrange(year, month)
-        month_data = [_build_day(selected, date(year, month, d))
+        holidays = _holiday_map(year, month)
+        month_data = [_build_day(selected, date(year, month, d), holidays)
                       for d in range(1, days_in_month + 1)]
 
         # 統計（排休／請假不列入缺勤，另計休假天數）
@@ -128,6 +152,8 @@ def report(request):
             'rest':      sum(1 for d in month_data if d['status'] == 'rest'),
             'leave':     sum(1 for d in month_data if d['status'] == 'leave'),
             'off_total': sum(1 for d in month_data if d['status'] in ('rest', 'leave')),
+            'holiday':        sum(1 for d in month_data if d['status'] == 'holiday'),
+            'holiday_worked': sum(1 for d in month_data if d['holiday_worked']),
             # 部分時數請假（當天仍有出勤）累計時數
             'partial_leave_hours': round(
                 sum(d['leave_hours'] for d in month_data
@@ -222,6 +248,7 @@ def export_attendance_csv(request):
         'weekend':          '假日',
         'rest':             '休假',
         'leave':            '請假',
+        'holiday':          '國定假日',
     }
 
     # ── 建立 CSV 回應 ──────────────────────────────────────
@@ -234,7 +261,7 @@ def export_attendance_csv(request):
         '工號', '姓名', '部門',
         '日期', '星期',
         '上班打卡', '下班打卡', '午休開始', '午休結束',
-        '工時(h)', '狀態', '休假', '請假時數',
+        '工時(h)', '狀態', '休假', '請假時數', '國定假日',
     ])
 
     for emp in employees:
@@ -242,13 +269,14 @@ def export_attendance_csv(request):
 
         for year, month in iter_months(year_from, month_from, year_to, month_to):
             _, days_in_month = calendar.monthrange(year, month)
+            holidays = _holiday_map(year, month)
 
             for day_num in range(1, days_in_month + 1):
                 d = date(year, month, day_num)
                 if d > today:
                     break   # 未來日期不輸出
 
-                day_data = _build_day(emp, d)
+                day_data = _build_day(emp, d, holidays)
 
                 # 休假欄：排休／請假（不輸出假別與原因）
                 if day_data['leave_kind'] == LeaveRecord.KIND_REST:
@@ -273,6 +301,7 @@ def export_attendance_csv(request):
                     STATUS_LABELS.get(day_data['status'], day_data['status']),
                     leave_col,
                     leave_hours_col,
+                    day_data['holiday_name'] or '',
                 ])
 
     return response

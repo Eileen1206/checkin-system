@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.conf import settings
 from datetime import datetime, date
 import json
-from ..models import Employee, LeaveRecord, LeaveRequest, LocationCorrectionRequest
+from ..models import Employee, Holiday, LeaveRecord, LeaveRequest, LocationCorrectionRequest
 from ..utils import scheduling
 from .base import require_group
 
@@ -55,6 +55,12 @@ def leave_calendar(request):
         weeks.append(week + [None] * (7 - len(week)))
 
     employees = Employee.tracked.select_related('user').order_by('employee_id')
+
+    # 國定假日：月曆上見紅並標出名稱
+    holiday_by_day = {
+        h.date.day: (h.name or '國定假日')
+        for h in Holiday.objects.filter(date__year=year, date__month=month)
+    }
 
     leave_records = LeaveRecord.objects.filter(
         date__year=year, date__month=month
@@ -142,6 +148,7 @@ def leave_calendar(request):
         'weeks': weeks,
         'employees': employees,
         'leave_by_day': leave_by_day,
+        'holiday_by_day': holiday_by_day,
         'leave_by_day_json': json.dumps(leave_by_day),
         'today': today,
         'prev_year': prev_year, 'prev_month': prev_month,

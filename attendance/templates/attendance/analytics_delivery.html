@@ -105,7 +105,7 @@
   {# 員工 Exception 健康度表（新） #}
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
     <h2 class="text-sm font-semibold text-gray-700 mb-1">員工送貨健康度（近 30 天）</h2>
-    <p class="text-xs text-gray-400 mb-3">依準時完成率由低到高排列，紅色需優先關注</p>
+    <p class="text-xs text-gray-400 mb-3">依準時完成率由低到高</p>
     {% if exception_rows %}
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
@@ -159,7 +159,6 @@
   {# 出發時段分布（新） #}
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
     <h2 class="text-sm font-semibold text-gray-700">出發時段分布（近 30 天）</h2>
-    <p class="text-xs text-gray-400 mt-0.5 mb-4">識別高峰時段，協助排班與交通評估</p>
     <div class="relative h-56">
       <canvas id="chartHeatmap"></canvas>
     </div>

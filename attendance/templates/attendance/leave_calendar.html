@@ -34,12 +34,15 @@
       {% for week in weeks %}
         {% for day in week %}
         {% if day %}
+          {% with holiday=holiday_by_day|dict_get:day %}
           <div class="day-cell min-h-[100px] border-b border-r border-gray-50 p-1.5
-              {% if day == today.day and month == today.month and year == today.year %}bg-[#F4EDDF]{% endif %}"
+              {% if holiday %}bg-[#F6E4E0]/60
+              {% elif day == today.day and month == today.month and year == today.year %}bg-[#F4EDDF]{% endif %}"
             data-date="{{ year }}-{{ month|stringformat:'02d' }}-{{ day|stringformat:'02d' }}">
 
             <div class="text-xs font-medium mb-1 pointer-events-none flex items-center justify-between
-              {% if day == today.day and month == today.month and year == today.year %}text-[#9C8428]
+              {% if holiday %}text-[#B0382A]
+              {% elif day == today.day and month == today.month and year == today.year %}text-[#9C8428]
               {% else %}text-gray-400{% endif %}">
               <span>{{ day }}</span>
               {% if day in understaffed_days_nums %}
@@ -48,8 +51,14 @@
               {% endif %}
             </div>
 
+            {% if holiday %}
+            <div class="text-[10px] font-semibold text-[#B0382A] mb-1 truncate pointer-events-none"
+                 title="{{ holiday }}">{{ holiday }}</div>
+            {% endif %}
+
             <div class="leave-tags flex flex-col gap-0.5"></div>
           </div>
+          {% endwith %}
         {% else %}
           <div class="min-h-[100px] bg-gray-50/40 border-b border-r border-gray-50"></div>
         {% endif %}
@@ -64,6 +73,9 @@
       </span>
       <span class="flex items-center gap-1.5">
         <span class="inline-block w-6 h-3.5 rounded-md border-2 border-[#5E6E5E] bg-white"></span>請假
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="inline-block w-6 h-3.5 rounded-md bg-[#F6E4E0]"></span>國定假日
       </span>
     </div>
   </div>
@@ -95,7 +107,7 @@
 <div class="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
   <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
     <h2 class="text-lg font-bold text-gray-800">一例一休週檢視</h2>
-    <p class="text-xs text-gray-400">週日公休為例假；每週需排 1 天平日休息日。　✅ 已排　⚠️ 未排</p>
+    <p class="text-xs text-gray-400">每週需排 1 天平日休息日　✅ 已排　⚠️ 未排</p>
   </div>
   <div class="overflow-x-auto">
     <table class="w-full text-sm border-collapse">
