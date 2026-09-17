@@ -60,13 +60,18 @@ def leave_calendar(request):
         date__year=year, date__month=month
     ).select_related('employee__user')
 
-    # 按日期分組
+    # 按日期分組（排休與請假一起顯示，但帶上類別讓前端分得出來）
     leave_by_day = {}
     for lr in leave_records:
         leave_by_day.setdefault(lr.date.day, []).append({
-            'id':   lr.pk,
+            'id':     lr.pk,
             'emp_id': lr.employee_id,
-            'name': lr.employee.user.get_full_name() or lr.employee.user.username,
+            'name':   lr.employee.user.get_full_name() or lr.employee.user.username,
+            'kind':   lr.kind,
+            'label':  lr.short_label,
+            'hours':  lr.hours,
+            'leave_type': lr.leave_type,
+            'type':   lr.get_leave_type_display() if lr.leave_type else '',
         })
 
     # 上個月 / 下個月導覽
@@ -91,7 +96,9 @@ def leave_calendar(request):
 
     leave_dates_by_emp = {}
     for lr in leave_qs_range:
-        leave_dates_by_emp.setdefault(lr.employee_id, set()).add(lr.date)
+        # 一例一休只採計「整天」：請 2 小時不算當天有休到
+        if lr.is_full_day:
+            leave_dates_by_emp.setdefault(lr.employee_id, set()).add(lr.date)
 
     # 每員工 × 每週 達標表（週日公休為例假，只看週一~週六是否排了休息日）
     required = getattr(settings, 'SCHEDULE_WEEKDAY_REST_REQUIRED', 1)
@@ -149,20 +156,66 @@ def leave_calendar(request):
     })
 
 
+def _parse_leave_payload(data):
+    """由前端資料解出 (kind, leave_type, hours)，並套用排休／請假的規則。
+
+    排休：整天不來，沒有假別與時數。
+    請假：需要時數（整天 8、半天 4、或整數小時），假別可留空。
+    """
+    kind = data.get('kind') or LeaveRecord.KIND_REST
+    if kind not in dict(LeaveRecord.KIND_CHOICES):
+        raise ValueError('類別不正確')
+
+    if kind == LeaveRecord.KIND_REST:
+        return kind, '', None
+
+    leave_type = (data.get('leave_type') or '').strip()
+    if leave_type and leave_type not in dict(LeaveRecord.LEAVE_TYPE_CHOICES):
+        raise ValueError('假別不正確')
+
+    try:
+        hours = float(data.get('hours'))
+    except (TypeError, ValueError):
+        raise ValueError('請填寫請假時數')
+    if hours <= 0:
+        raise ValueError('請假時數需大於 0')
+    hours = min(hours, LeaveRecord.FULL_DAY_HOURS)
+    return kind, leave_type, hours
+
+
 @login_required
 @require_group('admin')
 def leave_add_api(request):
-    """AJAX：新增請假紀錄"""
+    """AJAX：新增／修改休假紀錄（排休或請假）。
+
+    同一員工同一天只會有一筆，重複送出視為修改（老闆可隨時調整）。
+    """
     if request.method != 'POST':
         return JsonResponse({'ok': False}, status=405)
     data = json.loads(request.body)
     try:
         emp = Employee.objects.get(pk=data['employee_id'])
         leave_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-        lr, created = LeaveRecord.objects.get_or_create(employee=emp, date=leave_date)
+        kind, leave_type, hours = _parse_leave_payload(data)
+        reason = (data.get('reason') or '').strip()[:100]
+
+        lr, created = LeaveRecord.objects.get_or_create(
+            employee=emp, date=leave_date,
+            defaults={'kind': kind, 'leave_type': leave_type,
+                      'hours': hours, 'reason': reason},
+        )
+        if not created:
+            lr.kind, lr.leave_type, lr.hours, lr.reason = kind, leave_type, hours, reason
+            lr.save(update_fields=['kind', 'leave_type', 'hours', 'reason'])
+
         return JsonResponse({
             'ok': True, 'id': lr.pk, 'created': created,
             'name': emp.user.get_full_name() or emp.user.username,
+            'kind': lr.kind,
+            'label': lr.short_label,
+            'hours': lr.hours,
+            'leave_type': lr.leave_type,
+            'type': lr.get_leave_type_display() if lr.leave_type else '',
         })
     except (Employee.DoesNotExist, ValueError, KeyError) as e:
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
@@ -192,7 +245,7 @@ def leave_add(request, pk):
         LeaveRecord.objects.get_or_create(
             employee=emp,
             date=leave_date,
-            defaults={'reason': reason},
+            defaults={'kind': LeaveRecord.KIND_REST, 'reason': reason},
         )
     return redirect('dashboard:employee_edit', pk=pk)
 
@@ -229,8 +282,13 @@ def leave_request_approve(request, pk):
         leave_req.processed_at = timezone.now()
         leave_req.save()
         emp = leave_req.employee
+        # 目前 LINE 端申請的是「整天不來」→ 一律建立排休；
+        # 之後 LINE 會拆成排休／請假兩個入口，屆時再依申請帶入 kind。
         for d in leave_req.dates:
-            LeaveRecord.objects.get_or_create(employee=emp, date=d)
+            LeaveRecord.objects.get_or_create(
+                employee=emp, date=d,
+                defaults={'kind': LeaveRecord.KIND_REST},
+            )
         # 通知員工 LINE
         from django.conf import settings
         from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage

@@ -721,3 +721,193 @@ class PayrollViewTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn('weekday_tiers', resp.context)
         self.assertIn('restday_tiers', resp.context)
+
+
+class LeaveKindModelTest(TestCase):
+    """排休／請假的判定與標示"""
+
+    def setUp(self):
+        u = User.objects.create_user(username='lk1', password='x', first_name='假', last_name='測')
+        self.emp = Employee.objects.create(user=u, employee_id='LK1', department='外送')
+
+    def test_rest_is_always_full_day(self):
+        lr = LeaveRecord.objects.create(employee=self.emp, date=date(2026, 9, 1))
+        self.assertTrue(lr.is_rest)
+        self.assertTrue(lr.is_full_day)
+        self.assertEqual(lr.short_label, '休')
+        self.assertEqual(lr.hours_label, '整天')
+
+    def test_full_day_leave(self):
+        lr = LeaveRecord.objects.create(
+            employee=self.emp, date=date(2026, 9, 2),
+            kind=LeaveRecord.KIND_LEAVE, leave_type='sick', hours=8,
+        )
+        self.assertFalse(lr.is_rest)
+        self.assertTrue(lr.is_full_day)
+        self.assertEqual(lr.short_label, '假')
+        self.assertEqual(lr.hours_label, '整天')
+
+    def test_partial_leave_is_not_full_day(self):
+        lr = LeaveRecord.objects.create(
+            employee=self.emp, date=date(2026, 9, 3),
+            kind=LeaveRecord.KIND_LEAVE, leave_type='personal', hours=2,
+        )
+        self.assertFalse(lr.is_full_day)
+        self.assertEqual(lr.short_label, '2h')
+        self.assertEqual(lr.hours_label, '2 小時')
+
+    def test_half_day_label(self):
+        lr = LeaveRecord.objects.create(
+            employee=self.emp, date=date(2026, 9, 4),
+            kind=LeaveRecord.KIND_LEAVE, hours=4,
+        )
+        self.assertEqual(lr.hours_label, '半天')
+
+
+class LeaveAddApiTest(TestCase):
+    """後台月曆拖曳 → 新增／修改排休或請假"""
+
+    def setUp(self):
+        User.objects.create_user(username='boss_lv', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_lv', password='pass12345')
+        u = User.objects.create_user(username='lv1', password='x', first_name='甲', last_name='陳')
+        self.emp = Employee.objects.create(user=u, employee_id='LV1', department='外送')
+
+    def _post(self, payload):
+        import json as _json
+        return self.client.post('/dashboard/leave/api/add/', data=_json.dumps(payload),
+                                content_type='application/json')
+
+    def test_add_rest(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-09-10'})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['kind'], 'rest')
+        self.assertEqual(data['label'], '休')
+        lr = LeaveRecord.objects.get(pk=data['id'])
+        self.assertIsNone(lr.hours)
+        self.assertEqual(lr.leave_type, '')
+
+    def test_add_partial_leave(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-09-11',
+                           'kind': 'leave', 'hours': 2, 'leave_type': 'sick'})
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['label'], '2h')
+        lr = LeaveRecord.objects.get(pk=data['id'])
+        self.assertEqual(lr.hours, 2)
+        self.assertEqual(lr.leave_type, 'sick')
+
+    def test_leave_requires_hours(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-09-12', 'kind': 'leave'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.json()['ok'])
+
+    def test_resubmit_updates_same_day(self):
+        """同一員工同一天再送一次 = 老闆修改，不會重複建立"""
+        first = self._post({'employee_id': self.emp.pk, 'date': '2026-09-13'}).json()
+        second = self._post({'employee_id': self.emp.pk, 'date': '2026-09-13',
+                             'kind': 'leave', 'hours': 4, 'leave_type': 'annual'}).json()
+        self.assertEqual(first['id'], second['id'])
+        self.assertEqual(LeaveRecord.objects.filter(employee=self.emp,
+                                                    date=date(2026, 9, 13)).count(), 1)
+        lr = LeaveRecord.objects.get(pk=second['id'])
+        self.assertEqual(lr.kind, LeaveRecord.KIND_LEAVE)
+        self.assertEqual(lr.hours, 4)
+
+    def test_hours_capped_at_full_day(self):
+        data = self._post({'employee_id': self.emp.pk, 'date': '2026-09-14',
+                           'kind': 'leave', 'hours': 12}).json()
+        self.assertEqual(LeaveRecord.objects.get(pk=data['id']).hours, 8)
+
+    def test_bad_kind_rejected(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-09-15', 'kind': 'nope'})
+        self.assertEqual(resp.status_code, 400)
+
+
+class ReportLeaveDisplayTest(TestCase):
+    """出勤報表要顯示休假／請假，且不再算成缺勤"""
+
+    def setUp(self):
+        User.objects.create_user(username='boss_rp', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_rp', password='pass12345')
+        u = User.objects.create_user(username='rp1', password='x', first_name='乙', last_name='林')
+        self.emp = Employee.objects.create(user=u, employee_id='RP1', department='外送')
+        # 2026/9：1(二) 排休、2(三) 整天請假、3(四) 請假 2 小時
+        LeaveRecord.objects.create(employee=self.emp, date=date(2026, 9, 1))
+        LeaveRecord.objects.create(employee=self.emp, date=date(2026, 9, 2),
+                                   kind=LeaveRecord.KIND_LEAVE, leave_type='sick', hours=8)
+        LeaveRecord.objects.create(employee=self.emp, date=date(2026, 9, 3),
+                                   kind=LeaveRecord.KIND_LEAVE, leave_type='personal', hours=2)
+
+    def _days(self):
+        resp = self.client.get(f'/reports/?employee_id={self.emp.pk}&year=2026&month=9')
+        self.assertEqual(resp.status_code, 200)
+        return resp, {d['date'].day: d for d in resp.context['month_data']}
+
+    def test_statuses(self):
+        _, days = self._days()
+        self.assertEqual(days[1]['status'], 'rest')
+        self.assertEqual(days[2]['status'], 'leave')
+        # 部分時數請假、當天沒打卡 → 仍是缺勤
+        self.assertEqual(days[3]['status'], 'absent')
+        self.assertEqual(days[3]['leave_hours'], 2)
+        self.assertFalse(days[3]['leave_is_full'])
+
+    def test_stats_count_leave_not_absent(self):
+        resp, _ = self._days()
+        stats = resp.context['stats']
+        self.assertEqual(stats['rest'], 1)
+        self.assertEqual(stats['leave'], 1)
+        self.assertEqual(stats['off_total'], 2)
+        self.assertEqual(stats['partial_leave_hours'], 2)
+
+    def test_page_shows_leave_labels(self):
+        resp, _ = self._days()
+        html = resp.content.decode()
+        self.assertIn('休假', html)
+        self.assertIn('請假', html)
+        # 隱私：報表不顯示假別與原因
+        self.assertNotIn('病假', html)
+        self.assertNotIn('事假', html)
+
+    def test_csv_export_has_leave_columns(self):
+        resp = self.client.get('/reports/export/csv/'
+                               f'?employee_id={self.emp.pk}&year_from=2026&month_from=9'
+                               '&year_to=2026&month_to=9')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode('utf-8-sig')
+        self.assertIn('請假時數', body)
+
+
+class LeaveFullDayComplianceTest(TestCase):
+    """一例一休只採計整天休假"""
+
+    def setUp(self):
+        User.objects.create_user(username='boss_fc', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_fc', password='pass12345')
+        u = User.objects.create_user(username='fc1', password='x', first_name='丙', last_name='吳')
+        self.emp = Employee.objects.create(user=u, employee_id='FC1', department='外送',
+                                           work_days='0,1,2,3,4,5')
+
+    def test_partial_leave_does_not_satisfy_weekly_rest(self):
+        # 2026/9 整個月每週只請 2 小時 → 都不算有休到
+        for d in (1, 8, 15, 22, 29):
+            LeaveRecord.objects.create(employee=self.emp, date=date(2026, 9, d),
+                                       kind=LeaveRecord.KIND_LEAVE, hours=2)
+        resp = self.client.get('/dashboard/leave/?year=2026&month=9')
+        row = {r['employee'].pk: r for r in resp.context['week_compliance']}[self.emp.pk]
+        self.assertEqual(row['miss_count'], len(row['cells']))
+
+    def test_full_day_leave_satisfies_weekly_rest(self):
+        for d in (1, 8, 15, 22, 29):
+            LeaveRecord.objects.create(employee=self.emp, date=date(2026, 9, d),
+                                       kind=LeaveRecord.KIND_LEAVE, hours=8)
+        resp = self.client.get('/dashboard/leave/?year=2026&month=9')
+        row = {r['employee'].pk: r for r in resp.context['week_compliance']}[self.emp.pk]
+        # 9/1, 9/8, 9/15, 9/22, 9/29 皆為週二 → 涵蓋的各週都有整天休
+        self.assertLess(row['miss_count'], len(row['cells']))

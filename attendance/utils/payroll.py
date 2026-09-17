@@ -142,8 +142,12 @@ def monthly_overtime(emp, year, month):
 
     holiday_set = set(Holiday.objects.filter(
         date__year=year, date__month=month).values_list('date', flat=True))
-    leave_dates = set(LeaveRecord.objects.filter(
-        employee=emp, date__year=year, date__month=month).values_list('date', flat=True))
+    # 只採計「整天」不上班者為休息日；部分時數請假當天仍有出勤
+    leave_dates = {
+        lr.date for lr in LeaveRecord.objects.filter(
+            employee=emp, date__year=year, date__month=month)
+        if lr.is_full_day
+    }
     days = AttendanceRecord.objects.filter(
         employee=emp, record_type='clock_in',
         timestamp__year=year, timestamp__month=month,
