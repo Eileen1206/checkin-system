@@ -164,9 +164,10 @@ def calculate_salary(emp, year, month):
     ).first()
     allowance_amount = float(allowance.amount) if allowance else 0
 
-    from attendance.utils import payroll
+    from attendance.utils import payroll, punch_check
     work = payroll.monthly_work_detail(emp, year, month)
     overtime = work['overtime']
+    missed = punch_check.monthly_stats(emp, year, month)
 
     if emp.employment_type == 'monthly':
         base = float(emp.monthly_salary) if emp.monthly_salary else 0
@@ -206,4 +207,9 @@ def calculate_salary(emp, year, month):
         'late_days':     work['late_days'],
         'late_minutes':  work['late_minutes'],
         'late_hm':       work['late_hm'],
+        # 漏打卡（不影響金額，超過每月上限即標紅）
+        'missed_punch':        missed['count'],
+        'missed_punch_limit':  missed['limit'],
+        'missed_punch_over':   missed['over_limit'],
+        'missed_punch_dates':  missed['dates'],
     }

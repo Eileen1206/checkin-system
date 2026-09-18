@@ -100,6 +100,9 @@ def salary_calc_api(request):
         'late_days': r.get('late_days', 0),
         'late_minutes': r.get('late_minutes', 0),
         'late_hm': r.get('late_hm', ''),
+        'missed_punch': r.get('missed_punch', 0),
+        'missed_punch_limit': r.get('missed_punch_limit', 0),
+        'missed_punch_over': r.get('missed_punch_over', False),
     })
 
 
@@ -160,6 +163,10 @@ def salary_detail(request, pk):
         'work_hm': result['work_hm'],
         'late_days': result['late_days'],
         'late_hm': result['late_hm'],
+        'missed_punch': result['missed_punch'],
+        'missed_punch_limit': result['missed_punch_limit'],
+        'missed_punch_over': result['missed_punch_over'],
+        'missed_punch_dates': result['missed_punch_dates'],
         'hourly': float(emp.hourly_rate or 0),
         'hourly_wage': round(payroll.hourly_wage(emp), 2),
         'daily_wage': round(payroll.daily_wage(emp)),
@@ -179,7 +186,7 @@ def export_salary_excel(request):
     ws = wb.active
     ws.title = f"{year}-{month:02d} 薪資表"
 
-    ws.append(['工號', '姓名', '部門', '工時', '遲到次數', '遲到分鐘',
+    ws.append(['工號', '姓名', '部門', '工時', '遲到次數', '遲到分鐘', '漏打卡次數',
                '底薪', '保養費', '勞務加給', '加班費', '勞健保扣除', '實領'])
 
     emp_qs = Employee.objects if request.GET.get('show_inactive') == '1' else Employee.tracked
@@ -193,6 +200,7 @@ def export_salary_excel(request):
             result['work_hm'],
             result['late_days'],
             result['late_minutes'],
+            result['missed_punch'],
             float(result['base']),
             float(result['maintenance']),
             float(result['allowance']),

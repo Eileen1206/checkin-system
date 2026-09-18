@@ -129,6 +129,11 @@
     <span class="text-xs text-gray-400">
       時薪 ${{ hourly|floatformat:0 }}／時・共 {{ work_hm }}
       {% if late_days %}・遲到 {{ late_days }} 次 {{ late_hm }}（不扣薪）{% endif %}
+      {% if missed_punch %}
+      ・<span class="{% if missed_punch_over %}font-semibold text-[#B0382A]{% else %}text-[#9C8428]{% endif %}">
+        漏打卡 {{ missed_punch }} 次{% if missed_punch_over %}（上限 {{ missed_punch_limit }}）{% endif %}
+      </span>
+      {% endif %}
     </span>
   </div>
   <table class="w-full text-sm">

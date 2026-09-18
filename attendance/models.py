@@ -323,6 +323,38 @@ class LeaveRequest(models.Model):
         return records
 
 
+class MissedPunch(models.Model):
+    """漏打卡：當天有出勤事實，但上班／下班卡沒打齊。
+
+    由每日檢查產生，隔天早上通知員工。老闆事後補登打卡不會抹掉這筆
+    （否則計次就失去意義），誤判的可以「註銷」。
+    """
+    MISSING_CLOCK_IN = 'clock_in'
+    MISSING_CLOCK_OUT = 'clock_out'
+    MISSING_CHOICES = [
+        (MISSING_CLOCK_IN,  '上班卡'),
+        (MISSING_CLOCK_OUT, '下班卡'),
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                 related_name='missed_punches', verbose_name='員工')
+    date = models.DateField('日期')
+    missing = models.CharField('漏打', max_length=10, choices=MISSING_CHOICES)
+    notified_at = models.DateTimeField('已通知時間', null=True, blank=True)
+    voided = models.BooleanField('已註銷', default=False,
+                                 help_text='誤判或特殊情況，註銷後不列入計次')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '漏打卡'
+        verbose_name_plural = '漏打卡'
+        unique_together = [['employee', 'date']]
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.employee} - {self.date} 漏{self.get_missing_display()}"
+
+
 class AuditLog(models.Model):
     ACTION_CHOICES = [
         ('create', '新增'),

@@ -10,6 +10,7 @@ from django.utils.timezone import localtime
 from django.views.decorators.http import require_POST
 
 from attendance.models import AttendanceRecord, Employee, Holiday, LeaveRecord
+from attendance.utils import punch_check
 
 
 def _holiday_map(year, month):
@@ -113,6 +114,7 @@ def _build_day(employee, d, holidays=None):
         'is_holiday':     is_holiday,
         'holiday_name':   holiday_name,
         'holiday_worked': bool(is_holiday and clock_in),
+        'missed_punch':   False,   # 由 report() 依漏打卡紀錄補上
     }
 
 
@@ -136,11 +138,19 @@ def report(request):
     calendar_weeks  = []
     stats           = {}
 
+    missed = {'count': 0, 'limit': 0, 'over_limit': False, 'dates': []}
+
     if selected:
         _, days_in_month = calendar.monthrange(year, month)
         holidays = _holiday_map(year, month)
         month_data = [_build_day(selected, date(year, month, d), holidays)
                       for d in range(1, days_in_month + 1)]
+
+        # 漏打卡（上下班卡沒打齊），超過每月上限即標紅
+        missed = punch_check.monthly_stats(selected, year, month)
+        missed_days = set(missed['dates'])
+        for day in month_data:
+            day['missed_punch'] = day['date'] in missed_days
 
         # 統計（排休／請假不列入缺勤，另計休假天數）
         worked_days = [d for d in month_data if d['status'] in ('normal', 'late', 'missing_clockout', 'missing_breakend')]
@@ -193,6 +203,7 @@ def report(request):
         'today':           today,
         'weekday_names':   ['一', '二', '三', '四', '五', '六', '日'],
         'is_admin':        is_admin,
+        'missed':          missed,
     })
 
 

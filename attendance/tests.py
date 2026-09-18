@@ -1432,3 +1432,224 @@ class ClockOutGraceTest(TestCase):
         d = date(2026, 11, 3)
         self._punch(d, (9, 0), (18, 7))
         self.assertEqual(self._minutes(d), 547)
+
+
+class MissedPunchTest(TestCase):
+    """漏打卡：上下班卡沒打齊就記一次，每月上限 5 次"""
+
+    def setUp(self):
+        from datetime import time as _time
+        from attendance.models import MissedPunch
+        self.MissedPunch = MissedPunch
+        cache.clear()
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='mpx', password='x',
+                                          first_name='壬', last_name='何'),
+            employee_id='MPX', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5', line_user_id='U_mp',
+        )
+
+    def _mk(self, d, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _past(self, days_ago=1):
+        return timezone.localdate() - timedelta(days=days_ago)
+
+    # ── 判定 ──────────────────────────────────────────
+    def test_missing_clock_out_is_detected(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), self.MissedPunch.MISSING_CLOCK_OUT)
+
+    def test_missing_clock_in_is_detected(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), self.MissedPunch.MISSING_CLOCK_IN)
+
+    def test_complete_day_is_not_missed(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+
+    def test_no_punch_at_all_is_not_missed(self):
+        """完全沒打卡是缺勤或休假，不是漏打卡"""
+        from attendance.utils import punch_check
+        self.assertIsNone(punch_check.detect(self.emp, self._past()))
+
+    def test_break_only_missing_is_not_counted(self):
+        """午休沒打完整不算漏打卡（只看上下班兩張）"""
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+
+    def test_today_is_not_judged(self):
+        """今天還沒結束，不判定"""
+        from attendance.utils import punch_check
+        today = timezone.localdate()
+        self._mk(today, 'clock_in', (9, 0))
+        self.assertIsNone(punch_check.detect(self.emp, today))
+
+    def test_full_day_leave_is_not_missed(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        LeaveRecord.objects.create(employee=self.emp, date=d)
+        self._mk(d, 'clock_in', (9, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+
+    # ── 計次 ──────────────────────────────────────────
+    def test_record_is_idempotent(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        _, first = punch_check.record_for_day(self.emp, d)
+        _, second = punch_check.record_for_day(self.emp, d)
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.assertEqual(self.MissedPunch.objects.filter(employee=self.emp).count(), 1)
+
+    def test_count_survives_admin_backfill(self):
+        """老闆補登下班卡後，漏打卡紀錄仍保留計次"""
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        punch_check.record_for_day(self.emp, d)
+        self._mk(d, 'clock_out', (18, 0))      # 老闆補登
+        self.assertEqual(punch_check.monthly_count(self.emp, d.year, d.month), 1)
+
+    def test_voided_is_not_counted(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        mp, _ = punch_check.record_for_day(self.emp, d)
+        mp.voided = True
+        mp.save()
+        self.assertEqual(punch_check.monthly_count(self.emp, d.year, d.month), 0)
+
+    def test_over_limit_flag(self):
+        from attendance.utils import punch_check
+        today = timezone.localdate()
+        base = date(today.year, today.month, 1)
+        for i in range(6):
+            self.MissedPunch.objects.create(
+                employee=self.emp, date=base + timedelta(days=i),
+                missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        stats = punch_check.monthly_stats(self.emp, today.year, today.month)
+        self.assertEqual(stats['count'], 6)
+        self.assertEqual(stats['limit'], 5)
+        self.assertTrue(stats['over_limit'])
+
+    def test_at_limit_is_not_over(self):
+        from attendance.utils import punch_check
+        today = timezone.localdate()
+        base = date(today.year, today.month, 1)
+        for i in range(5):
+            self.MissedPunch.objects.create(
+                employee=self.emp, date=base + timedelta(days=i),
+                missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        self.assertFalse(
+            punch_check.monthly_stats(self.emp, today.year, today.month)['over_limit'])
+
+    # ── 通知訊息 ──────────────────────────────────────
+    def test_message_changes_tone_over_limit(self):
+        from attendance.management.commands.remind_attendance import _missed_message
+        mp = self.MissedPunch(employee=self.emp, date=date(2026, 11, 3),
+                              missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        self.assertIn('第 2 次', _missed_message(mp, 2, 5))
+        self.assertIn('⚠️', _missed_message(mp, 6, 5))
+        self.assertIn('超過', _missed_message(mp, 6, 5))
+
+    # ── 指令 ──────────────────────────────────────────
+    @patch('attendance.management.commands.remind_attendance.send_line_push')
+    def test_command_creates_and_notifies(self, mock_push):
+        from django.core.management import call_command
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        call_command('remind_attendance')
+        mp = self.MissedPunch.objects.get(employee=self.emp, date=d)
+        self.assertEqual(mp.missing, self.MissedPunch.MISSING_CLOCK_OUT)
+        if timezone.localtime().hour >= 8:
+            self.assertIsNotNone(mp.notified_at)
+            self.assertTrue(mock_push.called)
+
+    @patch('attendance.management.commands.remind_attendance.send_line_push')
+    def test_command_does_not_notify_twice(self, mock_push):
+        from django.core.management import call_command
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        call_command('remind_attendance')
+        first = mock_push.call_count
+        call_command('remind_attendance')
+        self.assertEqual(mock_push.call_count, first)
+
+    @patch('attendance.management.commands.remind_attendance.send_line_push')
+    def test_command_no_longer_sends_shift_reminders(self, mock_push):
+        """上班前／下班前提醒已移除"""
+        from django.core.management import call_command
+        call_command('remind_attendance')
+        for call in mock_push.call_args_list:
+            self.assertNotIn('打卡時間快到了', str(call))
+
+    # ── 後台顯示 ──────────────────────────────────────
+    def test_pending_items_lists_missed_punch(self):
+        User.objects.create_user(username='boss_mpx', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mpx', password='pass12345')
+        today = timezone.localdate()
+        self.MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 1),
+            missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get('/dashboard/pending/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context['missed_punches']), 1)
+        self.assertIn('漏打卡', resp.content.decode())
+
+    def test_void_view(self):
+        User.objects.create_user(username='boss_mpv', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mpv', password='pass12345')
+        today = timezone.localdate()
+        mp = self.MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 2),
+            missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get(f'/dashboard/missed-punch/{mp.pk}/void/')
+        self.assertEqual(resp.status_code, 302)
+        mp.refresh_from_db()
+        self.assertTrue(mp.voided)
+
+    def test_salary_includes_missed_punch(self):
+        from attendance.dashboard_views.base import calculate_salary
+        today = timezone.localdate()
+        self.MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 3),
+            missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        r = calculate_salary(self.emp, today.year, today.month)
+        self.assertEqual(r['missed_punch'], 1)
+        self.assertEqual(r['missed_punch_limit'], 5)
+        self.assertFalse(r['missed_punch_over'])
+
+    def test_report_marks_missed_punch(self):
+        User.objects.create_user(username='boss_mpr', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mpr', password='pass12345')
+        today = timezone.localdate()
+        d = date(today.year, today.month, 4)
+        self.MissedPunch.objects.create(
+            employee=self.emp, date=d, missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get(
+            f'/reports/?employee_id={self.emp.pk}&year={today.year}&month={today.month}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['missed']['count'], 1)
+        days = {x['date'].day: x for x in resp.context['month_data']}
+        self.assertTrue(days[4]['missed_punch'])

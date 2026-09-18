@@ -15,7 +15,10 @@ from .base import require_group
 @login_required
 @require_group('admin', 'finance')
 def pending_items(request):
-    """待處理彙整頁：請假申請 + 座標修正申請"""
+    """待處理彙整頁：休假申請 + 座標修正申請 + 漏打卡"""
+    from ..models import MissedPunch
+    from ..utils import punch_check
+
     pending_leaves = (
         LeaveRequest.objects
         .filter(status='pending')
@@ -28,10 +31,42 @@ def pending_items(request):
         .select_related('customer', 'requested_by__user')
         .order_by('requested_at')
     )
+
+    # 漏打卡：只列當月，讓老闆補登或註銷
+    today = timezone.localdate()
+    missed_punches = list(
+        MissedPunch.objects
+        .filter(date__year=today.year, date__month=today.month, voided=False)
+        .select_related('employee__user')
+        .order_by('-date')
+    )
+    limit = punch_check.monthly_limit()
+    counts = {}
+    for mp in missed_punches:
+        counts[mp.employee_id] = counts.get(mp.employee_id, 0) + 1
+    for mp in missed_punches:
+        mp.month_count = counts[mp.employee_id]
+        mp.over_limit = counts[mp.employee_id] > limit
+
     return render(request, 'attendance/pending_items.html', {
         'pending_leaves':      pending_leaves,
         'pending_corrections': pending_corrections,
+        'missed_punches':      missed_punches,
+        'missed_punch_limit':  limit,
     })
+
+
+@login_required
+@require_group('admin')
+def missed_punch_void(request, pk):
+    """註銷誤判的漏打卡（不列入計次）。"""
+    from ..models import MissedPunch
+    mp = get_object_or_404(MissedPunch, pk=pk)
+    mp.voided = True
+    mp.save(update_fields=['voided'])
+    name = mp.employee.user.get_full_name() or mp.employee.user.username
+    messages.success(request, f'已註銷 {name} {mp.date} 的漏打卡')
+    return redirect(request.META.get('HTTP_REFERER') or 'dashboard:pending_items')
 
 
 @login_required

@@ -43,6 +43,7 @@ urlpatterns = [
     path('leave/requests/<int:pk>/approve/', dashboard_views.leave_request_approve, name='leave_request_approve'),
     path('leave/requests/<int:pk>/deny/', dashboard_views.leave_request_deny, name='leave_request_deny'),
     path('pending/', dashboard_views.pending_items, name='pending_items'),
+    path('missed-punch/<int:pk>/void/', dashboard_views.missed_punch_void, name='missed_punch_void'),
     path('location-corrections/', dashboard_views.location_correction_list, name='location_correction_list'),
     path('location-corrections/<int:pk>/review/', dashboard_views.location_correction_review, name='location_correction_review'),
     path('analytics/attendance/', dashboard_views.analytics_attendance, name='analytics_attendance'),

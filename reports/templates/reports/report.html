@@ -65,6 +65,11 @@
       {% if stats.anomaly %}border-amber-200 bg-amber-50{% endif %}">
       <p class="text-2xl font-bold text-amber-500">{{ stats.anomaly }}</p>
       <p class="text-xs text-gray-400 mt-0.5">異常筆數</p>
+      {% if missed.count %}
+      <p class="text-[10px] mt-0.5 {% if missed.over_limit %}font-semibold text-[#B0382A]{% else %}text-[#9C8428]{% endif %}">
+        漏打卡 {{ missed.count }} 次{% if missed.over_limit %}（上限 {{ missed.limit }}）{% endif %}
+      </p>
+      {% endif %}
     </div>
     <div class="col-span-2 sm:col-span-1 bg-white rounded-2xl border border-gray-100 px-4 py-3 text-center">
       <p class="text-2xl font-bold text-blue-400">{{ stats.total_hours }}</p>
@@ -241,6 +246,10 @@
 
             {% if day.holiday_worked %}
               <span class="text-xs text-white bg-[#B0382A] rounded-lg px-2 py-0.5 font-semibold">加倍</span>
+            {% endif %}
+
+            {% if day.missed_punch %}
+              <span class="text-xs text-white bg-[#9C8428] rounded-lg px-2 py-0.5 font-semibold">漏打卡</span>
             {% endif %}
 
             {% if day.status == 'missing_clockout' %}
