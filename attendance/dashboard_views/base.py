@@ -49,6 +49,12 @@ LATE_GRACE_SECONDS = 600         # 遲到寬限 10 分鐘（寬限內從排班�
 OVERTIME_GRACE_SECONDS = 600     # 下班寬限 10 分鐘（寬限內算到排班下班時間，不算加班）
 
 
+def default_break_minutes():
+    """午休只打了一張卡時改扣的預設長度。"""
+    from django.conf import settings
+    return getattr(settings, 'DEFAULT_BREAK_MINUTES', 60)
+
+
 def get_work_minutes(employee, date=None):
     """回傳某天的計薪分鐘數（整數分鐘，不做任何半小時進位）。
 
@@ -102,15 +108,21 @@ def get_work_minutes(employee, date=None):
     break_start = AttendanceRecord.objects.filter(
         employee=employee, timestamp__date=date, record_type='break_start'
     ).first()
-    if break_start:
-        break_end = AttendanceRecord.objects.filter(
-            employee=employee, timestamp__date=date, record_type='break_end'
-        ).first()
+    break_end = AttendanceRecord.objects.filter(
+        employee=employee, timestamp__date=date, record_type='break_end'
+    ).first()
+
+    if break_start and break_end:
         eff_start = max(break_start.timestamp, start_time)
-        eff_end = min(break_end.timestamp if break_end else end_time, end_time)
+        eff_end = min(break_end.timestamp, end_time)
         if eff_end > eff_start:
             total_seconds -= (eff_end - eff_start).total_seconds()
-        total_seconds = max(total_seconds, 0)
+    elif break_start or break_end:
+        # 午休只打了一張卡 → 不知道實際長度，扣預設值即可，
+        # 不會因為忘記打回來就整個下午都不計薪。當天會另記一筆漏打卡。
+        total_seconds -= default_break_minutes() * 60
+
+    total_seconds = max(total_seconds, 0)
 
     return int(total_seconds // 60)
 

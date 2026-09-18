@@ -582,16 +582,14 @@ def rfid_checkin(request):
             }
         }
 
-        configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-        with ApiClient(configuration) as api_client:
-            api = MessagingApi(api_client)
-            api.push_message(PushMessageRequest(
-                to=emp.line_user_id,
-                messages=[FlexMessage(
-                    alt_text='請選擇打卡類型',
-                    contents=FlexContainer.from_dict(flex)
-                )]
-            ))
+        # 連刷兩下不會收到兩張選擇卡（與上面的 2 分鐘重複防護同一個窗口）
+        from attendance.utils import line_push
+        line_push.push_once(
+            emp.line_user_id,
+            [FlexMessage(alt_text='請選擇打卡類型',
+                         contents=FlexContainer.from_dict(flex))],
+            dedupe_key=f'rfid_choice_{emp.pk}', ttl=120,
+        )
 
         name = emp.user.get_full_name() or emp.user.username
         return JsonResponse({'ok': True, 'message': f'{name} 請用手機選擇打卡類型'})
@@ -603,7 +601,7 @@ def rfid_checkin(request):
         return JsonResponse({'ok': False, 'message': '今日打卡已完成'})
 
     # 建立紀錄
-    AttendanceRecord.objects.create(
+    record = AttendanceRecord.objects.create(
         employee=emp,
         record_type=record_type,
         timestamp=timezone.now(),
@@ -621,16 +619,9 @@ def rfid_checkin(request):
     if emp.line_user_id:
         time_str = timezone.localtime(timezone.now()).strftime('%H:%M')
         text = f'✅ {label}成功！\n時間：{time_str}'
-        try:
-            configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-            with ApiClient(configuration) as api_client:
-                api = MessagingApi(api_client)
-                api.push_message(PushMessageRequest(
-                    to=emp.line_user_id,
-                    messages=[TextMessage(text=text)]
-                ))
-        except Exception:
-            pass
+        from attendance.utils import line_push
+        line_push.push_once(emp.line_user_id, text,
+                            dedupe_key=f'rfid_done_{record.pk}')
 
     name = emp.user.get_full_name() or emp.user.username
     return JsonResponse({

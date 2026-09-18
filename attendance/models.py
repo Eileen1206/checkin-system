@@ -324,16 +324,21 @@ class LeaveRequest(models.Model):
 
 
 class MissedPunch(models.Model):
-    """漏打卡：當天有出勤事實，但上班／下班卡沒打齊。
+    """漏打卡：當天有出勤事實，但四張卡沒打齊（上班／下班／午休一對）。
+
+    改用分鐘計薪後午休卡也會影響金額，因此同樣列入判定；
+    一天最多記一次，不會因為同時漏兩張就算兩次。
 
     由每日檢查產生，隔天早上通知員工。老闆事後補登打卡不會抹掉這筆
     （否則計次就失去意義），誤判的可以「註銷」。
     """
     MISSING_CLOCK_IN = 'clock_in'
     MISSING_CLOCK_OUT = 'clock_out'
+    MISSING_BREAK = 'break'
     MISSING_CHOICES = [
         (MISSING_CLOCK_IN,  '上班卡'),
         (MISSING_CLOCK_OUT, '下班卡'),
+        (MISSING_BREAK,     '午休卡'),
     ]
 
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE,

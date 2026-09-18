@@ -1485,12 +1485,20 @@ class MissedPunchTest(TestCase):
         from attendance.utils import punch_check
         self.assertIsNone(punch_check.detect(self.emp, self._past()))
 
-    def test_break_only_missing_is_not_counted(self):
-        """午休沒打完整不算漏打卡（只看上下班兩張）"""
+    def test_half_break_is_counted(self):
+        """午休只打一張也算漏打卡（分鐘計薪後午休會影響金額）"""
         from attendance.utils import punch_check
         d = self._past()
         self._mk(d, 'clock_in', (9, 0))
         self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), self.MissedPunch.MISSING_BREAK)
+
+    def test_no_break_punch_is_not_counted(self):
+        """午休兩張都沒打 → 視為沒休息，不算漏打卡"""
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
         self._mk(d, 'clock_out', (18, 0))
         self.assertIsNone(punch_check.detect(self.emp, d))
 
@@ -1653,3 +1661,145 @@ class MissedPunchTest(TestCase):
         self.assertEqual(resp.context['missed']['count'], 1)
         days = {x['date'].day: x for x in resp.context['month_data']}
         self.assertTrue(days[4]['missed_punch'])
+
+
+class BreakPunchTest(TestCase):
+    """午休只打一張卡：扣預設長度，並記一筆漏打卡"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='bk1', password='x',
+                                          first_name='癸', last_name='周'),
+            employee_id='BK1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _mk(self, d, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _minutes(self, d):
+        from attendance.dashboard_views.base import get_work_minutes
+        return get_work_minutes(self.emp, d)
+
+    def _past(self, days_ago=1):
+        return timezone.localdate() - timedelta(days=days_ago)
+
+    def test_complete_break_deducts_actual(self):
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'break_end', (12, 45))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540 - 45)
+
+    def test_missing_break_end_deducts_default_not_whole_afternoon(self):
+        """12:00 打午休、忘記打回來 → 只扣 60 分，不是扣到下班"""
+        d = date(2026, 11, 4)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540 - 60)
+
+    def test_missing_break_start_also_deducts_default(self):
+        d = date(2026, 11, 5)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_end', (12, 45))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540 - 60)
+
+    def test_no_break_punch_deducts_nothing(self):
+        d = date(2026, 11, 6)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_half_break_counts_as_missed_punch(self):
+        from attendance.utils import punch_check
+        from attendance.models import MissedPunch
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), MissedPunch.MISSING_BREAK)
+
+    def test_missing_clock_out_takes_priority_over_break(self):
+        """同一天兩種都漏，只記一次，以上下班卡為準"""
+        from attendance.utils import punch_check
+        from attendance.models import MissedPunch
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), MissedPunch.MISSING_CLOCK_OUT)
+        punch_check.record_for_day(self.emp, d)
+        self.assertEqual(MissedPunch.objects.filter(employee=self.emp, date=d).count(), 1)
+
+
+class LinePushDedupeTest(TestCase):
+    """LINE 推播去重：同一個 key 在期限內只送一次"""
+
+    def setUp(self):
+        cache.clear()
+
+    @patch('attendance.utils.line_push.push')
+    def test_push_once_sends_only_once(self, mock_push):
+        from attendance.utils import line_push
+        self.assertTrue(line_push.push_once('U1', 'hi', 'key-a'))
+        self.assertFalse(line_push.push_once('U1', 'hi', 'key-a'))
+        self.assertEqual(mock_push.call_count, 1)
+
+    @patch('attendance.utils.line_push.push')
+    def test_different_keys_both_send(self, mock_push):
+        from attendance.utils import line_push
+        line_push.push_once('U1', 'hi', 'key-a')
+        line_push.push_once('U1', 'hi', 'key-b')
+        self.assertEqual(mock_push.call_count, 2)
+
+    @patch('attendance.utils.line_push.push', side_effect=Exception('LINE 500'))
+    def test_failed_push_releases_lock_for_retry(self, mock_push):
+        from attendance.utils import line_push
+        self.assertFalse(line_push.push_once('U1', 'hi', 'key-c'))
+        self.assertFalse(line_push.already_sent('key-c'))
+        mock_push.side_effect = None
+        self.assertTrue(line_push.push_once('U1', 'hi', 'key-c'))
+
+    @patch('attendance.utils.line_push.push')
+    def test_no_recipient_is_noop(self, mock_push):
+        from attendance.utils import line_push
+        self.assertFalse(line_push.push_once('', 'hi', 'key-d'))
+        self.assertFalse(line_push.push_once(None, 'hi', 'key-e'))
+        self.assertEqual(mock_push.call_count, 0)
+
+    @patch('attendance.utils.line_push.push')
+    def test_leave_approval_notifies_employee_once(self, mock_push):
+        from attendance.models import LeaveRequest
+        from attendance import line_leave
+        emp = Employee.objects.create(
+            user=User.objects.create_user(username='dp1', password='x',
+                                          first_name='甲', last_name='林'),
+            employee_id='DP1', department='外送', line_user_id='U_dp')
+        req = LeaveRequest.objects.create(employee=emp, dates=['2026-11-03'],
+                                          kind=LeaveRecord.KIND_REST)
+        line_leave.notify_employee(req, approved=True)
+        line_leave.notify_employee(req, approved=True)
+        self.assertEqual(mock_push.call_count, 1)
+
+    @patch('attendance.utils.line_push.push')
+    def test_double_submit_creates_one_request(self, mock_push):
+        from attendance.models import LeaveRequest
+        from attendance import line_leave
+        emp = Employee.objects.create(
+            user=User.objects.create_user(username='dp2', password='x',
+                                          first_name='乙', last_name='王'),
+            employee_id='DP2', department='外送', line_user_id='U_dp2')
+        draft = {'kind': LeaveRecord.KIND_REST, 'dates': ['2026-11-05']}
+        line_leave._set_draft('U_dp2', draft)
+        line_leave._submit(emp, 'U_dp2', dict(draft))
+        line_leave._submit(emp, 'U_dp2', dict(draft))
+        self.assertEqual(LeaveRequest.objects.filter(employee=emp).count(), 1)

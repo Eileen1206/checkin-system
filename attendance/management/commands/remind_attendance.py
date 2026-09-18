@@ -5,11 +5,7 @@ from django.core.cache import cache
 from django.conf import settings
 
 from attendance.models import Employee, AttendanceRecord, MissedPunch
-from attendance.utils import punch_check
-from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi,
-    PushMessageRequest, TextMessage,
-)
+from attendance.utils import line_push, punch_check
 
 
 # 隔天幾點之後才推送漏打卡通知（排程每幾分鐘跑一次都不會重複發）
@@ -18,14 +14,11 @@ NOTIFY_HOUR = 8
 BACKFILL_DAYS = 7
 
 
-def send_line_push(line_user_id, message):
-    configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-    with ApiClient(configuration) as api_client:
-        api = MessagingApi(api_client)
-        api.push_message(PushMessageRequest(
-            to=line_user_id,
-            messages=[TextMessage(text=message)],
-        ))
+def send_line_push(line_user_id, message, dedupe_key=None):
+    """推播；有給 dedupe_key 就只會送一次。"""
+    if dedupe_key:
+        return line_push.push_once(line_user_id, message, dedupe_key)
+    return line_push.push(line_user_id, message)
 
 
 def _missed_message(record, count, limit):
@@ -86,10 +79,12 @@ class Command(BaseCommand):
             ).order_by('date')
             for record in pending:
                 count = punch_check.monthly_count(emp, record.date.year, record.date.month)
-                try:
-                    send_line_push(emp.line_user_id, _missed_message(record, count, limit))
-                except Exception as e:
-                    self.stderr.write(f'[missed punch push] {emp} {record.date}: {e}')
+                sent = send_line_push(
+                    emp.line_user_id,
+                    _missed_message(record, count, limit),
+                    dedupe_key=f'missed_punch_{record.pk}',
+                )
+                if not sent:
                     continue
                 record.notified_at = timezone.now()
                 record.save(update_fields=['notified_at'])
@@ -112,14 +107,15 @@ class Command(BaseCommand):
             if records.filter(record_type='clock_out').exists():
                 continue
             end_dt = datetime.combine(today, emp.work_end_time)
-            key = f'anomaly_notified_{emp.pk}_{today}'
-            if naive_now >= end_dt + timedelta(minutes=30) and not cache.get(key):
+            # 每位員工每天最多進一次名單
+            if naive_now >= end_dt + timedelta(minutes=30) and \
+                    cache.add(f'anomaly_notified_{emp.pk}_{today}', True, 86400):
                 anomaly.append(emp)
-                cache.set(key, True, 86400)
 
         if anomaly:
             names = '、'.join(e.user.get_full_name() or e.user.username for e in anomaly)
             send_line_push(
                 manager_id,
-                f'⚠️ 以下員工下班超過 30 分鐘尚未打下班卡，請確認：\n{names}'
+                f'⚠️ 以下員工下班超過 30 分鐘尚未打下班卡，請確認：\n{names}',
+                dedupe_key=f'anomaly_manager_{today}_{"_".join(str(e.pk) for e in anomaly)}',
             )

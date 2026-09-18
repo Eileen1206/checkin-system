@@ -24,9 +24,13 @@ def monthly_limit():
 def detect(employee, d):
     """回傳當天漏掉哪一張卡；沒漏或當天不該上班則回 None。
 
-    - 兩張都沒打 → 那是缺勤或休假，不是漏打
+    - 上下班卡都沒打 → 那是缺勤或休假，不是漏打
     - 只有上班沒下班 → 漏下班卡（最常見）
     - 只有下班沒上班 → 漏上班卡
+    - 午休只打了一張 → 漏午休卡（分鐘計薪後午休也會影響金額）
+    - 午休兩張都沒打 → 視為沒休息，不算漏打
+
+    一天最多回一個結果，上下班卡優先於午休卡。
     """
     if d >= timezone.localdate():
         return None            # 今天還沒結束，不判定
@@ -44,6 +48,13 @@ def detect(employee, d):
         return MissedPunch.MISSING_CLOCK_OUT
     if has_out and not has_in:
         return MissedPunch.MISSING_CLOCK_IN
+    if not has_in and not has_out:
+        return None            # 缺勤或休假
+
+    has_break_start = records.filter(record_type='break_start').exists()
+    has_break_end = records.filter(record_type='break_end').exists()
+    if has_break_start != has_break_end:
+        return MissedPunch.MISSING_BREAK
     return None
 
 

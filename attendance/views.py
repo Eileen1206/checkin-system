@@ -181,6 +181,10 @@ def handle_follow(event):
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
     """收到文字訊息時觸發"""
+    # LINE 重送的事件，reply token 早已失效；再處理一次只會重複建立資料
+    if getattr(getattr(event, 'delivery_context', None), 'is_redelivery', False):
+        return
+
     line_user_id = event.source.user_id
     text = event.message.text.strip()
 
@@ -529,14 +533,15 @@ def handle_postback(event):
                             }],
                         }
                     }
-                    with ApiClient(configuration) as api_client:
-                        MessagingApi(api_client).push_message(PushMessageRequest(
-                            to=settings.MANAGER_LINE_USER_ID,
-                            messages=[FlexMessage(
-                                alt_text=f'{employee.user.get_full_name() or employee.user.username} 申請送貨接下班，請點選確認',
-                                contents=FlexContainer.from_dict(flex_body)
-                            )]
-                        ))
+                    from attendance.utils import line_push
+                    line_push.push_once(
+                        settings.MANAGER_LINE_USER_ID,
+                        [FlexMessage(
+                            alt_text=f'{employee.user.get_full_name() or employee.user.username} 申請送貨接下班，請點選確認',
+                            contents=FlexContainer.from_dict(flex_body)
+                        )],
+                        dedupe_key=f'clockout_request_{employee.pk}_{today_str}',
+                    )
                     cache.set(day_key, True, 86400)
                     reply_msg = TextMessage(text='✅ 申請已送出，等待管理員確認')
             except Exception as _e:
