@@ -151,12 +151,15 @@ def monthly_work_detail(emp, year, month):
 
     時薪制每日金額先四捨五入再加總，明細加起來即為總額。
     """
+    from django.utils.timezone import localtime
     from attendance.models import AttendanceRecord, LeaveRecord, Holiday
     from attendance.dashboard_views.base import get_work_minutes, get_late_minutes
 
     is_monthly = emp.employment_type == 'monthly'
     hourly = hourly_wage(emp)
     daily = daily_wage(emp)
+
+    PUNCH_TYPES = ('clock_in', 'break_start', 'break_end', 'clock_out')
 
     holiday_set = set(Holiday.objects.filter(
         date__year=year, date__month=month).values_list('date', flat=True))
@@ -166,10 +169,23 @@ def monthly_work_detail(emp, year, month):
             employee=emp, date__year=year, date__month=month)
         if lr.is_full_day
     }
-    days = AttendanceRecord.objects.filter(
-        employee=emp, record_type='clock_in',
+    # 含「只有下班卡」或「缺下班卡」的日子：那些正是老闆要補登的，
+    # 不能因為算出 0 分鐘就從明細裡消失。
+    day_records = AttendanceRecord.objects.filter(
+        employee=emp, record_type__in=PUNCH_TYPES,
         timestamp__year=year, timestamp__month=month,
-    ).dates('timestamp', 'day')
+    ).order_by('timestamp')
+
+    punches_by_day = {}
+    for r in day_records:
+        d = localtime(r.timestamp).date()
+        slot = punches_by_day.setdefault(d, {})
+        if r.record_type not in slot:      # 同型多筆取最早那張
+            slot[r.record_type] = {
+                'id': r.pk,
+                'time': localtime(r.timestamp).strftime('%H:%M'),
+            }
+    days = sorted(punches_by_day)
 
     detail = []
     tiers = {
@@ -190,11 +206,23 @@ def monthly_work_detail(emp, year, month):
         if late:
             late_days += 1
             late_minutes_total += late
+
+        punches = punches_by_day.get(d, {})
+        cls = classify_day(emp, d, holiday_set, leave_dates)
+
         if not minutes:
+            # 打卡不完整（最常見是缺下班卡）→ 當天算不出工時，
+            # 仍列進明細讓老闆看得到並補登。
+            detail.append({
+                'date': d, 'cls': cls, 'minutes': 0, 'hours': 0.0,
+                'hm': '—', 'normal_hours': 0.0, 'ot_hours': 0.0,
+                'base_amount': 0, 'ot_amount': 0, 'amount': 0,
+                'late_minutes': late, 'worked': False, 'punches': punches,
+                'incomplete': True,
+            })
             continue
 
         h = minutes / 60.0
-        cls = classify_day(emp, d, holiday_set, leave_dates)
         normal_h = 0.0
 
         if cls == '平日':
@@ -232,6 +260,9 @@ def monthly_work_detail(emp, year, month):
             'ot_amount': ot_amt,
             'amount': base_amt + ot_amt,
             'late_minutes': late,
+            'worked': True,
+            'punches': punches,
+            'incomplete': False,
         })
 
     return {
@@ -246,6 +277,7 @@ def monthly_work_detail(emp, year, month):
         'late_days': late_days,
         'late_minutes': late_minutes_total,
         'late_hm': fmt_hm(late_minutes_total),
+        'incomplete_days': [x['date'] for x in detail if x['incomplete']],
     }
 
 

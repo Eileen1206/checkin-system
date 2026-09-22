@@ -190,7 +190,7 @@ def calculate_salary(emp, year, month):
         base = work['base']
         maintenance = sum(
             MAINTENANCE_FULL if x['minutes'] >= MAINTENANCE_THRESHOLD_MIN else MAINTENANCE_HALF
-            for x in work['detail']
+            for x in work['detail'] if x['worked']
         )
         labor = float(emp.labor_insurance_amount) if emp.labor_insurance_amount else 0
         health = float(emp.health_insurance_amount) if emp.health_insurance_amount else 0
@@ -224,4 +224,5 @@ def calculate_salary(emp, year, month):
         'missed_punch_limit':  missed['limit'],
         'missed_punch_over':   missed['over_limit'],
         'missed_punch_dates':  missed['dates'],
+        'incomplete_days':     work['incomplete_days'],
     }

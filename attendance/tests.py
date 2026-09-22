@@ -1803,3 +1803,96 @@ class LinePushDedupeTest(TestCase):
         line_leave._submit(emp, 'U_dp2', dict(draft))
         line_leave._submit(emp, 'U_dp2', dict(draft))
         self.assertEqual(LeaveRequest.objects.filter(employee=emp).count(), 1)
+
+
+class SalaryDetailReconciliationTest(TestCase):
+    """薪資明細要能直接看到打卡時間並補登，不用切到出勤報表"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        User.objects.create_user(username='boss_rc', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_rc', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='rc1', password='x',
+                                          first_name='丙', last_name='葉'),
+            employee_id='RC1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _mk(self, d, kind, hm):
+        return AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _detail(self):
+        return payroll.monthly_work_detail(self.emp, 2026, 11)
+
+    def test_incomplete_day_still_appears(self):
+        """缺下班卡的那天以前整天不見，現在要列出來讓老闆補登"""
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        work = self._detail()
+        self.assertEqual(len(work['detail']), 1)
+        row = work['detail'][0]
+        self.assertTrue(row['incomplete'])
+        self.assertFalse(row['worked'])
+        self.assertEqual(row['minutes'], 0)
+        self.assertEqual(row['amount'], 0)
+        self.assertEqual(work['incomplete_days'], [d])
+
+    def test_day_with_only_clock_out_appears(self):
+        d = date(2026, 11, 4)
+        self._mk(d, 'clock_out', (18, 0))
+        work = self._detail()
+        self.assertEqual(len(work['detail']), 1)
+        self.assertTrue(work['detail'][0]['incomplete'])
+
+    def test_punch_times_are_included(self):
+        d = date(2026, 11, 5)
+        ci = self._mk(d, 'clock_in', (9, 0))
+        co = self._mk(d, 'clock_out', (18, 0))
+        row = self._detail()['detail'][0]
+        self.assertEqual(row['punches']['clock_in']['time'], '09:00')
+        self.assertEqual(row['punches']['clock_in']['id'], ci.pk)
+        self.assertEqual(row['punches']['clock_out']['id'], co.pk)
+        self.assertNotIn('break_start', row['punches'])
+
+    def test_incomplete_day_earns_no_maintenance(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))          # 不完整
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))          # 完整
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(r['maintenance'], 100)                  # 只算完整那天
+
+    def test_detail_page_shows_punches_and_add_buttons(self):
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        resp = self.client.get(f'/dashboard/salary/{self.emp.pk}/detail/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn('09:00', html)          # 既有打卡可點擊修改
+        self.assertIn('openAdd(', html)       # 缺的那張可補登
+        self.assertIn('打卡不完整', html)
+        self.assertIn('punch_slots', str(resp.context.keys()))
+
+    def test_fixing_the_punch_restores_the_amount(self):
+        """補上下班卡後，那天的金額就算得出來"""
+        from attendance.dashboard_views.base import calculate_salary
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        self.assertEqual(calculate_salary(self.emp, 2026, 11)['base'], 0)
+
+        self.client.post('/dashboard/attendance/add-record/', {
+            'employee_id': self.emp.pk, 'date': '2026-11-03',
+            'record_type': 'clock_out', 'time': '18:00',
+            'next': f'/dashboard/salary/{self.emp.pk}/detail/',
+        })
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(r['base'], 8 * 200)
+        self.assertEqual(r['incomplete_days'], [])

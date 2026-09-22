@@ -1,4 +1,5 @@
 {% extends "attendance/base.html" %}
+{% load attendance_extras %}
 {% block title %}薪資明細{% endblock %}
 {% block page_title %}薪資明細{% endblock %}
 {% block content %}
@@ -136,45 +137,159 @@
       {% endif %}
     </span>
   </div>
-  <table class="w-full text-sm">
+  {% if result.incomplete_days %}
+  <div class="px-6 py-3 bg-[#FBF3D8] border-b border-[#E0C64F] text-sm text-[#7A5E12]">
+    有 {{ result.incomplete_days|length }} 天打卡不完整，當天算不出工時（金額為 0）。
+    請直接在下表補上缺的那張卡。
+  </div>
+  {% endif %}
+
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm whitespace-nowrap">
     <thead>
       <tr class="text-xs text-gray-400 border-b border-gray-100">
-        <th class="px-6 py-2 text-left font-medium">日期</th>
-        <th class="px-3 py-2 text-left font-medium">日別</th>
-        <th class="px-3 py-2 text-right font-medium">工時</th>
-        <th class="px-3 py-2 text-right font-medium">底薪</th>
-        <th class="px-3 py-2 text-right font-medium">加班費</th>
-        <th class="px-6 py-2 text-right font-medium">小計</th>
+        <th class="px-5 py-2 text-left font-medium">日期</th>
+        <th class="px-2 py-2 text-left font-medium">日別</th>
+        <th class="px-2 py-2 text-center font-medium">上班</th>
+        <th class="px-2 py-2 text-center font-medium">午休始</th>
+        <th class="px-2 py-2 text-center font-medium">午休末</th>
+        <th class="px-2 py-2 text-center font-medium">下班</th>
+        <th class="px-2 py-2 text-right font-medium">工時</th>
+        <th class="px-2 py-2 text-right font-medium">底薪</th>
+        <th class="px-2 py-2 text-right font-medium">加班費</th>
+        <th class="px-5 py-2 text-right font-medium">小計</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-gray-50">
       {% for x in day_detail %}
-      <tr class="hover:bg-amber-50/30">
-        <td class="px-6 py-2.5 text-gray-700">
-          {{ x.date|date:"Y-m-d" }}
+      <tr class="hover:bg-amber-50/30 {% if x.incomplete %}bg-[#FBF3D8]/40{% endif %}">
+        <td class="px-5 py-2.5 text-gray-700">
+          {{ x.date|date:"m/d" }}
           {% if x.late_minutes %}
           <span class="ml-1 text-[11px] text-[#B0382A]">遲 {{ x.late_minutes }} 分</span>
           {% endif %}
         </td>
-        <td class="px-3 py-2.5 text-gray-400 text-xs">{{ x.cls }}</td>
-        <td class="px-3 py-2.5 text-right text-gray-600">{{ x.hm }}</td>
-        <td class="px-3 py-2.5 text-right text-gray-500">{% if x.base_amount %}{{ x.base_amount|floatformat:0 }}{% else %}—{% endif %}</td>
-        <td class="px-3 py-2.5 text-right text-gray-500">{% if x.ot_amount %}{{ x.ot_amount|floatformat:0 }}{% else %}—{% endif %}</td>
-        <td class="px-6 py-2.5 text-right font-semibold text-gray-800">{{ x.amount|floatformat:0 }}</td>
+        <td class="px-2 py-2.5 text-gray-400 text-xs">{{ x.cls }}</td>
+
+        {% for slot in punch_slots %}
+        <td class="px-2 py-2.5 text-center">
+          {% with p=x.punches|dict_get:slot.key %}
+          {% if p %}
+            <button type="button" onclick="openEdit({{ p.id }}, '{{ p.time }}')"
+              class="px-1.5 py-0.5 rounded-md text-gray-700 hover:bg-gray-100">{{ p.time }}</button>
+          {% else %}
+            <button type="button"
+              onclick="openAdd('{{ x.date|date:'Y-m-d' }}', '{{ slot.key }}', '{{ slot.label }}')"
+              class="px-1.5 py-0.5 rounded-md text-gray-300 hover:text-gray-600 hover:bg-gray-100">＋</button>
+          {% endif %}
+          {% endwith %}
+        </td>
+        {% endfor %}
+
+        <td class="px-2 py-2.5 text-right text-gray-600">{{ x.hm }}</td>
+        <td class="px-2 py-2.5 text-right text-gray-500">{% if x.base_amount %}{{ x.base_amount|floatformat:0 }}{% else %}—{% endif %}</td>
+        <td class="px-2 py-2.5 text-right text-gray-500">{% if x.ot_amount %}{{ x.ot_amount|floatformat:0 }}{% else %}—{% endif %}</td>
+        <td class="px-5 py-2.5 text-right font-semibold text-gray-800">{{ x.amount|floatformat:0 }}</td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot>
       <tr class="border-t-2 border-gray-100 bg-gray-50/50">
-        <td class="px-6 py-3 font-semibold text-gray-700" colspan="2">合計</td>
-        <td class="px-3 py-3 text-right font-semibold text-gray-700">{{ work_hm }}</td>
-        <td class="px-3 py-3 text-right font-semibold text-gray-700">{{ result.base|floatformat:0 }}</td>
-        <td class="px-3 py-3 text-right font-semibold text-gray-700">{{ result.overtime|floatformat:0 }}</td>
-        <td class="px-6 py-3 text-right font-bold text-gray-900">{{ result.base|add:result.overtime|floatformat:0 }}</td>
+        <td class="px-5 py-3 font-semibold text-gray-700" colspan="6">合計</td>
+        <td class="px-2 py-3 text-right font-semibold text-gray-700">{{ work_hm }}</td>
+        <td class="px-2 py-3 text-right font-semibold text-gray-700">{{ result.base|floatformat:0 }}</td>
+        <td class="px-2 py-3 text-right font-semibold text-gray-700">{{ result.overtime|floatformat:0 }}</td>
+        <td class="px-5 py-3 text-right font-bold text-gray-900">{{ result.base|add:result.overtime|floatformat:0 }}</td>
       </tr>
     </tfoot>
   </table>
+  </div>
 </div>
+
+<!-- 修改打卡時間 -->
+<div id="editModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-72">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">✎ 修改打卡時間</h3>
+    <input type="time" id="editTimeInput"
+      class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 mb-4">
+    <p id="editMsg" class="text-xs text-[#B0382A] mb-3 hidden"></p>
+    <div class="flex gap-2">
+      <button onclick="submitEdit()"
+        class="flex-1 px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">儲存並重算</button>
+      <button onclick="closeEdit()"
+        class="px-4 py-2 border border-gray-200 text-gray-500 rounded-xl text-sm hover:bg-gray-50">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 補登打卡 -->
+<div id="addModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-72">
+    <h3 class="text-sm font-semibold text-gray-700 mb-0.5">＋ 補登打卡</h3>
+    <p id="addLabel" class="text-xs text-gray-400 mb-4"></p>
+    <form method="post" action="{% url 'dashboard:add_record' %}">
+      {% csrf_token %}
+      <input type="hidden" name="employee_id" value="{{ emp.pk }}">
+      <input type="hidden" name="date" id="addDateInput">
+      <input type="hidden" name="record_type" id="addTypeInput">
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <input type="time" name="time" id="addTimeInput" required
+        class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 mb-4">
+      <div class="flex gap-2">
+        <button type="submit"
+          class="flex-1 px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">補登並重算</button>
+        <button type="button" onclick="closeAdd()"
+          class="px-4 py-2 border border-gray-200 text-gray-500 rounded-xl text-sm hover:bg-gray-50">取消</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const EDIT_URL = "{% url 'reports:edit_record' 0 %}";
+const CSRF = "{{ csrf_token }}";
+let editId = null;
+
+function openEdit(id, time) {
+  editId = id;
+  document.getElementById('editTimeInput').value = time;
+  document.getElementById('editMsg').classList.add('hidden');
+  document.getElementById('editModal').classList.remove('hidden');
+}
+function closeEdit() { document.getElementById('editModal').classList.add('hidden'); }
+
+function submitEdit() {
+  const time = document.getElementById('editTimeInput').value;
+  if (!time) return;
+  const body = new URLSearchParams({ time });
+  fetch(EDIT_URL.replace('/0/', `/${editId}/`), {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) { location.reload(); return; }   // 重新載入即重算整月
+    const msg = document.getElementById('editMsg');
+    msg.textContent = d.error || '儲存失敗';
+    msg.classList.remove('hidden');
+  })
+  .catch(() => {
+    const msg = document.getElementById('editMsg');
+    msg.textContent = '連線失敗，請再試一次';
+    msg.classList.remove('hidden');
+  });
+}
+
+function openAdd(dateStr, recordType, label) {
+  document.getElementById('addDateInput').value = dateStr;
+  document.getElementById('addTypeInput').value = recordType;
+  document.getElementById('addLabel').textContent = `${dateStr}　${label}`;
+  document.getElementById('addTimeInput').value = '';
+  document.getElementById('addModal').classList.remove('hidden');
+}
+function closeAdd() { document.getElementById('addModal').classList.add('hidden'); }
+</script>
 {% endif %}
 
 {% endblock %}

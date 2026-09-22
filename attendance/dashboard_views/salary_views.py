@@ -160,6 +160,12 @@ def salary_detail(request, pk):
         'holiday_hm': _hm(t['holiday']),
         'overtime_detail': result['overtime_detail'],
         'day_detail': day_detail, 'total_hours': total_hours,
+        'punch_slots': [
+            {'key': 'clock_in',    'label': '上班打卡'},
+            {'key': 'break_start', 'label': '午休開始'},
+            {'key': 'break_end',   'label': '午休結束'},
+            {'key': 'clock_out',   'label': '下班打卡'},
+        ],
         'work_hm': result['work_hm'],
         'late_days': result['late_days'],
         'late_hm': result['late_hm'],
