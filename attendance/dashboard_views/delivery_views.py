@@ -571,3 +571,40 @@ def approve_clockout(request):
             return render(request, 'attendance/approve_clockout.html', ctx)
 
     return render(request, 'attendance/approve_clockout.html', ctx)
+
+
+@login_required
+@require_group('admin', 'finance')
+def location_check_log(request):
+    """定位驗證紀錄：查「人真的不在現場」還是「這次定位飄了」。
+
+    每次到站驗證都會留一筆，含 GPS 精度、算出來的距離與判定結果。
+    """
+    from ..models import LocationCheckLog
+
+    logs = (LocationCheckLog.objects
+            .select_related('employee__user', 'customer')
+            .order_by('-created_at'))
+
+    result = request.GET.get('result', '').strip()
+    if result:
+        logs = logs.filter(result=result)
+    emp_id = request.GET.get('employee_id', '').strip()
+    if emp_id:
+        logs = logs.filter(employee_id=emp_id)
+
+    logs = list(logs[:200])
+    total = len(logs)
+    poor = sum(1 for x in logs if x.accuracy_level == 'poor')
+
+    return render(request, 'attendance/location_check_log.html', {
+        'logs': logs,
+        'employees': Employee.tracked.select_related('user').order_by('employee_id'),
+        'result': result,
+        'emp_id': emp_id,
+        'total': total,
+        'poor': poor,
+        'result_choices': LocationCheckLog.RESULT_CHOICES,
+        'max_accuracy': getattr(settings, 'GPS_MAX_ACCURACY_METERS', 200),
+        'allowed_meters': getattr(settings, 'DELIVERY_ARRIVAL_METERS', 500),
+    })

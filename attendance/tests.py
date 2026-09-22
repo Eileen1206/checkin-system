@@ -2090,3 +2090,102 @@ class DisciplineAnalyticsTest(TestCase):
         name = self.emp.user.get_full_name()
         self.assertEqual(rows[name]['missed'], 1)
         self.assertIn('本月打卡紀律', resp.content.decode())
+
+
+class LocationCheckTest(TestCase):
+    """定位驗證：留下精度與距離，分得出「人沒到」還是「定位飄了」"""
+
+    def setUp(self):
+        from attendance.models import LocationCheckLog, Customer, DeliverySession, DeliveryTask
+        cache.clear()
+        self.LocationCheckLog = LocationCheckLog
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='gp1', password='x',
+                                          first_name='辛', last_name='曾'),
+            employee_id='GP1', department='外送', line_user_id='U_gps')
+        # 客戶座標：台北車站
+        self.cust = Customer.objects.create(
+            customer_id='C1', name='測試客戶', address='台北市',
+            lat=25.047924, lng=121.517081)
+        session = DeliverySession.objects.create(
+            employee=self.emp, date=timezone.localdate(), trip_number=1)
+        self.task = DeliveryTask.objects.create(
+            employee=self.emp, customer=self.cust, order=1,
+            date=timezone.localdate(),
+            customer_name=self.cust.name, address=self.cust.address, session=session)
+
+    def _arrive(self, lat, lng, accuracy=None):
+        import json as _json
+        payload = {'task_id': self.task.pk, 'lat': lat, 'lng': lng,
+                   'line_user_id': 'U_gps'}
+        if accuracy is not None:
+            payload['accuracy'] = accuracy
+        return self.client.post('/liff/delivery/complete/',
+                                data=_json.dumps(payload),
+                                content_type='application/json').json()
+
+    def test_pass_is_logged_with_accuracy(self):
+        data = self._arrive(25.047924, 121.517081, accuracy=12)
+        self.assertTrue(data['ok'])
+        log = self.LocationCheckLog.objects.get()
+        self.assertEqual(log.result, self.LocationCheckLog.RESULT_PASS)
+        self.assertEqual(log.accuracy, 12)
+        self.assertEqual(log.accuracy_level, 'good')
+        self.assertLess(log.distance_meters, 10)
+
+    def test_far_with_good_accuracy_is_too_far(self):
+        """精度好卻距離遠 → 人真的不在現場"""
+        data = self._arrive(25.10, 121.60, accuracy=15)
+        self.assertFalse(data['ok'])
+        self.assertTrue(data['too_far'])
+        log = self.LocationCheckLog.objects.get()
+        self.assertEqual(log.result, self.LocationCheckLog.RESULT_TOO_FAR)
+
+    def test_far_with_bad_accuracy_is_low_accuracy(self):
+        """精度爛又距離遠 → 多半是定位飄了，不該說人沒到"""
+        data = self._arrive(25.10, 121.60, accuracy=1500)
+        self.assertFalse(data['ok'])
+        self.assertTrue(data.get('low_accuracy'))
+        self.assertNotIn('too_far', data)
+        log = self.LocationCheckLog.objects.get()
+        self.assertEqual(log.result, self.LocationCheckLog.RESULT_LOW_ACCURACY)
+        self.assertEqual(log.accuracy_level, 'poor')
+
+    def test_near_with_bad_accuracy_still_passes(self):
+        """精度爛但距離本來就在範圍內 → 照樣放行，不刁難"""
+        data = self._arrive(25.047924, 121.517081, accuracy=1500)
+        self.assertTrue(data['ok'])
+
+    def test_failure_is_logged_too(self):
+        """失敗也要留紀錄，否則事後無從追查"""
+        self._arrive(25.10, 121.60, accuracy=15)
+        self.assertEqual(self.LocationCheckLog.objects.count(), 1)
+
+    def test_accuracy_levels(self):
+        log = self.LocationCheckLog(accuracy=20)
+        self.assertEqual(log.accuracy_level, 'good')
+        log.accuracy = 80
+        self.assertEqual(log.accuracy_level, 'fair')
+        log.accuracy = 500
+        self.assertEqual(log.accuracy_level, 'poor')
+        log.accuracy = None
+        self.assertEqual(log.accuracy_level, 'unknown')
+
+    def test_log_page(self):
+        User.objects.create_user(username='boss_gp', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_gp', password='pass12345')
+        self._arrive(25.10, 121.60, accuracy=1500)
+        resp = self.client.get('/dashboard/location-checks/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context['logs']), 1)
+        self.assertEqual(resp.context['poor'], 1)
+        self.assertIn('定位不準', resp.content.decode())
+
+    def test_log_page_filter_by_result(self):
+        User.objects.create_user(username='boss_gp2', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_gp2', password='pass12345')
+        self._arrive(25.047924, 121.517081, accuracy=10)
+        resp = self.client.get('/dashboard/location-checks/?result=too_far')
+        self.assertEqual(len(resp.context['logs']), 0)

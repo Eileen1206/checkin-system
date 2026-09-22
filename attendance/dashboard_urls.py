@@ -48,6 +48,7 @@ urlpatterns = [
     path('pending/', dashboard_views.pending_items, name='pending_items'),
     path('missed-punch/<int:pk>/void/', dashboard_views.missed_punch_void, name='missed_punch_void'),
     path('location-corrections/', dashboard_views.location_correction_list, name='location_correction_list'),
+    path('location-checks/', dashboard_views.location_check_log, name='location_check_log'),
     path('location-corrections/<int:pk>/review/', dashboard_views.location_correction_review, name='location_correction_review'),
     path('analytics/attendance/', dashboard_views.analytics_attendance, name='analytics_attendance'),
     path('analytics/delivery/', dashboard_views.analytics_delivery, name='analytics_delivery'),

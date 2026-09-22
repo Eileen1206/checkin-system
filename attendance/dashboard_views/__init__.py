@@ -14,7 +14,7 @@ from .customer_views import (
 )
 from .delivery_views import (
     delivery_push, delivery_add_task, delivery_delete_task, delivery_reorder, delivery_plan, delivery_today,
-    approve_clockout,
+    approve_clockout, location_check_log,
 )
 from .salary_views import (
     salary, add_allowance, export_salary_excel, salary_detail, salary_calc_api,
@@ -38,7 +38,7 @@ __all__ = [
     'binding_list', 'generate_token', 'employee_list', 'employee_add', 'employee_edit',
     'employee_toggle_active',
     'import_customers', 'search_customer', 'customer_list', 'customer_edit', 'geocode_customers', 'parse_gmaps_url',
-    'location_correction_list', 'location_correction_review',
+    'location_correction_list', 'location_correction_review', 'location_check_log',
     'delivery_push', 'delivery_add_task', 'delivery_delete_task', 'delivery_reorder', 'delivery_plan', 'delivery_today', 'approve_clockout',
     'salary', 'add_allowance', 'export_salary_excel', 'salary_detail', 'salary_calc_api',
     'leave_calendar', 'leave_add_api', 'leave_delete_api', 'leave_add', 'leave_delete',

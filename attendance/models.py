@@ -323,6 +323,57 @@ class LeaveRequest(models.Model):
         return records
 
 
+class LocationCheckLog(models.Model):
+    """每次到站定位驗證的紀錄，成功與失敗都留。
+
+    定位飄掉時最難查的是「人真的不在現場」還是「這次定位不準」，
+    所以連同 GPS 精度（accuracy）一起存下來供事後追查。
+    """
+    RESULT_PASS = 'pass'
+    RESULT_TOO_FAR = 'too_far'
+    RESULT_LOW_ACCURACY = 'low_accuracy'
+    RESULT_CHOICES = [
+        (RESULT_PASS,         '通過'),
+        (RESULT_TOO_FAR,      '距離過遠'),
+        (RESULT_LOW_ACCURACY, '定位精度不足'),
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                 related_name='location_checks', verbose_name='員工')
+    task = models.ForeignKey('DeliveryTask', on_delete=models.SET_NULL, null=True, blank=True,
+                             verbose_name='送貨任務')
+    customer = models.ForeignKey('Customer', on_delete=models.SET_NULL, null=True, blank=True,
+                                 verbose_name='客戶')
+
+    lat = models.DecimalField('緯度', max_digits=9, decimal_places=6, null=True, blank=True)
+    lng = models.DecimalField('經度', max_digits=9, decimal_places=6, null=True, blank=True)
+    accuracy = models.IntegerField('定位精度（公尺）', null=True, blank=True,
+                                   help_text='瀏覽器回報的誤差半徑，數字越大越不準')
+    distance_meters = models.IntegerField('距客戶距離（公尺）', null=True, blank=True)
+    allowed_meters = models.IntegerField('允許範圍（公尺）', null=True, blank=True)
+    result = models.CharField('結果', max_length=15, choices=RESULT_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '定位驗證紀錄'
+        verbose_name_plural = '定位驗證紀錄'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.employee} {self.created_at:%m/%d %H:%M} {self.get_result_display()}"
+
+    @property
+    def accuracy_level(self):
+        """good / fair / poor：判斷這次定位可不可信。"""
+        if self.accuracy is None:
+            return 'unknown'
+        if self.accuracy <= 30:
+            return 'good'
+        if self.accuracy <= 100:
+            return 'fair'
+        return 'poor'
+
+
 class PayrollRecord(models.Model):
     """結算後凍結的薪資快照。
 
