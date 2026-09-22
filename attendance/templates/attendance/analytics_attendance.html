@@ -181,6 +181,51 @@
   </div>
 </div>
 
+{# ── Row 5：本月打卡紀律 ─────────────────────────────── #}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+  <div class="flex items-baseline justify-between flex-wrap gap-2 mb-4">
+    <h2 class="text-sm font-semibold text-gray-700">本月打卡紀律</h2>
+    <span class="text-xs text-gray-400">
+      漏打卡 {{ missed_total }} 次・遲到 {{ late_total }} 次・每月上限 {{ punch_limit }} 次
+    </span>
+  </div>
+
+  {% if discipline %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-gray-400 border-b border-gray-100">
+          <th class="text-left py-2 font-medium">員工</th>
+          <th class="text-right py-2 font-medium">漏打卡</th>
+          <th class="text-right py-2 font-medium">遲到次數</th>
+          <th class="text-right py-2 font-medium">遲到時間</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        {% for row in discipline %}
+        <tr class="hover:bg-amber-50/30">
+          <td class="py-2.5 text-gray-700">{{ row.name }}</td>
+          <td class="py-2.5 text-right">
+            {% if row.missed %}
+              <span class="{% if row.over_limit %}px-2 py-0.5 rounded-full bg-[#B0382A] text-white font-semibold{% else %}text-[#9C8428]{% endif %}">
+                {{ row.missed }}
+              </span>
+            {% else %}
+              <span class="text-gray-300">—</span>
+            {% endif %}
+          </td>
+          <td class="py-2.5 text-right text-gray-600">{{ row.late_days|default:"—" }}</td>
+          <td class="py-2.5 text-right text-gray-500">{% if row.late_minutes %}{{ row.late_hm }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm text-gray-400 py-6 text-center">本月沒有漏打卡或遲到</p>
+  {% endif %}
+</div>
+
 {% endif %}
 </div>
 {% endblock %}

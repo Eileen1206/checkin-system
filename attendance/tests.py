@@ -1896,3 +1896,197 @@ class SalaryDetailReconciliationTest(TestCase):
         r = calculate_salary(self.emp, 2026, 11)
         self.assertEqual(r['base'], 8 * 200)
         self.assertEqual(r['incomplete_days'], [])
+
+
+class PayrollSettleTest(TestCase):
+    """結算鎖定：金額凍結，之後改打卡不影響已發的薪資"""
+
+    def setUp(self):
+        from datetime import time as _time
+        from attendance.models import PayrollRecord
+        cache.clear()
+        self.PayrollRecord = PayrollRecord
+        User.objects.create_user(username='boss_st', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_st', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='st1', password='x',
+                                          first_name='丁', last_name='蘇'),
+            employee_id='ST1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _mk(self, d, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _settle(self):
+        return self.client.post('/dashboard/salary/settle/', {'year': 2026, 'month': 11})
+
+    def test_settle_creates_locked_record(self):
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        resp = self._settle()
+        self.assertEqual(resp.status_code, 302)
+        rec = self.PayrollRecord.objects.get(employee=self.emp, year=2026, month=11)
+        self.assertTrue(rec.locked)
+        self.assertEqual(rec.base, 8 * 200)
+        self.assertEqual(rec.work_minutes, 540)
+
+    def test_locked_amount_does_not_change_after_punch_edit(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        frozen = calculate_salary(self.emp, 2026, 11)['total']
+
+        # 事後又補了一天班
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+
+        self.assertEqual(calculate_salary(self.emp, 2026, 11)['total'], frozen)
+        # 但即時試算看得到新的數字
+        self.assertGreater(calculate_salary(self.emp, 2026, 11, live=True)['total'], frozen)
+
+    def test_unlock_returns_to_live_calculation(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        rec = self.PayrollRecord.objects.get(employee=self.emp)
+
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+        self.client.get(f'/dashboard/salary/settle/{rec.pk}/unlock/')
+
+        rec.refresh_from_db()
+        self.assertFalse(rec.locked)
+        live = calculate_salary(self.emp, 2026, 11, live=True)['total']
+        self.assertEqual(calculate_salary(self.emp, 2026, 11)['total'], live)
+
+    def test_resettle_overwrites(self):
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        first = self.PayrollRecord.objects.get(employee=self.emp).total
+
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+        self._settle()
+
+        self.assertEqual(self.PayrollRecord.objects.filter(employee=self.emp).count(), 1)
+        self.assertGreater(self.PayrollRecord.objects.get(employee=self.emp).total, first)
+
+    def test_settle_snapshots_attendance_stats(self):
+        from attendance.models import MissedPunch
+        MissedPunch.objects.create(employee=self.emp, date=date(2026, 11, 2),
+                                   missing=MissedPunch.MISSING_CLOCK_OUT)
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 20))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        rec = self.PayrollRecord.objects.get(employee=self.emp)
+        self.assertEqual(rec.missed_punch, 1)
+        self.assertEqual(rec.late_days, 1)
+        self.assertEqual(rec.late_minutes, 20)
+
+    def test_salary_page_shows_settle_state(self):
+        resp = self.client.get('/dashboard/salary/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['settled_count'], 0)
+        self.assertIn('結算並鎖定', resp.content.decode())
+
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        resp = self.client.get('/dashboard/salary/?year=2026&month=11')
+        self.assertEqual(resp.context['settled_count'], 1)
+
+
+class PayslipTest(TestCase):
+    """薪資條：A4 一頁一人，含出勤統計與簽名欄"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        User.objects.create_user(username='boss_ps', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_ps', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='ps1', password='x',
+                                          first_name='戊', last_name='呂'),
+            employee_id='PS1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type='clock_in',
+            timestamp=timezone.make_aware(datetime(2026, 11, 3, 9, 0)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type='clock_out',
+            timestamp=timezone.make_aware(datetime(2026, 11, 3, 18, 0)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def test_payslip_renders(self):
+        resp = self.client.get('/dashboard/salary/payslip/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn('薪資明細表', html)
+        self.assertIn('員工簽名', html)
+        self.assertIn('保養費（車油錢）', html)
+        self.assertIn('漏打卡', html)
+        self.assertIn('page-break-after', html)
+
+    def test_payslip_single_employee(self):
+        other = Employee.objects.create(
+            user=User.objects.create_user(username='ps2', password='x',
+                                          first_name='己', last_name='邱'),
+            employee_id='PS2', department='業務')
+        resp = self.client.get(
+            f'/dashboard/salary/payslip/?year=2026&month=11&employee_id={self.emp.pk}')
+        self.assertEqual(len(resp.context['slips']), 1)
+        self.assertEqual(resp.context['slips'][0]['emp'], self.emp)
+
+    def test_payslip_marks_unsettled(self):
+        resp = self.client.get('/dashboard/salary/payslip/?year=2026&month=11')
+        self.assertIn('尚未結算', resp.content.decode())
+        self.client.post('/dashboard/salary/settle/', {'year': 2026, 'month': 11})
+        resp = self.client.get('/dashboard/salary/payslip/?year=2026&month=11')
+        self.assertIn('結算於', resp.content.decode())
+
+
+class DisciplineAnalyticsTest(TestCase):
+    """出勤分析頁要有漏打卡與遲到統計"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        User.objects.create_user(username='boss_da', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_da', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='da1', password='x',
+                                          first_name='庚', last_name='洪'),
+            employee_id='DA1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5')
+
+    def test_discipline_in_context(self):
+        from attendance.models import MissedPunch
+        today = timezone.localdate()
+        MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 1),
+            missing=MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get('/dashboard/analytics/attendance/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('discipline', resp.context)
+        rows = {r['name']: r for r in resp.context['discipline']}
+        name = self.emp.user.get_full_name()
+        self.assertEqual(rows[name]['missed'], 1)
+        self.assertIn('本月打卡紀律', resp.content.decode())

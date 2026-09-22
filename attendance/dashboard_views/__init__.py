@@ -18,6 +18,7 @@ from .delivery_views import (
 )
 from .salary_views import (
     salary, add_allowance, export_salary_excel, salary_detail, salary_calc_api,
+    salary_settle, salary_unlock, payslip,
 )
 from .leave_views import (
     leave_calendar, leave_add_api, leave_delete_api, leave_add, leave_delete,
@@ -43,6 +44,7 @@ __all__ = [
     'leave_calendar', 'leave_add_api', 'leave_delete_api', 'leave_add', 'leave_delete',
     'leave_request_list', 'leave_request_approve', 'leave_request_deny', 'pending_items',
     'missed_punch_void',
+    'salary_settle', 'salary_unlock', 'payslip',
     'analytics_attendance', 'analytics_delivery', 'analytics_customer',
     'annual_leave', 'holiday_list',
 ]

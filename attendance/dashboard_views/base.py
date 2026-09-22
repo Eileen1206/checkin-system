@@ -159,18 +159,69 @@ WORK_DAY_CHOICES = [
 ]
 
 
-MAINTENANCE_FULL = 100       # 當天工時達 4 小時的保養費
+MAINTENANCE_FULL = 100       # 當天工時達 4 小時的保養費（車油錢）
 MAINTENANCE_HALF = 50
 MAINTENANCE_THRESHOLD_MIN = 240
 
 
-def calculate_salary(emp, year, month):
+def _settled_result(emp, settled, year, month):
+    """已鎖定的月份：金額用凍結的，明細仍即時算給對帳看。"""
+    from attendance.utils import payroll
+    work = payroll.monthly_work_detail(emp, year, month)
+    return {
+        'employee': emp,
+        'base': settled.base,
+        'maintenance': settled.maintenance,
+        'allowance': settled.allowance,
+        'overtime': settled.overtime,
+        'deduction': settled.deduction,
+        'total': settled.total,
+        'normal_hours': work['normal_hours'],
+        'overtime_detail': [
+            {'date': x['date'], 'cls': x['cls'], 'hours': x['hours'],
+             'hm': x['hm'], 'amount': x['ot_amount']}
+            for x in work['detail'] if x['ot_amount'] > 0
+        ],
+        'overtime_tiers': work['tiers'],
+        'day_detail':    work['detail'],
+        'work_minutes':  settled.work_minutes,
+        'work_hm':       settled.work_hm,
+        'late_days':     settled.late_days,
+        'late_minutes':  settled.late_minutes,
+        'late_hm':       payroll.fmt_hm(settled.late_minutes),
+        'missed_punch':       settled.missed_punch,
+        'missed_punch_limit': getattr(settings_module(), 'MISSED_PUNCH_MONTHLY_LIMIT', 5),
+        'missed_punch_over':  settled.missed_punch > getattr(
+            settings_module(), 'MISSED_PUNCH_MONTHLY_LIMIT', 5),
+        'missed_punch_dates': [],
+        'incomplete_days':    work['incomplete_days'],
+        'settled': settled,
+    }
+
+
+def settings_module():
+    from django.conf import settings
+    return settings
+
+
+def calculate_salary(emp, year, month, live=False):
     """當月薪資。
 
     時薪制：工時以分鐘計，每日金額四捨五入到元後加總，
     因此明細逐日相加會剛好等於底薪與加班費總額。
     遲到不扣薪，只回傳次數與分鐘供報表顯示。
+
+    已鎖定結算的月份直接回傳凍結的金額，之後改打卡不會動到已發的薪資。
+    live=True 可強制重新試算（結算與比對用）。
     """
+    from ..models import PayrollRecord
+
+    if not live:
+        settled = PayrollRecord.objects.filter(
+            employee=emp, year=year, month=month, locked=True).first()
+        if settled:
+            return _settled_result(emp, settled, year, month)
+
     allowance = MonthlyAllowance.objects.filter(
         employee=emp, year=year, month=month
     ).first()
@@ -225,4 +276,5 @@ def calculate_salary(emp, year, month):
         'missed_punch_over':   missed['over_limit'],
         'missed_punch_dates':  missed['dates'],
         'incomplete_days':     work['incomplete_days'],
+        'settled': None,
     }

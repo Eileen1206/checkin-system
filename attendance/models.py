@@ -323,6 +323,56 @@ class LeaveRequest(models.Model):
         return records
 
 
+class PayrollRecord(models.Model):
+    """結算後凍結的薪資快照。
+
+    結算前不存在，薪資頁看到的都是即時試算；按下「結算」後金額凍結，
+    之後有人補登或修改打卡都不會動到已經發出去的薪資條。
+    要修改得先解鎖，改完再重新結算。
+    """
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                related_name='payroll_records', verbose_name='員工')
+    year = models.IntegerField('年')
+    month = models.IntegerField('月')
+
+    # 金額（結算當下的數字，一律整數元）
+    base = models.IntegerField('底薪', default=0)
+    maintenance = models.IntegerField('保養費（車油錢）', default=0)
+    allowance = models.IntegerField('勞務加給', default=0)
+    overtime = models.IntegerField('加班費', default=0)
+    deduction = models.IntegerField('勞健保扣除', default=0)
+    total = models.IntegerField('實領', default=0)
+
+    # 出勤摘要（薪資條與統計用）
+    work_minutes = models.IntegerField('工時（分鐘）', default=0)
+    late_days = models.IntegerField('遲到次數', default=0)
+    late_minutes = models.IntegerField('遲到分鐘', default=0)
+    missed_punch = models.IntegerField('漏打卡次數', default=0)
+
+    locked = models.BooleanField('已鎖定', default=True,
+                                 help_text='解鎖後可修改打卡，重新結算會覆蓋金額')
+    settled_at = models.DateTimeField('結算時間', auto_now=True)
+    settled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   verbose_name='結算者')
+
+    class Meta:
+        verbose_name = '薪資結算'
+        verbose_name_plural = '薪資結算'
+        unique_together = [['employee', 'year', 'month']]
+        ordering = ['-year', '-month', 'employee__employee_id']
+
+    def __str__(self):
+        state = '已鎖定' if self.locked else '已解鎖'
+        return f"{self.employee} {self.year}/{self.month:02d} 實領 {self.total}（{state}）"
+
+    @property
+    def work_hm(self):
+        h, m = divmod(self.work_minutes, 60)
+        if h and m:
+            return f'{h}小時{m}分'
+        return f'{h}小時' if h else f'{m}分'
+
+
 class MissedPunch(models.Model):
     """漏打卡：當天有出勤事實，但四張卡沒打齊（上班／下班／午休一對）。
 

@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.utils import timezone
 from django.urls import reverse
+from django.conf import settings
 import openpyxl
 from ..models import Employee, MonthlyAllowance
 from ..utils import payroll
@@ -45,10 +46,14 @@ def salary(request):
     month = int(request.GET.get('month', timezone.localdate().month))
     show_inactive = request.GET.get('show_inactive') == '1'
 
+    from ..models import PayrollRecord
     employees = _salary_employees(show_inactive)
+    settled_count = PayrollRecord.objects.filter(
+        year=year, month=month, locked=True, employee__in=employees).count()
     return render(request, 'attendance/salary.html', {
         'employees': employees,
         'employee_count': employees.count(),
+        'settled_count': settled_count,
         'year': year,
         'years': range(timezone.localdate().year, timezone.localdate().year - 3, -1),
         'month': month,
@@ -103,6 +108,103 @@ def salary_calc_api(request):
         'missed_punch': r.get('missed_punch', 0),
         'missed_punch_limit': r.get('missed_punch_limit', 0),
         'missed_punch_over': r.get('missed_punch_over', False),
+        'settled_id': r['settled'].pk if r.get('settled') else None,
+    })
+
+
+@login_required
+@require_group('admin', 'finance')
+def salary_settle(request):
+    """結算並鎖定當月薪資：把當下的金額凍結起來。"""
+    from django.contrib import messages
+    from ..models import PayrollRecord
+
+    year = int(request.POST.get('year', timezone.localdate().year))
+    month = int(request.POST.get('month', timezone.localdate().month))
+    show_inactive = request.POST.get('show_inactive') == '1'
+
+    count = 0
+    for emp in _salary_employees(show_inactive):
+        r = calculate_salary(emp, year, month, live=True)
+        PayrollRecord.objects.update_or_create(
+            employee=emp, year=year, month=month,
+            defaults={
+                'base': round(r['base']),
+                'maintenance': round(r['maintenance']),
+                'allowance': round(r['allowance']),
+                'overtime': round(r['overtime']),
+                'deduction': round(r['deduction']),
+                'total': round(r['total']),
+                'work_minutes': r['work_minutes'],
+                'late_days': r['late_days'],
+                'late_minutes': r['late_minutes'],
+                'missed_punch': r['missed_punch'],
+                'locked': True,
+                'settled_by': request.user,
+            },
+        )
+        count += 1
+
+    messages.success(request, f'已結算並鎖定 {year} 年 {month} 月薪資（{count} 位）')
+    return redirect(f"{reverse('dashboard:salary')}?year={year}&month={month}"
+                    f"{'&show_inactive=1' if show_inactive else ''}")
+
+
+@login_required
+@require_group('admin', 'finance')
+def salary_unlock(request, pk):
+    """解鎖單一員工的結算，讓打卡可以修改後重新結算。"""
+    from django.contrib import messages
+    from ..models import PayrollRecord
+
+    record = get_object_or_404(PayrollRecord, pk=pk)
+    record.locked = False
+    record.save(update_fields=['locked'])
+    name = record.employee.user.get_full_name() or record.employee.user.username
+    messages.warning(request, f'已解鎖 {name} {record.year}/{record.month:02d} 的薪資，'
+                              f'改完記得重新結算')
+    return redirect(request.META.get('HTTP_REFERER') or
+                    f"{reverse('dashboard:salary')}?year={record.year}&month={record.month}")
+
+
+@login_required
+@require_group('admin', 'finance')
+def payslip(request):
+    """薪資條（A4 一頁一人，列印後紙本簽名）。
+
+    employee_id 留空 = 全員一次列印。
+    """
+    from ..models import PayrollRecord
+
+    year = int(request.GET.get('year', timezone.localdate().year))
+    month = int(request.GET.get('month', timezone.localdate().month))
+    emp_id = request.GET.get('employee_id', '').strip()
+    show_inactive = request.GET.get('show_inactive') == '1'
+
+    employees = _salary_employees(show_inactive).order_by('employee_id')
+    if emp_id:
+        employees = employees.filter(pk=emp_id)
+
+    settled_map = {
+        r.employee_id: r for r in PayrollRecord.objects.filter(
+            year=year, month=month, employee__in=employees)
+    }
+
+    slips = []
+    for emp in employees:
+        r = calculate_salary(emp, year, month)
+        slips.append({
+            'emp': emp,
+            'result': r,
+            'settled': settled_map.get(emp.pk),
+            'is_monthly': emp.employment_type == 'monthly',
+        })
+
+    return render(request, 'attendance/payslip.html', {
+        'slips': slips,
+        'year': year,
+        'month': month,
+        'company_name': getattr(settings, 'COMPANY_NAME', '政旭汽車材料行'),
     })
 
 
@@ -173,6 +275,7 @@ def salary_detail(request, pk):
         'missed_punch_limit': result['missed_punch_limit'],
         'missed_punch_over': result['missed_punch_over'],
         'missed_punch_dates': result['missed_punch_dates'],
+        'settled': result.get('settled'),
         'hourly': float(emp.hourly_rate or 0),
         'hourly_wage': round(payroll.hourly_wage(emp), 2),
         'daily_wage': round(payroll.daily_wage(emp)),
