@@ -15,16 +15,13 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from linebot.v3.messaging import (
-    ApiClient,
-    Configuration,
     FlexContainer,
     FlexMessage,
-    MessagingApi,
-    PushMessageRequest,
     TextMessage,
 )
 
 from .models import LeaveRecord, LeaveRequest
+from .utils import line_push
 
 
 DRAFT_TTL = 900          # 草稿 15 分鐘沒動作就過期
@@ -316,6 +313,13 @@ def _submit(employee, line_user_id, draft):
     if not is_rest and not draft.get('hours'):
         return [TextMessage(text='還沒選時數，請重新選一次。'), _ask_hours(draft)]
 
+    # 連點兩下「送出」不會變成兩筆申請
+    submit_lock = 'leave_submit_{}_{}_{}'.format(
+        employee.pk, draft['kind'], ','.join(str(d) for d in draft['dates']))
+    if not cache.add(submit_lock, True, 60):
+        _clear_draft(line_user_id)
+        return [TextMessage(text='這筆申請已經送出了，請等老闆確認。')]
+
     leave_req = LeaveRequest.objects.create(
         employee=employee,
         dates=list(draft['dates']),
@@ -360,15 +364,12 @@ def notify_manager(leave_req):
     }]
     bubble = _bubble(f'{leave_req.get_kind_display()}申請', color, body, footer)
 
-    try:
-        cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-        with ApiClient(cfg) as api_client:
-            MessagingApi(api_client).push_message(PushMessageRequest(
-                to=manager_id,
-                messages=[_flex(f'{emp_name} 申請{leave_req.get_kind_display()}', bubble)],
-            ))
-    except Exception as e:      # 推播失敗仍要讓員工看到「已送出」
-        print(f'[leave notify_manager error] {e}')
+    # 同一筆申請只通知老闆一次（連點、重送都不會重複發）
+    line_push.push_once(
+        manager_id,
+        [_flex(f'{emp_name} 申請{leave_req.get_kind_display()}', bubble)],
+        dedupe_key=f'leave_req_manager_{leave_req.pk}',
+    )
 
 
 def notify_employee(leave_req, approved):
@@ -384,14 +385,12 @@ def notify_employee(leave_req, approved):
             text += f'\n{leave_req.hours_label}・{leave_req.get_leave_type_display()}'
     else:
         text = f'❌ 你的{title}申請被拒絕了：\n{dates_display}\n有問題請直接找老闆。'
-    try:
-        cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-        with ApiClient(cfg) as api_client:
-            MessagingApi(api_client).push_message(PushMessageRequest(
-                to=emp.line_user_id, messages=[TextMessage(text=text)],
-            ))
-    except Exception as e:
-        print(f'[leave notify_employee error] {e}')
+    # 核准／拒絕各只通知一次
+    verdict = 'approved' if approved else 'denied'
+    line_push.push_once(
+        emp.line_user_id, text,
+        dedupe_key=f'leave_req_emp_{leave_req.pk}_{verdict}',
+    )
 
 
 def menu_message():

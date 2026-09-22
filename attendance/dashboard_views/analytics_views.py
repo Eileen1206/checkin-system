@@ -219,7 +219,39 @@ def analytics_attendance(request):
         })
     emp_health.sort(key=lambda x: x['rate'])  # 最差排最前，方便老闆看
 
+    # ── 本月遲到與漏打卡排行（依員工彙總）──────────────────
+    from ..utils import punch_check, payroll as _payroll
+    from .base import get_late_minutes
+
+    punch_limit = punch_check.monthly_limit()
+    discipline = []
+    for emp in employees:
+        stats = punch_check.monthly_stats(emp, cy, cm)
+        late_days = late_minutes = 0
+        for d in range(1, today.day + 1):
+            lm = get_late_minutes(emp, date(cy, cm, d))
+            if lm:
+                late_days += 1
+                late_minutes += lm
+        if not (stats['count'] or late_days):
+            continue
+        discipline.append({
+            'name': emp.user.get_full_name() or emp.user.username,
+            'employee_id': emp.pk,
+            'missed': stats['count'],
+            'over_limit': stats['over_limit'],
+            'late_days': late_days,
+            'late_minutes': late_minutes,
+            'late_hm': _payroll.fmt_hm(late_minutes),
+        })
+    discipline.sort(key=lambda x: (-x['missed'], -x['late_minutes']))
+
     return render(request, 'attendance/analytics_attendance.html', {
+        # 打卡紀律
+        'discipline':   discipline,
+        'punch_limit':  punch_limit,
+        'missed_total': sum(x['missed'] for x in discipline),
+        'late_total':   sum(x['late_days'] for x in discipline),
         # 現有圖表（6 個月）
         'labels':      json.dumps(labels, ensure_ascii=False),
         'late_data':   json.dumps(late_data),

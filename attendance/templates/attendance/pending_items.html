@@ -4,7 +4,7 @@
 
 {% block content %}
 
-{% with total=pending_leaves|length|add:pending_corrections|length %}
+{% with total=pending_leaves|length|add:pending_corrections|length|add:missed_punches|length %}
 
 {# 總覽 badge #}
 <div class="flex items-center gap-3 mb-6">
@@ -114,6 +114,59 @@
   {% else %}
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-8 text-center text-sm text-gray-400">
     ✓ 無待審核的座標修正申請
+  </div>
+  {% endif %}
+</div>
+
+{# ── 區塊三：漏打卡 ── #}
+<div class="mb-6">
+  <div class="flex items-center gap-2 mb-3">
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">漏打卡（本月）</p>
+    {% if missed_punches %}
+    <span class="px-2 py-0.5 bg-[#F4EDDF] text-[#9C8428] text-xs font-bold rounded-full">{{ missed_punches|length }}</span>
+    {% endif %}
+  </div>
+
+  {% if missed_punches %}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-hidden">
+    {% for mp in missed_punches %}
+    <div class="px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="min-w-0 flex items-center gap-3 flex-wrap">
+        <span class="font-semibold text-gray-800 text-sm">
+          {{ mp.employee.user.get_full_name|default:mp.employee.user.username }}
+        </span>
+        <span class="text-sm text-gray-600">{{ mp.date|date:"n/j（D）" }}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full bg-[#F4EDDF] text-[#9C8428] font-medium">
+          漏{{ mp.get_missing_display }}
+        </span>
+        {% if mp.over_limit %}
+        <span class="text-xs px-2 py-0.5 rounded-full bg-[#B0382A] text-white font-semibold">
+          本月第 {{ mp.month_count }} 次・超過上限 {{ missed_punch_limit }}
+        </span>
+        {% else %}
+        <span class="text-xs text-gray-400">本月第 {{ mp.month_count }} 次</span>
+        {% endif %}
+        {% if not mp.notified_at %}
+        <span class="text-xs text-gray-300">未通知</span>
+        {% endif %}
+      </div>
+      <div class="flex gap-2 sm:shrink-0">
+        <a href="{% url 'dashboard:add_record' %}?employee_id={{ mp.employee.pk }}&date={{ mp.date|date:'Y-m-d' }}"
+           class="px-4 py-2 sm:py-1.5 bg-gray-900 hover:bg-gray-700 text-white text-sm font-medium rounded-xl transition text-center">
+          補登打卡
+        </a>
+        <a href="{% url 'dashboard:missed_punch_void' mp.pk %}"
+           onclick="return confirm('確定要註銷這筆漏打卡？註銷後不列入計次。')"
+           class="px-4 py-2 sm:py-1.5 border border-gray-300 text-gray-500 hover:bg-gray-50 text-sm rounded-xl transition text-center">
+          註銷
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-8 text-center text-sm text-gray-400">
+    ✓ 本月無漏打卡
   </div>
   {% endif %}
 </div>

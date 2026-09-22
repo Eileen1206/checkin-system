@@ -1,0 +1,135 @@
+{% extends "attendance/base.html" %}
+{% block title %}薪資條{% endblock %}
+{% block page_title %}薪資條{% endblock %}
+{% block content %}
+
+<div class="no-print flex items-center justify-between mb-6 flex-wrap gap-3">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-800">{{ year }} 年 {{ month }} 月薪資條</h1>
+    <p class="text-sm text-gray-400 mt-1">共 {{ slips|length }} 位・一頁一人</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <button onclick="window.print()"
+      class="px-5 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">🖨 列印</button>
+    <a href="{% url 'dashboard:salary' %}?year={{ year }}&month={{ month }}"
+      class="px-4 py-2 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50">← 返回薪資</a>
+  </div>
+</div>
+
+{% for s in slips %}
+<div class="payslip bg-white rounded-2xl border border-gray-200 p-8 mb-6">
+
+  {# 抬頭 #}
+  <div class="flex items-start justify-between border-b-2 border-gray-800 pb-3 mb-5">
+    <div>
+      <p class="text-lg font-bold text-gray-900">{{ company_name }}</p>
+      <p class="text-sm text-gray-500 mt-0.5">{{ year }} 年 {{ month }} 月　薪資明細表</p>
+    </div>
+    <div class="text-right text-sm text-gray-600">
+      <p class="font-semibold text-gray-900">{{ s.emp.user.get_full_name|default:s.emp.user.username }}</p>
+      <p>工號 {{ s.emp.employee_id }}　{{ s.emp.department }}</p>
+      <p class="text-xs text-gray-400">{% if s.is_monthly %}月薪制{% else %}時薪制{% endif %}</p>
+    </div>
+  </div>
+
+  {# 出勤摘要 #}
+  <table class="w-full text-sm mb-5">
+    <tbody>
+      <tr class="border-b border-gray-100">
+        <td class="py-2 text-gray-500 w-32">出勤工時</td>
+        <td class="py-2 font-medium text-gray-800">{{ s.result.work_hm }}</td>
+        <td class="py-2 text-gray-500 w-32">遲到</td>
+        <td class="py-2 text-gray-800">
+          {% if s.result.late_days %}{{ s.result.late_days }} 次　{{ s.result.late_hm }}{% else %}無{% endif %}
+        </td>
+      </tr>
+      <tr class="border-b border-gray-100">
+        <td class="py-2 text-gray-500">漏打卡</td>
+        <td class="py-2 text-gray-800" colspan="3">
+          {% if s.result.missed_punch %}
+            {{ s.result.missed_punch }} 次{% if s.result.missed_punch_over %}（超過每月上限 {{ s.result.missed_punch_limit }} 次）{% endif %}
+          {% else %}無{% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  {# 金額 #}
+  <table class="w-full text-sm mb-5">
+    <thead>
+      <tr class="bg-gray-50 text-gray-500 text-xs">
+        <th class="text-left px-3 py-2 font-medium">項目</th>
+        <th class="text-right px-3 py-2 font-medium">金額</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+      <tr>
+        <td class="px-3 py-2 text-gray-700">底薪</td>
+        <td class="px-3 py-2 text-right text-gray-800">{{ s.result.base|floatformat:0 }}</td>
+      </tr>
+      <tr>
+        <td class="px-3 py-2 text-gray-700">加班費</td>
+        <td class="px-3 py-2 text-right text-gray-800">{{ s.result.overtime|floatformat:0 }}</td>
+      </tr>
+      <tr>
+        <td class="px-3 py-2 text-gray-700">保養費（車油錢）</td>
+        <td class="px-3 py-2 text-right text-gray-800">{{ s.result.maintenance|floatformat:0 }}</td>
+      </tr>
+      <tr>
+        <td class="px-3 py-2 text-gray-700">勞務加給</td>
+        <td class="px-3 py-2 text-right text-gray-800">{{ s.result.allowance|floatformat:0 }}</td>
+      </tr>
+      <tr>
+        <td class="px-3 py-2 text-gray-700">勞健保自付</td>
+        <td class="px-3 py-2 text-right text-[#B0382A]">-{{ s.result.deduction|floatformat:0 }}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr class="border-t-2 border-gray-800">
+        <td class="px-3 py-3 font-bold text-gray-900">實領金額</td>
+        <td class="px-3 py-3 text-right text-xl font-extrabold text-gray-900">
+          {{ s.result.total|floatformat:0 }}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+
+  {# 簽名 #}
+  <div class="flex items-end justify-between pt-6 mt-2">
+    <p class="text-xs text-gray-400">
+      {% if s.settled %}
+        結算於 {{ s.settled.settled_at|date:"Y-m-d H:i" }}
+      {% else %}
+        尚未結算（此為試算金額）
+      {% endif %}
+    </p>
+    <div class="text-sm text-gray-700">
+      員工簽名：<span class="inline-block w-48 border-b border-gray-400 ml-2">&nbsp;</span>
+      <span class="ml-6">日期：</span><span class="inline-block w-32 border-b border-gray-400 ml-2">&nbsp;</span>
+    </div>
+  </div>
+</div>
+{% empty %}
+<div class="bg-white rounded-2xl border border-gray-100 px-6 py-10 text-center text-gray-400">
+  沒有可列印的員工
+</div>
+{% endfor %}
+
+<style>
+@media print {
+  .no-print, nav, header, aside, footer { display: none !important; }
+  body { background: #fff; }
+  .payslip {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page-break-after: always;
+  }
+  .payslip:last-child { page-break-after: auto; }
+}
+@page { size: A4; margin: 15mm; }
+</style>
+
+{% endblock %}

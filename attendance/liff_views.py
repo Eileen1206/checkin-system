@@ -4,7 +4,10 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from .models import Employee, DeliveryTask, DeliverySession, Customer, LocationCorrectionRequest, GpsConsentLog
+from .models import (
+    Employee, DeliveryTask, DeliverySession, Customer,
+    LocationCorrectionRequest, GpsConsentLog, LocationCheckLog,
+)
 
 
 def _haversine_meters(lat1, lng1, lat2, lng2):
@@ -154,6 +157,7 @@ def liff_delivery_complete(request):
     task_id     = data.get('task_id')
     lat         = data.get('lat')
     lng         = data.get('lng')
+    accuracy    = data.get('accuracy')      # 瀏覽器回報的誤差半徑（公尺）
     line_user_id = data.get('line_user_id')
 
     # 查任務
@@ -182,27 +186,52 @@ def liff_delivery_complete(request):
 
     # 計算距離
     distance = _haversine_meters(float(lat), float(lng), float(cust.lat), float(cust.lng))
-    ALLOWED_METERS = 500
+    allowed = getattr(settings, 'DELIVERY_ARRIVAL_METERS', 500)
+    max_accuracy = getattr(settings, 'GPS_MAX_ACCURACY_METERS', 200)
+    acc = int(accuracy) if accuracy is not None else None
 
-    if distance <= ALLOWED_METERS:
+    def _log(result):
+        LocationCheckLog.objects.create(
+            employee=task.employee, task=task, customer=cust,
+            lat=lat, lng=lng, accuracy=acc,
+            distance_meters=int(distance), allowed_meters=allowed,
+            result=result,
+        )
+
+    # 定位本身就不可信時，不要誤判成「距離太遠」——那是兩回事
+    if acc is not None and acc > max_accuracy and distance > allowed:
+        _log(LocationCheckLog.RESULT_LOW_ACCURACY)
+        return JsonResponse({
+            'ok': False,
+            'error': (f'⚠️ 定位精度不足（誤差約 {acc} 公尺）\n'
+                      f'請走到戶外或遠離建築物再試一次'),
+            'accuracy': acc,
+            'low_accuracy': True,
+        })
+
+    if distance <= allowed:
         from django.utils import timezone
         task.status = 'completed'
         task.completed_at = timezone.localtime()
         task.save()
+        _log(LocationCheckLog.RESULT_PASS)
         return JsonResponse({
             'ok': True,
             'message': f'✅ 位置驗證通過（距客戶 {int(distance)} 公尺）\n第 {task.order} 站（{task.customer_name}）完成！',
             'validated': True,
             'distance': int(distance),
+            'accuracy': acc,
         })
-    else:
-        return JsonResponse({
-            'ok': False,
-            'error': f'❌ 距離客戶 {int(distance)} 公尺，需在 {ALLOWED_METERS} 公尺內',
-            'distance': int(distance),
-            'too_far': True,
-            'customer_id': task.customer_id,
-        })
+
+    _log(LocationCheckLog.RESULT_TOO_FAR)
+    return JsonResponse({
+        'ok': False,
+        'error': f'❌ 距離客戶 {int(distance)} 公尺，需在 {allowed} 公尺內',
+        'distance': int(distance),
+        'accuracy': acc,
+        'too_far': True,
+        'customer_id': task.customer_id,
+    })
 
 
 @csrf_exempt

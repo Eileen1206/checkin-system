@@ -1,0 +1,109 @@
+{% extends "attendance/base.html" %}
+{% block title %}定位驗證紀錄{% endblock %}
+{% block page_title %}定位驗證紀錄{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-800">定位驗證紀錄</h1>
+    <p class="text-sm text-gray-400 mt-1">
+      最近 {{ total }} 筆・其中 {{ poor }} 筆定位精度不佳（誤差 &gt; 100 公尺）
+    </p>
+  </div>
+  <form method="get" class="flex gap-2 items-center flex-wrap">
+    <select name="employee_id" class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm">
+      <option value="">全部員工</option>
+      {% for e in employees %}
+      <option value="{{ e.pk }}" {% if emp_id == e.pk|stringformat:"s" %}selected{% endif %}>
+        {{ e.user.get_full_name|default:e.user.username }}
+      </option>
+      {% endfor %}
+    </select>
+    <select name="result" class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm">
+      <option value="">全部結果</option>
+      {% for value, label in result_choices %}
+      <option value="{{ value }}" {% if result == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm hover:bg-gray-700">查詢</button>
+  </form>
+</div>
+
+<div class="bg-white rounded-2xl border border-gray-100 px-5 py-4 mb-5 text-sm text-gray-600">
+  <p class="font-medium text-gray-700 mb-1">怎麼看這張表</p>
+  <p class="text-gray-500">
+    <span class="font-medium">定位精度</span>是手機自己回報的誤差半徑。
+    綠色（≤30m）代表吃到 GPS 衛星，可以信；
+    黃色（≤100m）勉強；
+    紅色（&gt;100m）多半是用 Wi-Fi 或基地台定位，位置可能差好幾百公尺。
+    如果一筆紀錄是<span class="font-medium">距離過遠但精度紅色</span>，那多半是定位飄了而不是人沒到。
+  </p>
+  <p class="text-gray-400 text-xs mt-2">
+    目前設定：到站允許範圍 {{ allowed_meters }} 公尺・精度超過 {{ max_accuracy }} 公尺視為不可信
+  </p>
+</div>
+
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm whitespace-nowrap">
+      <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+        <tr>
+          <th class="text-left px-5 py-3 font-medium">時間</th>
+          <th class="text-left px-4 py-3 font-medium">員工</th>
+          <th class="text-left px-4 py-3 font-medium">客戶</th>
+          <th class="text-right px-4 py-3 font-medium">定位精度</th>
+          <th class="text-right px-4 py-3 font-medium">距離</th>
+          <th class="text-left px-4 py-3 font-medium">結果</th>
+          <th class="text-left px-5 py-3 font-medium">座標</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        {% for log in logs %}
+        <tr class="hover:bg-amber-50/30">
+          <td class="px-5 py-2.5 text-gray-600">{{ log.created_at|date:"m/d H:i" }}</td>
+          <td class="px-4 py-2.5 text-gray-700">
+            {{ log.employee.user.get_full_name|default:log.employee.user.username }}
+          </td>
+          <td class="px-4 py-2.5 text-gray-600">{{ log.customer.name|default:"—" }}</td>
+          <td class="px-4 py-2.5 text-right">
+            {% if log.accuracy is None %}
+              <span class="text-gray-300">未回報</span>
+            {% else %}
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                {% if log.accuracy_level == 'good' %}bg-[#BECEBE] text-[#2F3B2F]
+                {% elif log.accuracy_level == 'fair' %}bg-[#FBF3D8] text-[#7A5E12]
+                {% else %}bg-[#F6E4E0] text-[#B0382A]{% endif %}">
+                ±{{ log.accuracy }}m
+              </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-gray-700">
+            {% if log.distance_meters is not None %}{{ log.distance_meters }}m{% else %}—{% endif %}
+          </td>
+          <td class="px-4 py-2.5">
+            {% if log.result == 'pass' %}
+              <span class="text-[#5E6E5E]">✓ 通過</span>
+            {% elif log.result == 'low_accuracy' %}
+              <span class="text-[#9C8428]">定位不準</span>
+            {% else %}
+              <span class="text-[#B0382A]">距離過遠</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-2.5">
+            {% if log.lat and log.lng %}
+            <a href="https://www.google.com/maps?q={{ log.lat }},{{ log.lng }}" target="_blank"
+               class="text-blue-500 hover:underline text-xs">在地圖上看 →</a>
+            {% else %}
+            <span class="text-gray-300">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="px-5 py-10 text-center text-gray-400">尚無定位紀錄</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

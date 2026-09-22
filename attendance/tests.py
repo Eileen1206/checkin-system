@@ -1177,3 +1177,1015 @@ class DictGetFilterTest(TestCase):
         self.assertEqual(dict_get({1: 'a'}, 1), 'a')
         self.assertIsNone(dict_get({1: 'a'}, 2))
         self.assertIsNone(dict_get(None, 1))
+
+
+class HourlyMinuteBasedPayrollTest(TestCase):
+    """時薪制改為分鐘制：工時不進位，金額逐日四捨五入"""
+
+    def setUp(self):
+        from datetime import time as _time
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='mp1', password='x',
+                                          first_name='庚', last_name='許'),
+            employee_id='MP1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_days='0,1,2,3,4,5',
+        )
+
+    def _punch(self, d, in_hm, out_hm, break_hm=None):
+        def mk(kind, hm):
+            AttendanceRecord.objects.create(
+                employee=self.emp, record_type=kind,
+                timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+                latitude=0, longitude=0, is_valid=True, distance_meters=0)
+        mk('clock_in', in_hm)
+        if break_hm:
+            mk('break_start', break_hm[0])
+            mk('break_end', break_hm[1])
+        mk('clock_out', out_hm)
+
+    def _minutes(self, d):
+        from attendance.dashboard_views.base import get_work_minutes
+        return get_work_minutes(self.emp, d)
+
+    # ── 工時不再進位 ──────────────────────────────────
+    def test_no_half_hour_rounding_on_clock_out(self):
+        """9:00–17:50 → 530 分，不會被進位成 9 小時"""
+        d = date(2026, 11, 3)   # 週二
+        self._punch(d, (9, 0), (17, 50))
+        self.assertEqual(self._minutes(d), 530)
+
+    def test_odd_minutes_are_kept(self):
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (17, 7))
+        self.assertEqual(self._minutes(d), 487)
+
+    def test_break_is_deducted_by_minute(self):
+        d = date(2026, 11, 5)
+        self._punch(d, (9, 0), (18, 0), break_hm=[(12, 10), (12, 55)])
+        self.assertEqual(self._minutes(d), 540 - 45)
+
+    # ── 早到 / 遲到 ───────────────────────────────────
+    def test_early_arrival_does_not_add_time(self):
+        """8:30 到，仍從排班 9:00 起算"""
+        d = date(2026, 11, 6)
+        self._punch(d, (8, 30), (18, 0))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_late_within_grace_starts_from_schedule(self):
+        """9:08 到（寬限內）→ 仍從 9:00 起算，不扣"""
+        d = date(2026, 11, 9)
+        self._punch(d, (9, 8), (18, 0))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_late_beyond_grace_starts_from_actual(self):
+        """9:20 到 → 從 9:20 起算，只少 20 分，不是罰半小時"""
+        d = date(2026, 11, 10)
+        self._punch(d, (9, 20), (18, 0))
+        self.assertEqual(self._minutes(d), 520)
+
+    def test_late_minutes_reported(self):
+        from attendance.dashboard_views.base import get_late_minutes
+        d = date(2026, 11, 11)
+        self._punch(d, (9, 20), (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, d), 20)
+        self.assertEqual(get_late_minutes(self.emp, date(2026, 11, 12)), 0)
+
+    def test_late_within_grace_is_not_counted_as_late(self):
+        from attendance.dashboard_views.base import get_late_minutes
+        d = date(2026, 11, 13)
+        self._punch(d, (9, 8), (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, d), 0)
+
+    # ── 金額 ─────────────────────────────────────────
+    def test_amount_rounds_per_day(self):
+        """9:00–17:50 = 530 分。前 8h 為底薪，超過的 50 分是加班（×4/3）。"""
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (17, 50))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(len(work['detail']), 1)
+        row = work['detail'][0]
+        self.assertEqual(row['minutes'], 530)
+        self.assertEqual(row['base_amount'], 8 * 200)
+        self.assertEqual(row['ot_amount'], round(200 * (50 / 60) * 4 / 3))
+        self.assertEqual(row['amount'], row['base_amount'] + row['ot_amount'])
+
+    def test_short_day_is_all_base(self):
+        """未滿 8 小時全部算底薪，金額四捨五入到元：287 分 × 200/60 = 956.67 → 957"""
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (13, 47))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        row = work['detail'][0]
+        self.assertEqual(row['minutes'], 287)
+        self.assertEqual(row['ot_amount'], 0)
+        self.assertEqual(row['base_amount'], 957)
+
+    def test_detail_sums_to_total(self):
+        """明細逐日相加要剛好等於底薪與加班費總額"""
+        self._punch(date(2026, 11, 3), (9, 0), (17, 50))
+        self._punch(date(2026, 11, 4), (9, 0), (17, 7))
+        self._punch(date(2026, 11, 5), (9, 0), (19, 23))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(sum(x['base_amount'] for x in work['detail']), work['base'])
+        self.assertEqual(sum(x['ot_amount'] for x in work['detail']), work['overtime'])
+
+    def test_overtime_uses_minutes(self):
+        """9:00–19:30 = 630 分 = 10.5h → 平日加班 2.5h（前 2h ×4/3、0.5h ×5/3）"""
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (19, 30))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        row = work['detail'][0]
+        self.assertEqual(row['minutes'], 630)
+        self.assertEqual(row['normal_hours'], 8.0)
+        self.assertEqual(row['ot_hours'], 2.5)
+        expected = round(200 * (2 * 4 / 3 + 0.5 * 5 / 3))
+        self.assertEqual(row['ot_amount'], expected)
+        self.assertAlmostEqual(work['tiers']['weekday_1_2'], 2.0)
+        self.assertAlmostEqual(work['tiers']['weekday_3plus'], 0.5)
+
+    def test_salary_total_matches_parts(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._punch(date(2026, 11, 3), (9, 0), (17, 50))
+        self._punch(date(2026, 11, 4), (9, 20), (18, 0))
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(
+            r['total'],
+            r['base'] + r['maintenance'] + r['allowance'] + r['overtime'] - r['deduction'])
+        self.assertEqual(r['late_days'], 1)
+        self.assertEqual(r['late_minutes'], 20)
+
+    def test_late_does_not_reduce_pay_beyond_missing_time(self):
+        """遲到 20 分只少 20 分鐘的錢，沒有額外懲罰"""
+        on_time = date(2026, 11, 3)
+        self._punch(on_time, (9, 0), (18, 0))
+        w = payroll.monthly_work_detail(self.emp, 2026, 11)
+        pay_on_time = w['base'] + w['overtime']
+
+        AttendanceRecord.objects.all().delete()
+        late = date(2026, 11, 4)
+        self._punch(late, (9, 20), (18, 0))
+        w = payroll.monthly_work_detail(self.emp, 2026, 11)
+        pay_late = w['base'] + w['overtime']
+
+        # 少的 20 分鐘落在第 9 小時（加班區），所以以 4/3 計，且沒有額外懲罰
+        self.assertEqual(pay_on_time - pay_late, round(200 * (20 / 60) * 4 / 3))
+
+    def test_fmt_hm(self):
+        self.assertEqual(payroll.fmt_hm(530), '8小時50分')
+        self.assertEqual(payroll.fmt_hm(480), '8小時')
+        self.assertEqual(payroll.fmt_hm(45), '45分')
+
+    def test_maintenance_uses_minutes_threshold(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._punch(date(2026, 11, 3), (9, 0), (13, 0))    # 240 分 → 100
+        self._punch(date(2026, 11, 4), (9, 0), (12, 30))   # 210 分 → 50
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(r['maintenance'], 150)
+
+    def test_salary_detail_page_renders(self):
+        User.objects.create_user(username='boss_mp', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mp', password='pass12345')
+        self._punch(date(2026, 11, 3), (9, 0), (17, 50))
+        resp = self.client.get(f'/dashboard/salary/{self.emp.pk}/detail/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('day_detail', resp.context)
+        self.assertIn('8小時50分', resp.content.decode())
+
+
+class ClockOutGraceTest(TestCase):
+    """下班後 10 分鐘內收尾不算加班"""
+
+    def setUp(self):
+        from datetime import time as _time
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='og1', password='x',
+                                          first_name='辛', last_name='鄭'),
+            employee_id='OG1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _punch(self, d, in_hm, out_hm):
+        for kind, hm in (('clock_in', in_hm), ('clock_out', out_hm)):
+            AttendanceRecord.objects.create(
+                employee=self.emp, record_type=kind,
+                timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+                latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _minutes(self, d):
+        from attendance.dashboard_views.base import get_work_minutes
+        return get_work_minutes(self.emp, d)
+
+    def test_within_grace_counts_to_scheduled_end(self):
+        """18:07 下班 → 算到 18:00，不多給 7 分鐘"""
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (18, 7))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_exactly_at_grace_edge(self):
+        """18:10 剛好在寬限內"""
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (18, 10))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_beyond_grace_counts_fully(self):
+        """18:25 → 超過寬限，25 分鐘全部照算（不是只算超出寬限的 15 分）"""
+        d = date(2026, 11, 5)
+        self._punch(d, (9, 0), (18, 25))
+        self.assertEqual(self._minutes(d), 565)
+
+    def test_early_leave_is_not_padded(self):
+        """17:40 早退 → 照實際算，寬限不會把時間補回去"""
+        d = date(2026, 11, 6)
+        self._punch(d, (9, 0), (17, 40))
+        self.assertEqual(self._minutes(d), 520)
+
+    def test_grace_removes_trivial_overtime(self):
+        """8 小時班（9:00–17:00）拖到 17:07 下班，不會因此產生加班費"""
+        from datetime import time as _time
+        self.emp.work_end_time = _time(17, 0)
+        self.emp.save()
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (17, 7))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(work['detail'][0]['minutes'], 480)
+        self.assertEqual(work['overtime'], 0)
+        self.assertEqual(work['detail'][0]['ot_hours'], 0)
+
+    def test_beyond_grace_does_produce_overtime(self):
+        """同樣是 8 小時班，拖到 17:25 就確實有加班費"""
+        from datetime import time as _time
+        self.emp.work_end_time = _time(17, 0)
+        self.emp.save()
+        d = date(2026, 11, 4)
+        self._punch(d, (9, 0), (17, 25))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertEqual(work['detail'][0]['minutes'], 505)
+        self.assertEqual(work['overtime'], round(200 * (25 / 60) * 4 / 3))
+
+    def test_no_work_end_time_means_no_grace(self):
+        """沒設下班時間的員工不套用寬限"""
+        self.emp.work_end_time = None
+        self.emp.save()
+        d = date(2026, 11, 3)
+        self._punch(d, (9, 0), (18, 7))
+        self.assertEqual(self._minutes(d), 547)
+
+
+class MissedPunchTest(TestCase):
+    """漏打卡：上下班卡沒打齊就記一次，每月上限 5 次"""
+
+    def setUp(self):
+        from datetime import time as _time
+        from attendance.models import MissedPunch
+        self.MissedPunch = MissedPunch
+        cache.clear()
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='mpx', password='x',
+                                          first_name='壬', last_name='何'),
+            employee_id='MPX', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5', line_user_id='U_mp',
+        )
+
+    def _mk(self, d, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _past(self, days_ago=1):
+        return timezone.localdate() - timedelta(days=days_ago)
+
+    # ── 判定 ──────────────────────────────────────────
+    def test_missing_clock_out_is_detected(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), self.MissedPunch.MISSING_CLOCK_OUT)
+
+    def test_missing_clock_in_is_detected(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), self.MissedPunch.MISSING_CLOCK_IN)
+
+    def test_complete_day_is_not_missed(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+
+    def test_no_punch_at_all_is_not_missed(self):
+        """完全沒打卡是缺勤或休假，不是漏打卡"""
+        from attendance.utils import punch_check
+        self.assertIsNone(punch_check.detect(self.emp, self._past()))
+
+    def test_half_break_is_counted(self):
+        """午休只打一張也算漏打卡（分鐘計薪後午休會影響金額）"""
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), self.MissedPunch.MISSING_BREAK)
+
+    def test_no_break_punch_is_not_counted(self):
+        """午休兩張都沒打 → 視為沒休息，不算漏打卡"""
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+
+    def test_today_is_not_judged(self):
+        """今天還沒結束，不判定"""
+        from attendance.utils import punch_check
+        today = timezone.localdate()
+        self._mk(today, 'clock_in', (9, 0))
+        self.assertIsNone(punch_check.detect(self.emp, today))
+
+    def test_full_day_leave_is_not_missed(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        LeaveRecord.objects.create(employee=self.emp, date=d)
+        self._mk(d, 'clock_in', (9, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+
+    # ── 計次 ──────────────────────────────────────────
+    def test_record_is_idempotent(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        _, first = punch_check.record_for_day(self.emp, d)
+        _, second = punch_check.record_for_day(self.emp, d)
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.assertEqual(self.MissedPunch.objects.filter(employee=self.emp).count(), 1)
+
+    def test_count_survives_admin_backfill(self):
+        """老闆補登下班卡後，漏打卡紀錄仍保留計次"""
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        punch_check.record_for_day(self.emp, d)
+        self._mk(d, 'clock_out', (18, 0))      # 老闆補登
+        self.assertEqual(punch_check.monthly_count(self.emp, d.year, d.month), 1)
+
+    def test_voided_is_not_counted(self):
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        mp, _ = punch_check.record_for_day(self.emp, d)
+        mp.voided = True
+        mp.save()
+        self.assertEqual(punch_check.monthly_count(self.emp, d.year, d.month), 0)
+
+    def test_over_limit_flag(self):
+        from attendance.utils import punch_check
+        today = timezone.localdate()
+        base = date(today.year, today.month, 1)
+        for i in range(6):
+            self.MissedPunch.objects.create(
+                employee=self.emp, date=base + timedelta(days=i),
+                missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        stats = punch_check.monthly_stats(self.emp, today.year, today.month)
+        self.assertEqual(stats['count'], 6)
+        self.assertEqual(stats['limit'], 5)
+        self.assertTrue(stats['over_limit'])
+
+    def test_at_limit_is_not_over(self):
+        from attendance.utils import punch_check
+        today = timezone.localdate()
+        base = date(today.year, today.month, 1)
+        for i in range(5):
+            self.MissedPunch.objects.create(
+                employee=self.emp, date=base + timedelta(days=i),
+                missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        self.assertFalse(
+            punch_check.monthly_stats(self.emp, today.year, today.month)['over_limit'])
+
+    # ── 通知訊息 ──────────────────────────────────────
+    def test_message_changes_tone_over_limit(self):
+        from attendance.management.commands.remind_attendance import _missed_message
+        mp = self.MissedPunch(employee=self.emp, date=date(2026, 11, 3),
+                              missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        self.assertIn('第 2 次', _missed_message(mp, 2, 5))
+        self.assertIn('⚠️', _missed_message(mp, 6, 5))
+        self.assertIn('超過', _missed_message(mp, 6, 5))
+
+    # ── 指令 ──────────────────────────────────────────
+    @patch('attendance.management.commands.remind_attendance.send_line_push')
+    def test_command_creates_and_notifies(self, mock_push):
+        from django.core.management import call_command
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        call_command('remind_attendance')
+        mp = self.MissedPunch.objects.get(employee=self.emp, date=d)
+        self.assertEqual(mp.missing, self.MissedPunch.MISSING_CLOCK_OUT)
+        if timezone.localtime().hour >= 8:
+            self.assertIsNotNone(mp.notified_at)
+            self.assertTrue(mock_push.called)
+
+    @patch('attendance.management.commands.remind_attendance.send_line_push')
+    def test_command_does_not_notify_twice(self, mock_push):
+        from django.core.management import call_command
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        call_command('remind_attendance')
+        first = mock_push.call_count
+        call_command('remind_attendance')
+        self.assertEqual(mock_push.call_count, first)
+
+    @patch('attendance.management.commands.remind_attendance.send_line_push')
+    def test_command_no_longer_sends_shift_reminders(self, mock_push):
+        """上班前／下班前提醒已移除"""
+        from django.core.management import call_command
+        call_command('remind_attendance')
+        for call in mock_push.call_args_list:
+            self.assertNotIn('打卡時間快到了', str(call))
+
+    # ── 後台顯示 ──────────────────────────────────────
+    def test_pending_items_lists_missed_punch(self):
+        User.objects.create_user(username='boss_mpx', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mpx', password='pass12345')
+        today = timezone.localdate()
+        self.MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 1),
+            missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get('/dashboard/pending/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context['missed_punches']), 1)
+        self.assertIn('漏打卡', resp.content.decode())
+
+    def test_void_view(self):
+        User.objects.create_user(username='boss_mpv', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mpv', password='pass12345')
+        today = timezone.localdate()
+        mp = self.MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 2),
+            missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get(f'/dashboard/missed-punch/{mp.pk}/void/')
+        self.assertEqual(resp.status_code, 302)
+        mp.refresh_from_db()
+        self.assertTrue(mp.voided)
+
+    def test_salary_includes_missed_punch(self):
+        from attendance.dashboard_views.base import calculate_salary
+        today = timezone.localdate()
+        self.MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 3),
+            missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        r = calculate_salary(self.emp, today.year, today.month)
+        self.assertEqual(r['missed_punch'], 1)
+        self.assertEqual(r['missed_punch_limit'], 5)
+        self.assertFalse(r['missed_punch_over'])
+
+    def test_report_marks_missed_punch(self):
+        User.objects.create_user(username='boss_mpr', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_mpr', password='pass12345')
+        today = timezone.localdate()
+        d = date(today.year, today.month, 4)
+        self.MissedPunch.objects.create(
+            employee=self.emp, date=d, missing=self.MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get(
+            f'/reports/?employee_id={self.emp.pk}&year={today.year}&month={today.month}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['missed']['count'], 1)
+        days = {x['date'].day: x for x in resp.context['month_data']}
+        self.assertTrue(days[4]['missed_punch'])
+
+
+class BreakPunchTest(TestCase):
+    """午休只打一張卡：扣預設長度，並記一筆漏打卡"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='bk1', password='x',
+                                          first_name='癸', last_name='周'),
+            employee_id='BK1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _mk(self, d, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _minutes(self, d):
+        from attendance.dashboard_views.base import get_work_minutes
+        return get_work_minutes(self.emp, d)
+
+    def _past(self, days_ago=1):
+        return timezone.localdate() - timedelta(days=days_ago)
+
+    def test_complete_break_deducts_actual(self):
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'break_end', (12, 45))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540 - 45)
+
+    def test_missing_break_end_deducts_default_not_whole_afternoon(self):
+        """12:00 打午休、忘記打回來 → 只扣 60 分，不是扣到下班"""
+        d = date(2026, 11, 4)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540 - 60)
+
+    def test_missing_break_start_also_deducts_default(self):
+        d = date(2026, 11, 5)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_end', (12, 45))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540 - 60)
+
+    def test_no_break_punch_deducts_nothing(self):
+        d = date(2026, 11, 6)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_half_break_counts_as_missed_punch(self):
+        from attendance.utils import punch_check
+        from attendance.models import MissedPunch
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), MissedPunch.MISSING_BREAK)
+
+    def test_missing_clock_out_takes_priority_over_break(self):
+        """同一天兩種都漏，只記一次，以上下班卡為準"""
+        from attendance.utils import punch_check
+        from attendance.models import MissedPunch
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self.assertEqual(punch_check.detect(self.emp, d), MissedPunch.MISSING_CLOCK_OUT)
+        punch_check.record_for_day(self.emp, d)
+        self.assertEqual(MissedPunch.objects.filter(employee=self.emp, date=d).count(), 1)
+
+
+class LinePushDedupeTest(TestCase):
+    """LINE 推播去重：同一個 key 在期限內只送一次"""
+
+    def setUp(self):
+        cache.clear()
+
+    @patch('attendance.utils.line_push.push')
+    def test_push_once_sends_only_once(self, mock_push):
+        from attendance.utils import line_push
+        self.assertTrue(line_push.push_once('U1', 'hi', 'key-a'))
+        self.assertFalse(line_push.push_once('U1', 'hi', 'key-a'))
+        self.assertEqual(mock_push.call_count, 1)
+
+    @patch('attendance.utils.line_push.push')
+    def test_different_keys_both_send(self, mock_push):
+        from attendance.utils import line_push
+        line_push.push_once('U1', 'hi', 'key-a')
+        line_push.push_once('U1', 'hi', 'key-b')
+        self.assertEqual(mock_push.call_count, 2)
+
+    @patch('attendance.utils.line_push.push', side_effect=Exception('LINE 500'))
+    def test_failed_push_releases_lock_for_retry(self, mock_push):
+        from attendance.utils import line_push
+        self.assertFalse(line_push.push_once('U1', 'hi', 'key-c'))
+        self.assertFalse(line_push.already_sent('key-c'))
+        mock_push.side_effect = None
+        self.assertTrue(line_push.push_once('U1', 'hi', 'key-c'))
+
+    @patch('attendance.utils.line_push.push')
+    def test_no_recipient_is_noop(self, mock_push):
+        from attendance.utils import line_push
+        self.assertFalse(line_push.push_once('', 'hi', 'key-d'))
+        self.assertFalse(line_push.push_once(None, 'hi', 'key-e'))
+        self.assertEqual(mock_push.call_count, 0)
+
+    @patch('attendance.utils.line_push.push')
+    def test_leave_approval_notifies_employee_once(self, mock_push):
+        from attendance.models import LeaveRequest
+        from attendance import line_leave
+        emp = Employee.objects.create(
+            user=User.objects.create_user(username='dp1', password='x',
+                                          first_name='甲', last_name='林'),
+            employee_id='DP1', department='外送', line_user_id='U_dp')
+        req = LeaveRequest.objects.create(employee=emp, dates=['2026-11-03'],
+                                          kind=LeaveRecord.KIND_REST)
+        line_leave.notify_employee(req, approved=True)
+        line_leave.notify_employee(req, approved=True)
+        self.assertEqual(mock_push.call_count, 1)
+
+    @patch('attendance.utils.line_push.push')
+    def test_double_submit_creates_one_request(self, mock_push):
+        from attendance.models import LeaveRequest
+        from attendance import line_leave
+        emp = Employee.objects.create(
+            user=User.objects.create_user(username='dp2', password='x',
+                                          first_name='乙', last_name='王'),
+            employee_id='DP2', department='外送', line_user_id='U_dp2')
+        draft = {'kind': LeaveRecord.KIND_REST, 'dates': ['2026-11-05']}
+        line_leave._set_draft('U_dp2', draft)
+        line_leave._submit(emp, 'U_dp2', dict(draft))
+        line_leave._submit(emp, 'U_dp2', dict(draft))
+        self.assertEqual(LeaveRequest.objects.filter(employee=emp).count(), 1)
+
+
+class SalaryDetailReconciliationTest(TestCase):
+    """薪資明細要能直接看到打卡時間並補登，不用切到出勤報表"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        User.objects.create_user(username='boss_rc', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_rc', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='rc1', password='x',
+                                          first_name='丙', last_name='葉'),
+            employee_id='RC1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _mk(self, d, kind, hm):
+        return AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _detail(self):
+        return payroll.monthly_work_detail(self.emp, 2026, 11)
+
+    def test_incomplete_day_still_appears(self):
+        """缺下班卡的那天以前整天不見，現在要列出來讓老闆補登"""
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        work = self._detail()
+        self.assertEqual(len(work['detail']), 1)
+        row = work['detail'][0]
+        self.assertTrue(row['incomplete'])
+        self.assertFalse(row['worked'])
+        self.assertEqual(row['minutes'], 0)
+        self.assertEqual(row['amount'], 0)
+        self.assertEqual(work['incomplete_days'], [d])
+
+    def test_day_with_only_clock_out_appears(self):
+        d = date(2026, 11, 4)
+        self._mk(d, 'clock_out', (18, 0))
+        work = self._detail()
+        self.assertEqual(len(work['detail']), 1)
+        self.assertTrue(work['detail'][0]['incomplete'])
+
+    def test_punch_times_are_included(self):
+        d = date(2026, 11, 5)
+        ci = self._mk(d, 'clock_in', (9, 0))
+        co = self._mk(d, 'clock_out', (18, 0))
+        row = self._detail()['detail'][0]
+        self.assertEqual(row['punches']['clock_in']['time'], '09:00')
+        self.assertEqual(row['punches']['clock_in']['id'], ci.pk)
+        self.assertEqual(row['punches']['clock_out']['id'], co.pk)
+        self.assertNotIn('break_start', row['punches'])
+
+    def test_incomplete_day_earns_no_maintenance(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))          # 不完整
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))          # 完整
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(r['maintenance'], 100)                  # 只算完整那天
+
+    def test_detail_page_shows_punches_and_add_buttons(self):
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        resp = self.client.get(f'/dashboard/salary/{self.emp.pk}/detail/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn('09:00', html)          # 既有打卡可點擊修改
+        self.assertIn('openAdd(', html)       # 缺的那張可補登
+        self.assertIn('打卡不完整', html)
+        self.assertIn('punch_slots', str(resp.context.keys()))
+
+    def test_fixing_the_punch_restores_the_amount(self):
+        """補上下班卡後，那天的金額就算得出來"""
+        from attendance.dashboard_views.base import calculate_salary
+        d = date(2026, 11, 3)
+        self._mk(d, 'clock_in', (9, 0))
+        self.assertEqual(calculate_salary(self.emp, 2026, 11)['base'], 0)
+
+        self.client.post('/dashboard/attendance/add-record/', {
+            'employee_id': self.emp.pk, 'date': '2026-11-03',
+            'record_type': 'clock_out', 'time': '18:00',
+            'next': f'/dashboard/salary/{self.emp.pk}/detail/',
+        })
+        r = calculate_salary(self.emp, 2026, 11)
+        self.assertEqual(r['base'], 8 * 200)
+        self.assertEqual(r['incomplete_days'], [])
+
+
+class PayrollSettleTest(TestCase):
+    """結算鎖定：金額凍結，之後改打卡不影響已發的薪資"""
+
+    def setUp(self):
+        from datetime import time as _time
+        from attendance.models import PayrollRecord
+        cache.clear()
+        self.PayrollRecord = PayrollRecord
+        User.objects.create_user(username='boss_st', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_st', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='st1', password='x',
+                                          first_name='丁', last_name='蘇'),
+            employee_id='ST1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+
+    def _mk(self, d, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _settle(self):
+        return self.client.post('/dashboard/salary/settle/', {'year': 2026, 'month': 11})
+
+    def test_settle_creates_locked_record(self):
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        resp = self._settle()
+        self.assertEqual(resp.status_code, 302)
+        rec = self.PayrollRecord.objects.get(employee=self.emp, year=2026, month=11)
+        self.assertTrue(rec.locked)
+        self.assertEqual(rec.base, 8 * 200)
+        self.assertEqual(rec.work_minutes, 540)
+
+    def test_locked_amount_does_not_change_after_punch_edit(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        frozen = calculate_salary(self.emp, 2026, 11)['total']
+
+        # 事後又補了一天班
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+
+        self.assertEqual(calculate_salary(self.emp, 2026, 11)['total'], frozen)
+        # 但即時試算看得到新的數字
+        self.assertGreater(calculate_salary(self.emp, 2026, 11, live=True)['total'], frozen)
+
+    def test_unlock_returns_to_live_calculation(self):
+        from attendance.dashboard_views.base import calculate_salary
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        rec = self.PayrollRecord.objects.get(employee=self.emp)
+
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+        self.client.get(f'/dashboard/salary/settle/{rec.pk}/unlock/')
+
+        rec.refresh_from_db()
+        self.assertFalse(rec.locked)
+        live = calculate_salary(self.emp, 2026, 11, live=True)['total']
+        self.assertEqual(calculate_salary(self.emp, 2026, 11)['total'], live)
+
+    def test_resettle_overwrites(self):
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        first = self.PayrollRecord.objects.get(employee=self.emp).total
+
+        self._mk(date(2026, 11, 4), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 4), 'clock_out', (18, 0))
+        self._settle()
+
+        self.assertEqual(self.PayrollRecord.objects.filter(employee=self.emp).count(), 1)
+        self.assertGreater(self.PayrollRecord.objects.get(employee=self.emp).total, first)
+
+    def test_settle_snapshots_attendance_stats(self):
+        from attendance.models import MissedPunch
+        MissedPunch.objects.create(employee=self.emp, date=date(2026, 11, 2),
+                                   missing=MissedPunch.MISSING_CLOCK_OUT)
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 20))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        rec = self.PayrollRecord.objects.get(employee=self.emp)
+        self.assertEqual(rec.missed_punch, 1)
+        self.assertEqual(rec.late_days, 1)
+        self.assertEqual(rec.late_minutes, 20)
+
+    def test_salary_page_shows_settle_state(self):
+        resp = self.client.get('/dashboard/salary/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['settled_count'], 0)
+        self.assertIn('結算並鎖定', resp.content.decode())
+
+        self._mk(date(2026, 11, 3), 'clock_in', (9, 0))
+        self._mk(date(2026, 11, 3), 'clock_out', (18, 0))
+        self._settle()
+        resp = self.client.get('/dashboard/salary/?year=2026&month=11')
+        self.assertEqual(resp.context['settled_count'], 1)
+
+
+class PayslipTest(TestCase):
+    """薪資條：A4 一頁一人，含出勤統計與簽名欄"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        User.objects.create_user(username='boss_ps', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_ps', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='ps1', password='x',
+                                          first_name='戊', last_name='呂'),
+            employee_id='PS1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5',
+        )
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type='clock_in',
+            timestamp=timezone.make_aware(datetime(2026, 11, 3, 9, 0)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type='clock_out',
+            timestamp=timezone.make_aware(datetime(2026, 11, 3, 18, 0)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def test_payslip_renders(self):
+        resp = self.client.get('/dashboard/salary/payslip/?year=2026&month=11')
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn('薪資明細表', html)
+        self.assertIn('員工簽名', html)
+        self.assertIn('保養費（車油錢）', html)
+        self.assertIn('漏打卡', html)
+        self.assertIn('page-break-after', html)
+
+    def test_payslip_single_employee(self):
+        other = Employee.objects.create(
+            user=User.objects.create_user(username='ps2', password='x',
+                                          first_name='己', last_name='邱'),
+            employee_id='PS2', department='業務')
+        resp = self.client.get(
+            f'/dashboard/salary/payslip/?year=2026&month=11&employee_id={self.emp.pk}')
+        self.assertEqual(len(resp.context['slips']), 1)
+        self.assertEqual(resp.context['slips'][0]['emp'], self.emp)
+
+    def test_payslip_marks_unsettled(self):
+        resp = self.client.get('/dashboard/salary/payslip/?year=2026&month=11')
+        self.assertIn('尚未結算', resp.content.decode())
+        self.client.post('/dashboard/salary/settle/', {'year': 2026, 'month': 11})
+        resp = self.client.get('/dashboard/salary/payslip/?year=2026&month=11')
+        self.assertIn('結算於', resp.content.decode())
+
+
+class DisciplineAnalyticsTest(TestCase):
+    """出勤分析頁要有漏打卡與遲到統計"""
+
+    def setUp(self):
+        from datetime import time as _time
+        cache.clear()
+        User.objects.create_user(username='boss_da', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_da', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='da1', password='x',
+                                          first_name='庚', last_name='洪'),
+            employee_id='DA1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5')
+
+    def test_discipline_in_context(self):
+        from attendance.models import MissedPunch
+        today = timezone.localdate()
+        MissedPunch.objects.create(
+            employee=self.emp, date=date(today.year, today.month, 1),
+            missing=MissedPunch.MISSING_CLOCK_OUT)
+        resp = self.client.get('/dashboard/analytics/attendance/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('discipline', resp.context)
+        rows = {r['name']: r for r in resp.context['discipline']}
+        name = self.emp.user.get_full_name()
+        self.assertEqual(rows[name]['missed'], 1)
+        self.assertIn('本月打卡紀律', resp.content.decode())
+
+
+class LocationCheckTest(TestCase):
+    """定位驗證：留下精度與距離，分得出「人沒到」還是「定位飄了」"""
+
+    def setUp(self):
+        from attendance.models import LocationCheckLog, Customer, DeliverySession, DeliveryTask
+        cache.clear()
+        self.LocationCheckLog = LocationCheckLog
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='gp1', password='x',
+                                          first_name='辛', last_name='曾'),
+            employee_id='GP1', department='外送', line_user_id='U_gps')
+        # 客戶座標：台北車站
+        self.cust = Customer.objects.create(
+            customer_id='C1', name='測試客戶', address='台北市',
+            lat=25.047924, lng=121.517081)
+        session = DeliverySession.objects.create(
+            employee=self.emp, date=timezone.localdate(), trip_number=1)
+        self.task = DeliveryTask.objects.create(
+            employee=self.emp, customer=self.cust, order=1,
+            date=timezone.localdate(),
+            customer_name=self.cust.name, address=self.cust.address, session=session)
+
+    def _arrive(self, lat, lng, accuracy=None):
+        import json as _json
+        payload = {'task_id': self.task.pk, 'lat': lat, 'lng': lng,
+                   'line_user_id': 'U_gps'}
+        if accuracy is not None:
+            payload['accuracy'] = accuracy
+        return self.client.post('/liff/delivery/complete/',
+                                data=_json.dumps(payload),
+                                content_type='application/json').json()
+
+    def test_pass_is_logged_with_accuracy(self):
+        data = self._arrive(25.047924, 121.517081, accuracy=12)
+        self.assertTrue(data['ok'])
+        log = self.LocationCheckLog.objects.get()
+        self.assertEqual(log.result, self.LocationCheckLog.RESULT_PASS)
+        self.assertEqual(log.accuracy, 12)
+        self.assertEqual(log.accuracy_level, 'good')
+        self.assertLess(log.distance_meters, 10)
+
+    def test_far_with_good_accuracy_is_too_far(self):
+        """精度好卻距離遠 → 人真的不在現場"""
+        data = self._arrive(25.10, 121.60, accuracy=15)
+        self.assertFalse(data['ok'])
+        self.assertTrue(data['too_far'])
+        log = self.LocationCheckLog.objects.get()
+        self.assertEqual(log.result, self.LocationCheckLog.RESULT_TOO_FAR)
+
+    def test_far_with_bad_accuracy_is_low_accuracy(self):
+        """精度爛又距離遠 → 多半是定位飄了，不該說人沒到"""
+        data = self._arrive(25.10, 121.60, accuracy=1500)
+        self.assertFalse(data['ok'])
+        self.assertTrue(data.get('low_accuracy'))
+        self.assertNotIn('too_far', data)
+        log = self.LocationCheckLog.objects.get()
+        self.assertEqual(log.result, self.LocationCheckLog.RESULT_LOW_ACCURACY)
+        self.assertEqual(log.accuracy_level, 'poor')
+
+    def test_near_with_bad_accuracy_still_passes(self):
+        """精度爛但距離本來就在範圍內 → 照樣放行，不刁難"""
+        data = self._arrive(25.047924, 121.517081, accuracy=1500)
+        self.assertTrue(data['ok'])
+
+    def test_failure_is_logged_too(self):
+        """失敗也要留紀錄，否則事後無從追查"""
+        self._arrive(25.10, 121.60, accuracy=15)
+        self.assertEqual(self.LocationCheckLog.objects.count(), 1)
+
+    def test_accuracy_levels(self):
+        log = self.LocationCheckLog(accuracy=20)
+        self.assertEqual(log.accuracy_level, 'good')
+        log.accuracy = 80
+        self.assertEqual(log.accuracy_level, 'fair')
+        log.accuracy = 500
+        self.assertEqual(log.accuracy_level, 'poor')
+        log.accuracy = None
+        self.assertEqual(log.accuracy_level, 'unknown')
+
+    def test_log_page(self):
+        User.objects.create_user(username='boss_gp', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_gp', password='pass12345')
+        self._arrive(25.10, 121.60, accuracy=1500)
+        resp = self.client.get('/dashboard/location-checks/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context['logs']), 1)
+        self.assertEqual(resp.context['poor'], 1)
+        self.assertIn('定位不準', resp.content.decode())
+
+    def test_log_page_filter_by_result(self):
+        User.objects.create_user(username='boss_gp2', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_gp2', password='pass12345')
+        self._arrive(25.047924, 121.517081, accuracy=10)
+        resp = self.client.get('/dashboard/location-checks/?result=too_far')
+        self.assertEqual(len(resp.context['logs']), 0)

@@ -243,17 +243,12 @@ def delivery_add_task(request):
     )
 
     if employee.line_user_id:
-        try:
-            configuration = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-            with ApiClient(configuration) as api_client:
-                MessagingApi(api_client).push_message(PushMessageRequest(
-                    to=employee.line_user_id,
-                    messages=[TextMessage(
-                        text=f'📢 老闆新增了一站！\n第 {task.order} 站｜{customer.name}\n📍 {customer.address}\n\n請在送貨路線頁查看並完成。'
-                    )]
-                ))
-        except Exception:
-            pass
+        from attendance.utils import line_push
+        line_push.push_once(
+            employee.line_user_id,
+            f'📢 老闆新增了一站！\n第 {task.order} 站｜{customer.name}\n📍 {customer.address}\n\n請在送貨路線頁查看並完成。',
+            dedupe_key=f'delivery_task_added_{task.pk}',
+        )
 
     messages.success(request, f'已新增「{customer.name}」為第 {task.order} 站，並通知 {employee.user.get_full_name() or employee.user.username}')
     return redirect('dashboard:delivery_plan')
@@ -544,34 +539,22 @@ def approve_clockout(request):
 
             emp_name = employee.user.get_full_name() or employee.user.username
 
+            from attendance.utils import line_push
+            approve_key = f'clockout_approved_{employee.pk}_{data["date"]}'
+
             # 通知員工
-            if employee.line_user_id:
-                try:
-                    cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-                    with ApiClient(cfg) as api_client:
-                        MessagingApi(api_client).push_message(PushMessageRequest(
-                            to=employee.line_user_id,
-                            messages=[TextMessage(
-                                text=f'✅ 管理員已確認下班時間：{time_str}\n感謝你今天的辛勞！'
-                            )]
-                        ))
-                except Exception:
-                    pass
+            line_push.push_once(
+                employee.line_user_id,
+                f'✅ 管理員已確認下班時間：{time_str}\n感謝你今天的辛勞！',
+                dedupe_key=f'{approve_key}_emp',
+            )
 
             # 回報老闆：確認了誰、幾點
-            manager_id = getattr(settings, 'MANAGER_LINE_USER_ID', None)
-            if manager_id:
-                try:
-                    cfg = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
-                    with ApiClient(cfg) as api_client:
-                        MessagingApi(api_client).push_message(PushMessageRequest(
-                            to=manager_id,
-                            messages=[TextMessage(
-                                text=f'✅ 已確認 {emp_name} 送貨下班\n日期：{data["date"]}\n下班時間：{time_str}'
-                            )]
-                        ))
-                except Exception:
-                    pass
+            line_push.push_once(
+                getattr(settings, 'MANAGER_LINE_USER_ID', None),
+                f'✅ 已確認 {emp_name} 送貨下班\n日期：{data["date"]}\n下班時間：{time_str}',
+                dedupe_key=f'{approve_key}_mgr',
+            )
 
             # 用完即刪 token
             cache.delete(f'clockout_token_{token}')
@@ -588,3 +571,40 @@ def approve_clockout(request):
             return render(request, 'attendance/approve_clockout.html', ctx)
 
     return render(request, 'attendance/approve_clockout.html', ctx)
+
+
+@login_required
+@require_group('admin', 'finance')
+def location_check_log(request):
+    """定位驗證紀錄：查「人真的不在現場」還是「這次定位飄了」。
+
+    每次到站驗證都會留一筆，含 GPS 精度、算出來的距離與判定結果。
+    """
+    from ..models import LocationCheckLog
+
+    logs = (LocationCheckLog.objects
+            .select_related('employee__user', 'customer')
+            .order_by('-created_at'))
+
+    result = request.GET.get('result', '').strip()
+    if result:
+        logs = logs.filter(result=result)
+    emp_id = request.GET.get('employee_id', '').strip()
+    if emp_id:
+        logs = logs.filter(employee_id=emp_id)
+
+    logs = list(logs[:200])
+    total = len(logs)
+    poor = sum(1 for x in logs if x.accuracy_level == 'poor')
+
+    return render(request, 'attendance/location_check_log.html', {
+        'logs': logs,
+        'employees': Employee.tracked.select_related('user').order_by('employee_id'),
+        'result': result,
+        'emp_id': emp_id,
+        'total': total,
+        'poor': poor,
+        'result_choices': LocationCheckLog.RESULT_CHOICES,
+        'max_accuracy': getattr(settings, 'GPS_MAX_ACCURACY_METERS', 200),
+        'allowed_meters': getattr(settings, 'DELIVERY_ARRIVAL_METERS', 500),
+    })
