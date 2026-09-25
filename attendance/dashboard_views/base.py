@@ -49,6 +49,19 @@ LATE_GRACE_SECONDS = 600         # 遲到寬限 10 分鐘（寬限內從排班�
 OVERTIME_GRACE_SECONDS = 600     # 下班寬限 10 分鐘（寬限內算到排班下班時間，不算加班）
 
 
+def scheduled_times(employee, date):
+    """回傳某天的 (上班時間, 下班時間)。
+
+    當天若在月曆上排了不同班別（例如只排下半天）就以那個為準，
+    否則用員工資料的預設時間。沒設定則回 (None, None)。
+    """
+    from ..models import ShiftOverride
+    shift = ShiftOverride.objects.filter(employee=employee, date=date).first()
+    if shift:
+        return shift.start_time, shift.end_time
+    return employee.work_start_time, employee.work_end_time
+
+
 
 def get_work_minutes(employee, date=None):
     """回傳某天的計薪分鐘數（整數分鐘，不做任何半小時進位）。
@@ -62,6 +75,7 @@ def get_work_minutes(employee, date=None):
       改為標記待校對，由老闆補上正確時間。
     """
     date = date or timezone.localdate()
+    sched_start, sched_end = scheduled_times(employee, date)
 
     clock_in = AttendanceRecord.objects.filter(
         employee=employee, timestamp__date=date, record_type='clock_in'
@@ -74,9 +88,9 @@ def get_work_minutes(employee, date=None):
     ).first()
     if clock_out:
         end_time = clock_out.timestamp
-        if employee.work_end_time:
+        if sched_end:
             co_local = clock_out.timestamp.astimezone()
-            scheduled_naive = datetime.combine(co_local.date(), employee.work_end_time)
+            scheduled_naive = datetime.combine(co_local.date(), sched_end)
             co_naive = datetime.combine(co_local.date(), co_local.time())
             over_seconds = (co_naive - scheduled_naive).total_seconds()
             if 0 < over_seconds <= OVERTIME_GRACE_SECONDS:
@@ -89,9 +103,9 @@ def get_work_minutes(employee, date=None):
 
     # 起算時間
     start_time = clock_in.timestamp
-    if employee.work_start_time:
+    if sched_start:
         ci_local = clock_in.timestamp.astimezone()
-        scheduled_naive = datetime.combine(ci_local.date(), employee.work_start_time)
+        scheduled_naive = datetime.combine(ci_local.date(), sched_start)
         ci_naive = datetime.combine(ci_local.date(), ci_local.time())
         late_seconds = (ci_naive - scheduled_naive).total_seconds()
         if late_seconds <= LATE_GRACE_SECONDS:
@@ -129,7 +143,8 @@ def get_work_hours(employee, date=None):
 def get_late_minutes(employee, date=None):
     """回傳當天遲到分鐘數（未超過寬限回 0）。遲到不扣薪，只供報表顯示。"""
     date = date or timezone.localdate()
-    if not employee.work_start_time:
+    sched_start, _ = scheduled_times(employee, date)
+    if not sched_start:
         return 0
 
     clock_in = AttendanceRecord.objects.filter(
@@ -139,7 +154,7 @@ def get_late_minutes(employee, date=None):
         return 0
 
     ci_local = clock_in.timestamp.astimezone()
-    scheduled = datetime.combine(ci_local.date(), employee.work_start_time)
+    scheduled = datetime.combine(ci_local.date(), sched_start)
     actual = datetime.combine(ci_local.date(), ci_local.time())
     late_seconds = (actual - scheduled).total_seconds()
     if late_seconds <= LATE_GRACE_SECONDS:

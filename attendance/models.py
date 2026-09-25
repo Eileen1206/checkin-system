@@ -323,6 +323,34 @@ class LeaveRequest(models.Model):
         return records
 
 
+class ShiftOverride(models.Model):
+    """當日班別：某天排的上下班時間與員工預設不同（例如只排半天）。
+
+    只影響「幾點到幾點算正常班」——也就是遲到判定與計薪起訖，
+    不影響休假與一例一休，那是 LeaveRecord 的事。
+    """
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                 related_name='shift_overrides', verbose_name='員工')
+    date = models.DateField('日期')
+    start_time = models.TimeField('上班時間')
+    end_time = models.TimeField('下班時間')
+    note = models.CharField('備註', max_length=50, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '當日班別'
+        verbose_name_plural = '當日班別'
+        unique_together = [['employee', 'date']]
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.employee} {self.date} {self.label}"
+
+    @property
+    def label(self):
+        return f"{self.start_time:%H:%M}–{self.end_time:%H:%M}"
+
+
 class LocationCheckLog(models.Model):
     """每次到站定位驗證的紀錄，成功與失敗都留。
 

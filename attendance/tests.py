@@ -2304,3 +2304,141 @@ class DeleteRecordTest(TestCase):
         resp = self.client.get(
             f'/dashboard/salary/{self.emp.pk}/detail/?year=2026&month=11')
         self.assertIn('刪除這筆打卡', resp.content.decode())
+
+
+class ShiftOverrideTest(TestCase):
+    """當日班別：排下半天的人不該被算成遲到"""
+
+    def setUp(self):
+        from datetime import time as _time
+        from attendance.models import ShiftOverride
+        cache.clear()
+        self.ShiftOverride = ShiftOverride
+        User.objects.create_user(username='boss_sf', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_sf', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='sf1', password='x',
+                                          first_name='癸', last_name='方'),
+            employee_id='SF1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5')
+        self.d = date(2026, 11, 3)
+
+    def _mk(self, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(self.d.year, self.d.month, self.d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _shift(self, start, end):
+        from datetime import time as _time
+        return self.ShiftOverride.objects.create(
+            employee=self.emp, date=self.d,
+            start_time=_time(*start), end_time=_time(*end))
+
+    def test_afternoon_shift_is_not_late(self):
+        """排 13:00–18:00，13:00 打卡 → 不是遲到 240 分"""
+        from attendance.dashboard_views.base import get_late_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, self.d), 0)
+
+    def test_without_override_it_is_counted_as_late(self):
+        """沒排班別時仍以員工預設判定（原行為不變）"""
+        from attendance.dashboard_views.base import get_late_minutes
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, self.d), 240)
+
+    def test_afternoon_shift_hours(self):
+        from attendance.dashboard_views.base import get_work_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_work_minutes(self.emp, self.d), 300)
+
+    def test_early_arrival_on_shift_does_not_add_time(self):
+        """排 13:00 但 12:40 就到 → 仍從 13:00 起算"""
+        from attendance.dashboard_views.base import get_work_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (12, 40))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_work_minutes(self.emp, self.d), 300)
+
+    def test_late_within_shift_is_still_late(self):
+        """排 13:00、13:25 才到 → 照樣算遲到 25 分"""
+        from attendance.dashboard_views.base import get_late_minutes, get_work_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 25))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, self.d), 25)
+        self.assertEqual(get_work_minutes(self.emp, self.d), 275)
+
+    def test_clock_out_grace_uses_shift_end(self):
+        """排到 17:00，17:07 下班 → 算到 17:00，不算加班"""
+        from attendance.dashboard_views.base import get_work_minutes
+        self._shift((13, 0), (17, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (17, 7))
+        self.assertEqual(get_work_minutes(self.emp, self.d), 240)
+
+    def test_report_does_not_mark_shift_as_late(self):
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        resp = self.client.get(
+            f'/reports/?employee_id={self.emp.pk}&year=2026&month=11')
+        day = {x['date'].day: x for x in resp.context['month_data']}[3]
+        self.assertEqual(day['status'], 'normal')
+
+    # ── API ──────────────────────────────────────────
+    def _post(self, payload):
+        import json as _json
+        return self.client.post('/dashboard/leave/api/add/',
+                                data=_json.dumps(payload),
+                                content_type='application/json')
+
+    def test_create_shift_via_api(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                           'kind': 'shift', 'start': '13:00', 'end': '18:00'})
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['obj'], 'shift')
+        self.assertEqual(data['label'], '13:00–18:00')
+        self.assertEqual(self.ShiftOverride.objects.count(), 1)
+
+    def test_shift_does_not_create_leave_record(self):
+        """班別不能污染休假與一例一休"""
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'shift', 'start': '13:00', 'end': '18:00'})
+        self.assertFalse(LeaveRecord.objects.exists())
+
+    def test_shift_rejects_bad_times(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                           'kind': 'shift', 'start': '18:00', 'end': '13:00'})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_resubmit_updates_shift(self):
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'shift', 'start': '13:00', 'end': '18:00'})
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'shift', 'start': '09:00', 'end': '12:00'})
+        self.assertEqual(self.ShiftOverride.objects.count(), 1)
+        self.assertEqual(self.ShiftOverride.objects.get().label, '09:00–12:00')
+
+    def test_delete_shift(self):
+        so = self._shift((13, 0), (18, 0))
+        resp = self.client.post(f'/dashboard/shift/api/{so.pk}/delete/')
+        self.assertTrue(resp.json()['ok'])
+        self.assertFalse(self.ShiftOverride.objects.exists())
+
+    def test_calendar_shows_shift(self):
+        self._shift((13, 0), (18, 0))
+        resp = self.client.get('/dashboard/leave/?year=2026&month=11')
+        entries = resp.context['leave_by_day'][3]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['kind'], 'shift')
+        self.assertEqual(entries[0]['label'], '13:00–18:00')
