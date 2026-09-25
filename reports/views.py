@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.timezone import localtime
 from django.views.decorators.http import require_POST
 
-from attendance.models import AttendanceRecord, Employee, Holiday, LeaveRecord
+from attendance.models import AttendanceRecord, AuditLog, Employee, Holiday, LeaveRecord
 from attendance.utils import punch_check
 
 
@@ -318,11 +318,26 @@ def export_attendance_csv(request):
     return response
 
 
+def _is_admin(user):
+    return user.is_superuser or user.groups.filter(name__in=['admin', 'finance']).exists()
+
+
+def _audit(request, action, record, changes):
+    """打卡紀錄的異動一律留痕（薪資依據，勞基法需保存五年）。"""
+    AuditLog.objects.create(
+        actor=request.user if request.user.is_authenticated else None,
+        action=action,
+        target_model='AttendanceRecord',
+        target_id=record.pk,
+        changes=changes,
+    )
+
+
 @login_required
 @require_POST
 def edit_record(request, pk):
     """管理員修改打卡時間（AJAX）"""
-    if not (request.user.is_superuser or request.user.groups.filter(name__in=['admin', 'finance']).exists()):
+    if not _is_admin(request.user):
         return JsonResponse({'ok': False, 'error': '無權限'}, status=403)
 
     record = get_object_or_404(AttendanceRecord, pk=pk)
@@ -330,9 +345,45 @@ def edit_record(request, pk):
 
     try:
         local_dt = localtime(record.timestamp)
+        old_time = local_dt.strftime('%H:%M')
         naive_new = datetime.combine(local_dt.date(), datetime.strptime(time_str, '%H:%M').time())
         record.timestamp = timezone.make_aware(naive_new)
         record.save(update_fields=['timestamp'])
+        _audit(request, 'update', record, {
+            'employee': str(record.employee),
+            'date': str(local_dt.date()),
+            'record_type': record.record_type,
+            'from': old_time,
+            'to': time_str,
+        })
         return JsonResponse({'ok': True, 'new_time': time_str})
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)})
+
+
+@login_required
+@require_POST
+def delete_record(request, pk):
+    """管理員刪除誤打的打卡紀錄（AJAX）。
+
+    刪除前先寫稽核日誌，留下是誰、什麼時候、刪掉了哪一筆。
+    """
+    if not _is_admin(request.user):
+        return JsonResponse({'ok': False, 'error': '無權限'}, status=403)
+
+    record = get_object_or_404(AttendanceRecord, pk=pk)
+    local_dt = localtime(record.timestamp)
+    info = {
+        'employee': str(record.employee),
+        'date': str(local_dt.date()),
+        'time': local_dt.strftime('%H:%M'),
+        'record_type': record.record_type,
+        'record_type_display': record.get_record_type_display(),
+        'source': record.source,
+    }
+    _audit(request, 'delete', record, info)
+    record.delete()
+    return JsonResponse({
+        'ok': True,
+        'message': f"已刪除 {info['date']} {info['record_type_display']} {info['time']}",
+    })
