@@ -364,6 +364,10 @@
       <button onclick="closeEdit()"
         class="px-4 py-2 border border-gray-200 text-gray-500 rounded-xl text-sm hover:bg-gray-50">取消</button>
     </div>
+    <button onclick="submitDelete()"
+      class="w-full mt-3 px-4 py-2 border border-[#E7C7C0] text-[#B0382A] rounded-xl text-sm hover:bg-[#F6E4E0]">
+      刪除這筆打卡
+    </button>
   </div>
 </div>
 
@@ -441,6 +445,25 @@ async function submitEdit() {
     location.reload();
   } else {
     msg.textContent = data.error || '儲存失敗';
+    msg.classList.remove('hidden');
+  }
+}
+
+async function submitDelete() {
+  if (!confirm('確定要刪除這筆打卡紀錄？\n刪除後工時與薪資會重新計算，並留下稽核紀錄。')) return;
+  const msg = document.getElementById('editMsg');
+
+  const res = await fetch(`/reports/record/${editRecordId}/delete/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  });
+  const data = await res.json();
+
+  if (data.ok) {
+    closeEdit();
+    location.reload();
+  } else {
+    msg.textContent = data.error || '刪除失敗';
     msg.classList.remove('hidden');
   }
 }

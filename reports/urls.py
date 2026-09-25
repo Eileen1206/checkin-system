@@ -6,5 +6,6 @@ app_name = 'reports'
 urlpatterns = [
     path('', views.report, name='report'),
     path('record/<int:pk>/edit/', views.edit_record, name='edit_record'),
+    path('record/<int:pk>/delete/', views.delete_record, name='delete_record'),
     path('export/csv/', views.export_attendance_csv, name='export_attendance_csv'),
 ]

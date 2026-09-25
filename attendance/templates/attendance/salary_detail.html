@@ -219,6 +219,10 @@
       <button onclick="closeEdit()"
         class="px-4 py-2 border border-gray-200 text-gray-500 rounded-xl text-sm hover:bg-gray-50">取消</button>
     </div>
+    <button onclick="submitDelete()"
+      class="w-full mt-3 px-4 py-2 border border-[#E7C7C0] text-[#B0382A] rounded-xl text-sm hover:bg-[#F6E4E0]">
+      刪除這筆打卡
+    </button>
   </div>
 </div>
 
@@ -247,6 +251,7 @@
 
 <script>
 const EDIT_URL = "{% url 'reports:edit_record' 0 %}";
+const DELETE_URL = "{% url 'reports:delete_record' 0 %}";
 const CSRF = "{{ csrf_token }}";
 let editId = null;
 
@@ -272,6 +277,26 @@ function submitEdit() {
     if (d.ok) { location.reload(); return; }   // 重新載入即重算整月
     const msg = document.getElementById('editMsg');
     msg.textContent = d.error || '儲存失敗';
+    msg.classList.remove('hidden');
+  })
+  .catch(() => {
+    const msg = document.getElementById('editMsg');
+    msg.textContent = '連線失敗，請再試一次';
+    msg.classList.remove('hidden');
+  });
+}
+
+function submitDelete() {
+  if (!confirm('確定要刪除這筆打卡紀錄？\n刪除後會重新計算當月薪資，並留下稽核紀錄。')) return;
+  fetch(DELETE_URL.replace('/0/', `/${editId}/`), {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF },
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) { location.reload(); return; }
+    const msg = document.getElementById('editMsg');
+    msg.textContent = d.error || '刪除失敗';
     msg.classList.remove('hidden');
   })
   .catch(() => {

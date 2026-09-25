@@ -2189,3 +2189,88 @@ class LocationCheckTest(TestCase):
         self._arrive(25.047924, 121.517081, accuracy=10)
         resp = self.client.get('/dashboard/location-checks/?result=too_far')
         self.assertEqual(len(resp.context['logs']), 0)
+
+
+class DeleteRecordTest(TestCase):
+    """刪除誤打的打卡紀錄，並留下稽核痕跡"""
+
+    def setUp(self):
+        from datetime import time as _time
+        from attendance.models import AuditLog
+        cache.clear()
+        self.AuditLog = AuditLog
+        User.objects.create_user(username='boss_dl', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='dl1', password='x',
+                                          first_name='壬', last_name='盧'),
+            employee_id='DL1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5')
+        self.rec = AttendanceRecord.objects.create(
+            employee=self.emp, record_type='break_start',
+            timestamp=timezone.make_aware(datetime(2026, 11, 3, 12, 0)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _login(self):
+        self.client.login(username='boss_dl', password='pass12345')
+
+    def test_delete_removes_record(self):
+        self._login()
+        resp = self.client.post(f'/reports/record/{self.rec.pk}/delete/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()['ok'])
+        self.assertFalse(AttendanceRecord.objects.filter(pk=self.rec.pk).exists())
+
+    def test_delete_writes_audit_log(self):
+        self._login()
+        self.client.post(f'/reports/record/{self.rec.pk}/delete/')
+        log = self.AuditLog.objects.get(action='delete')
+        self.assertEqual(log.target_model, 'AttendanceRecord')
+        self.assertEqual(log.target_id, self.rec.pk)
+        self.assertEqual(log.changes['time'], '12:00')
+        self.assertEqual(log.changes['record_type'], 'break_start')
+        self.assertEqual(log.actor.username, 'boss_dl')
+
+    def test_edit_also_writes_audit_log(self):
+        self._login()
+        self.client.post(f'/reports/record/{self.rec.pk}/edit/', {'time': '12:30'})
+        log = self.AuditLog.objects.get(action='update')
+        self.assertEqual(log.changes['from'], '12:00')
+        self.assertEqual(log.changes['to'], '12:30')
+
+    def test_delete_requires_admin(self):
+        self.client.login(username='dl1', password='x')
+        resp = self.client.post(f'/reports/record/{self.rec.pk}/delete/')
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(AttendanceRecord.objects.filter(pk=self.rec.pk).exists())
+
+    def test_delete_requires_post(self):
+        self._login()
+        resp = self.client.get(f'/reports/record/{self.rec.pk}/delete/')
+        self.assertEqual(resp.status_code, 405)
+
+    def test_deleting_stray_break_fixes_the_hours(self):
+        """誤打的午休開始害當天被扣 60 分，刪掉就正常了"""
+        from attendance.dashboard_views.base import get_work_minutes
+        d = date(2026, 11, 3)
+        for kind, hm in (('clock_in', (9, 0)), ('clock_out', (18, 0))):
+            AttendanceRecord.objects.create(
+                employee=self.emp, record_type=kind,
+                timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
+                latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+        self.assertEqual(get_work_minutes(self.emp, d), 540 - 60)   # 午休只打一張
+        self._login()
+        self.client.post(f'/reports/record/{self.rec.pk}/delete/')
+        self.assertEqual(get_work_minutes(self.emp, d), 540)
+
+    def test_delete_button_on_both_pages(self):
+        self._login()
+        resp = self.client.get(
+            f'/reports/?employee_id={self.emp.pk}&year=2026&month=11')
+        self.assertIn('刪除這筆打卡', resp.content.decode())
+        resp = self.client.get(
+            f'/dashboard/salary/{self.emp.pk}/detail/?year=2026&month=11')
+        self.assertIn('刪除這筆打卡', resp.content.decode())
