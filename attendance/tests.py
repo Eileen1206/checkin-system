@@ -1502,6 +1502,16 @@ class MissedPunchTest(TestCase):
         self._mk(d, 'clock_out', (18, 0))
         self.assertIsNone(punch_check.detect(self.emp, d))
 
+    def test_half_day_shift_is_not_missed_punch(self):
+        """只上半天、中午就下班 → 中途本來就不會有午休卡，不該算漏打"""
+        from attendance.dashboard_views.base import get_work_minutes
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'clock_out', (13, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+        self.assertEqual(get_work_minutes(self.emp, d), 240)   # 也不會被扣午休
+
     def test_today_is_not_judged(self):
         """今天還沒結束，不判定"""
         from attendance.utils import punch_check
@@ -1699,20 +1709,40 @@ class BreakPunchTest(TestCase):
         self._mk(d, 'clock_out', (18, 0))
         self.assertEqual(self._minutes(d), 540 - 45)
 
-    def test_missing_break_end_deducts_default_not_whole_afternoon(self):
-        """12:00 打午休、忘記打回來 → 只扣 60 分，不是扣到下班"""
+    def test_missing_break_end_does_not_guess(self):
+        """12:00 打午休、忘記打回來 → 不猜長度也不扣，標記待校對"""
         d = date(2026, 11, 4)
         self._mk(d, 'clock_in', (9, 0))
         self._mk(d, 'break_start', (12, 0))
         self._mk(d, 'clock_out', (18, 0))
-        self.assertEqual(self._minutes(d), 540 - 60)
+        self.assertEqual(self._minutes(d), 540)
+        row = payroll.monthly_work_detail(self.emp, 2026, 11)['detail'][0]
+        self.assertTrue(row['half_break'])
 
-    def test_missing_break_start_also_deducts_default(self):
+    def test_missing_break_start_also_does_not_guess(self):
         d = date(2026, 11, 5)
         self._mk(d, 'clock_in', (9, 0))
         self._mk(d, 'break_end', (12, 45))
         self._mk(d, 'clock_out', (18, 0))
-        self.assertEqual(self._minutes(d), 540 - 60)
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_complete_break_is_not_flagged(self):
+        d = date(2026, 11, 6)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'break_end', (12, 45))
+        self._mk(d, 'clock_out', (18, 0))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertFalse(work['detail'][0]['half_break'])
+        self.assertEqual(work['half_break_days'], [])
+
+    def test_half_break_day_is_listed_for_review(self):
+        d = date(2026, 11, 4)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(
+            payroll.monthly_work_detail(self.emp, 2026, 11)['half_break_days'], [d])
 
     def test_no_break_punch_deducts_nothing(self):
         d = date(2026, 11, 6)
@@ -2251,9 +2281,9 @@ class DeleteRecordTest(TestCase):
         resp = self.client.get(f'/reports/record/{self.rec.pk}/delete/')
         self.assertEqual(resp.status_code, 405)
 
-    def test_deleting_stray_break_fixes_the_hours(self):
-        """誤打的午休開始害當天被扣 60 分，刪掉就正常了"""
-        from attendance.dashboard_views.base import get_work_minutes
+    def test_deleting_stray_break_clears_the_review_flag(self):
+        """誤打的午休開始讓當天被標成待校對，刪掉就乾淨了"""
+        from attendance.utils import payroll as _pr
         d = date(2026, 11, 3)
         for kind, hm in (('clock_in', (9, 0)), ('clock_out', (18, 0))):
             AttendanceRecord.objects.create(
@@ -2261,10 +2291,10 @@ class DeleteRecordTest(TestCase):
                 timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
                 latitude=0, longitude=0, is_valid=True, distance_meters=0)
 
-        self.assertEqual(get_work_minutes(self.emp, d), 540 - 60)   # 午休只打一張
+        self.assertEqual(_pr.monthly_work_detail(self.emp, 2026, 11)['half_break_days'], [d])
         self._login()
         self.client.post(f'/reports/record/{self.rec.pk}/delete/')
-        self.assertEqual(get_work_minutes(self.emp, d), 540)
+        self.assertEqual(_pr.monthly_work_detail(self.emp, 2026, 11)['half_break_days'], [])
 
     def test_delete_button_on_both_pages(self):
         self._login()
@@ -2274,3 +2304,141 @@ class DeleteRecordTest(TestCase):
         resp = self.client.get(
             f'/dashboard/salary/{self.emp.pk}/detail/?year=2026&month=11')
         self.assertIn('刪除這筆打卡', resp.content.decode())
+
+
+class ShiftOverrideTest(TestCase):
+    """當日班別：排下半天的人不該被算成遲到"""
+
+    def setUp(self):
+        from datetime import time as _time
+        from attendance.models import ShiftOverride
+        cache.clear()
+        self.ShiftOverride = ShiftOverride
+        User.objects.create_user(username='boss_sf', password='pass12345',
+                                 is_staff=True, is_superuser=True)
+        self.client.login(username='boss_sf', password='pass12345')
+        self.emp = Employee.objects.create(
+            user=User.objects.create_user(username='sf1', password='x',
+                                          first_name='癸', last_name='方'),
+            employee_id='SF1', department='外送',
+            employment_type='hourly', hourly_rate=200,
+            work_start_time=_time(9, 0), work_end_time=_time(18, 0),
+            work_days='0,1,2,3,4,5')
+        self.d = date(2026, 11, 3)
+
+    def _mk(self, kind, hm):
+        AttendanceRecord.objects.create(
+            employee=self.emp, record_type=kind,
+            timestamp=timezone.make_aware(datetime(self.d.year, self.d.month, self.d.day, *hm)),
+            latitude=0, longitude=0, is_valid=True, distance_meters=0)
+
+    def _shift(self, start, end):
+        from datetime import time as _time
+        return self.ShiftOverride.objects.create(
+            employee=self.emp, date=self.d,
+            start_time=_time(*start), end_time=_time(*end))
+
+    def test_afternoon_shift_is_not_late(self):
+        """排 13:00–18:00，13:00 打卡 → 不是遲到 240 分"""
+        from attendance.dashboard_views.base import get_late_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, self.d), 0)
+
+    def test_without_override_it_is_counted_as_late(self):
+        """沒排班別時仍以員工預設判定（原行為不變）"""
+        from attendance.dashboard_views.base import get_late_minutes
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, self.d), 240)
+
+    def test_afternoon_shift_hours(self):
+        from attendance.dashboard_views.base import get_work_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_work_minutes(self.emp, self.d), 300)
+
+    def test_early_arrival_on_shift_does_not_add_time(self):
+        """排 13:00 但 12:40 就到 → 仍從 13:00 起算"""
+        from attendance.dashboard_views.base import get_work_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (12, 40))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_work_minutes(self.emp, self.d), 300)
+
+    def test_late_within_shift_is_still_late(self):
+        """排 13:00、13:25 才到 → 照樣算遲到 25 分"""
+        from attendance.dashboard_views.base import get_late_minutes, get_work_minutes
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 25))
+        self._mk('clock_out', (18, 0))
+        self.assertEqual(get_late_minutes(self.emp, self.d), 25)
+        self.assertEqual(get_work_minutes(self.emp, self.d), 275)
+
+    def test_clock_out_grace_uses_shift_end(self):
+        """排到 17:00，17:07 下班 → 算到 17:00，不算加班"""
+        from attendance.dashboard_views.base import get_work_minutes
+        self._shift((13, 0), (17, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (17, 7))
+        self.assertEqual(get_work_minutes(self.emp, self.d), 240)
+
+    def test_report_does_not_mark_shift_as_late(self):
+        self._shift((13, 0), (18, 0))
+        self._mk('clock_in', (13, 0))
+        self._mk('clock_out', (18, 0))
+        resp = self.client.get(
+            f'/reports/?employee_id={self.emp.pk}&year=2026&month=11')
+        day = {x['date'].day: x for x in resp.context['month_data']}[3]
+        self.assertEqual(day['status'], 'normal')
+
+    # ── API ──────────────────────────────────────────
+    def _post(self, payload):
+        import json as _json
+        return self.client.post('/dashboard/leave/api/add/',
+                                data=_json.dumps(payload),
+                                content_type='application/json')
+
+    def test_create_shift_via_api(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                           'kind': 'shift', 'start': '13:00', 'end': '18:00'})
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['obj'], 'shift')
+        self.assertEqual(data['label'], '13:00–18:00')
+        self.assertEqual(self.ShiftOverride.objects.count(), 1)
+
+    def test_shift_does_not_create_leave_record(self):
+        """班別不能污染休假與一例一休"""
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'shift', 'start': '13:00', 'end': '18:00'})
+        self.assertFalse(LeaveRecord.objects.exists())
+
+    def test_shift_rejects_bad_times(self):
+        resp = self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                           'kind': 'shift', 'start': '18:00', 'end': '13:00'})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_resubmit_updates_shift(self):
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'shift', 'start': '13:00', 'end': '18:00'})
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'shift', 'start': '09:00', 'end': '12:00'})
+        self.assertEqual(self.ShiftOverride.objects.count(), 1)
+        self.assertEqual(self.ShiftOverride.objects.get().label, '09:00–12:00')
+
+    def test_delete_shift(self):
+        so = self._shift((13, 0), (18, 0))
+        resp = self.client.post(f'/dashboard/shift/api/{so.pk}/delete/')
+        self.assertTrue(resp.json()['ok'])
+        self.assertFalse(self.ShiftOverride.objects.exists())
+
+    def test_calendar_shows_shift(self):
+        self._shift((13, 0), (18, 0))
+        resp = self.client.get('/dashboard/leave/?year=2026&month=11')
+        entries = resp.context['leave_by_day'][3]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]['kind'], 'shift')
+        self.assertEqual(entries[0]['label'], '13:00–18:00')

@@ -38,6 +38,7 @@ urlpatterns = [
     path('leave/<int:pk>/delete/', dashboard_views.leave_delete, name='leave_delete'),
     path('leave/', dashboard_views.leave_calendar, name='leave_calendar'),
     path('leave/api/add/', dashboard_views.leave_add_api, name='leave_add_api'),
+    path('shift/api/<int:pk>/delete/', dashboard_views.shift_delete_api, name='shift_delete_api'),
     path('leave/api/<int:pk>/delete/', dashboard_views.leave_delete_api, name='leave_delete_api'),
     path('leave/requests/', dashboard_views.leave_request_list, name='leave_request_list'),
     path('leave/requests/<int:pk>/approve/', dashboard_views.leave_request_approve, name='leave_request_approve'),

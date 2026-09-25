@@ -49,10 +49,18 @@ LATE_GRACE_SECONDS = 600         # 遲到寬限 10 分鐘（寬限內從排班�
 OVERTIME_GRACE_SECONDS = 600     # 下班寬限 10 分鐘（寬限內算到排班下班時間，不算加班）
 
 
-def default_break_minutes():
-    """午休只打了一張卡時改扣的預設長度。"""
-    from django.conf import settings
-    return getattr(settings, 'DEFAULT_BREAK_MINUTES', 60)
+def scheduled_times(employee, date):
+    """回傳某天的 (上班時間, 下班時間)。
+
+    當天若在月曆上排了不同班別（例如只排下半天）就以那個為準，
+    否則用員工資料的預設時間。沒設定則回 (None, None)。
+    """
+    from ..models import ShiftOverride
+    shift = ShiftOverride.objects.filter(employee=employee, date=date).first()
+    if shift:
+        return shift.start_time, shift.end_time
+    return employee.work_start_time, employee.work_end_time
+
 
 
 def get_work_minutes(employee, date=None):
@@ -63,9 +71,11 @@ def get_work_minutes(employee, date=None):
       早到不因此多算；遲到超過寬限則從實際打卡起算（沒做就沒錢，但不額外罰）。
     - 終點：實際下班打卡時間，但排班下班後 10 分鐘內算到排班時間（收個尾不算加班）；
       超過寬限才照實際打卡算。今天還沒下班用現在時間估；過去日期缺下班卡視為異常，不計。
-    - 中間扣掉落在計薪區間內的午休。
+    - 中間扣掉午休，但只在兩張午休卡都有時才扣；只打一張不猜長度，
+      改為標記待校對，由老闆補上正確時間。
     """
     date = date or timezone.localdate()
+    sched_start, sched_end = scheduled_times(employee, date)
 
     clock_in = AttendanceRecord.objects.filter(
         employee=employee, timestamp__date=date, record_type='clock_in'
@@ -78,9 +88,9 @@ def get_work_minutes(employee, date=None):
     ).first()
     if clock_out:
         end_time = clock_out.timestamp
-        if employee.work_end_time:
+        if sched_end:
             co_local = clock_out.timestamp.astimezone()
-            scheduled_naive = datetime.combine(co_local.date(), employee.work_end_time)
+            scheduled_naive = datetime.combine(co_local.date(), sched_end)
             co_naive = datetime.combine(co_local.date(), co_local.time())
             over_seconds = (co_naive - scheduled_naive).total_seconds()
             if 0 < over_seconds <= OVERTIME_GRACE_SECONDS:
@@ -93,9 +103,9 @@ def get_work_minutes(employee, date=None):
 
     # 起算時間
     start_time = clock_in.timestamp
-    if employee.work_start_time:
+    if sched_start:
         ci_local = clock_in.timestamp.astimezone()
-        scheduled_naive = datetime.combine(ci_local.date(), employee.work_start_time)
+        scheduled_naive = datetime.combine(ci_local.date(), sched_start)
         ci_naive = datetime.combine(ci_local.date(), ci_local.time())
         late_seconds = (ci_naive - scheduled_naive).total_seconds()
         if late_seconds <= LATE_GRACE_SECONDS:
@@ -117,10 +127,8 @@ def get_work_minutes(employee, date=None):
         eff_end = min(break_end.timestamp, end_time)
         if eff_end > eff_start:
             total_seconds -= (eff_end - eff_start).total_seconds()
-    elif break_start or break_end:
-        # 午休只打了一張卡 → 不知道實際長度，扣預設值即可，
-        # 不會因為忘記打回來就整個下午都不計薪。當天會另記一筆漏打卡。
-        total_seconds -= default_break_minutes() * 60
+    # 午休只打了一張卡 → 不知道實際長度，不自作主張扣一個預設值。
+    # 當天會記一筆漏打卡並在薪資明細標出來，由老闆補上正確時間。
 
     total_seconds = max(total_seconds, 0)
 
@@ -135,7 +143,8 @@ def get_work_hours(employee, date=None):
 def get_late_minutes(employee, date=None):
     """回傳當天遲到分鐘數（未超過寬限回 0）。遲到不扣薪，只供報表顯示。"""
     date = date or timezone.localdate()
-    if not employee.work_start_time:
+    sched_start, _ = scheduled_times(employee, date)
+    if not sched_start:
         return 0
 
     clock_in = AttendanceRecord.objects.filter(
@@ -145,7 +154,7 @@ def get_late_minutes(employee, date=None):
         return 0
 
     ci_local = clock_in.timestamp.astimezone()
-    scheduled = datetime.combine(ci_local.date(), employee.work_start_time)
+    scheduled = datetime.combine(ci_local.date(), sched_start)
     actual = datetime.combine(ci_local.date(), ci_local.time())
     late_seconds = (actual - scheduled).total_seconds()
     if late_seconds <= LATE_GRACE_SECONDS:
@@ -195,6 +204,7 @@ def _settled_result(emp, settled, year, month):
             settings_module(), 'MISSED_PUNCH_MONTHLY_LIMIT', 5),
         'missed_punch_dates': [],
         'incomplete_days':    work['incomplete_days'],
+        'half_break_days':    work['half_break_days'],
         'settled': settled,
     }
 
@@ -276,5 +286,6 @@ def calculate_salary(emp, year, month, live=False):
         'missed_punch_over':   missed['over_limit'],
         'missed_punch_dates':  missed['dates'],
         'incomplete_days':     work['incomplete_days'],
+        'half_break_days':     work['half_break_days'],
         'settled': None,
     }

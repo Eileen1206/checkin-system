@@ -75,6 +75,9 @@
         <span class="inline-block w-6 h-3.5 rounded-md border-2 border-[#5E6E5E] bg-white"></span>請假
       </span>
       <span class="flex items-center gap-1.5">
+        <span class="inline-block w-6 h-3.5 rounded-md border-2 border-dashed border-[#5E6E5E] bg-white"></span>當日班別
+      </span>
+      <span class="flex items-center gap-1.5">
         <span class="inline-block w-6 h-3.5 rounded-md bg-[#F6E4E0]"></span>國定假日
       </span>
     </div>
@@ -183,11 +186,13 @@
     <div class="px-5 py-4 space-y-4">
 
       <!-- 類別 -->
-      <div class="grid grid-cols-2 gap-2">
+      <div class="grid grid-cols-3 gap-2">
         <button type="button" data-kind="rest" onclick="lmSetKind('rest')"
-                class="lm-kind rounded-xl border-2 px-3 py-3 text-sm font-bold transition-colors">排休</button>
+                class="lm-kind rounded-xl border-2 px-2 py-3 text-sm font-bold transition-colors">排休</button>
         <button type="button" data-kind="leave" onclick="lmSetKind('leave')"
-                class="lm-kind rounded-xl border-2 px-3 py-3 text-sm font-bold transition-colors">請假</button>
+                class="lm-kind rounded-xl border-2 px-2 py-3 text-sm font-bold transition-colors">請假</button>
+        <button type="button" data-kind="shift" onclick="lmSetKind('shift')"
+                class="lm-kind rounded-xl border-2 px-2 py-3 text-sm font-bold transition-colors">半天班</button>
       </div>
 
       <!-- 請假細節 -->
@@ -227,6 +232,23 @@
         </div>
       </div>
 
+      <!-- 當日班別 -->
+      <div id="lmShiftDetail" class="hidden space-y-3">
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" onclick="lmShiftPreset('am')"
+                  class="lm-preset rounded-lg border px-2 py-2 text-sm">上午班</button>
+          <button type="button" onclick="lmShiftPreset('pm')"
+                  class="lm-preset rounded-lg border px-2 py-2 text-sm">下午班</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="time" id="lmShiftStart"
+                 class="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm">
+          <span class="text-gray-400">–</span>
+          <input type="time" id="lmShiftEnd"
+                 class="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm">
+        </div>
+      </div>
+
       <p id="lmError" class="hidden text-xs text-[#B0382A]"></p>
     </div>
 
@@ -246,6 +268,10 @@
 const EMP_COLORS = {
   {% for emp in employees %}"{{ emp.pk }}": "{{ emp.pk|emp_color }}",{% endfor %}
 };
+const EMP_SHIFTS = {
+  {% for emp in employees %}"{{ emp.pk }}": {start: "{{ emp.work_start_time|time:'H:i'|default:'09:00' }}", end: "{{ emp.work_end_time|time:'H:i'|default:'18:00' }}"},{% endfor %}
+};
+const SHIFT_DELETE_URL = "{% url 'dashboard:shift_delete_api' pk=0 %}";
 const EMP_TEXT_COLORS = {
   {% for emp in employees %}"{{ emp.pk }}": "{{ emp.pk|emp_text_color }}",{% endfor %}
 };
@@ -308,11 +334,16 @@ function handleDragStart(event, el) {
 function addTag(container, lr) {
   const color     = EMP_COLORS[String(lr.emp_id)] || '#4A4A4E';
   const textColor = EMP_TEXT_COLORS[String(lr.emp_id)] || '#FFFFFF';
-  const isRest    = lr.kind !== 'leave';
+  const isShift   = lr.kind === 'shift';
+  const isRest    = !isShift && lr.kind !== 'leave';
 
   const tag = document.createElement('div');
   tag.className = 'leave-tag flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs w-full cursor-pointer';
-  if (isRest) {
+  if (isShift) {
+    tag.style.backgroundColor = '#FFFFFF';
+    tag.style.color = color;
+    tag.style.border = '2px dashed ' + color;
+  } else if (isRest) {
     tag.style.backgroundColor = color;
     tag.style.color = textColor;
     tag.style.border = '2px solid ' + color;
@@ -322,8 +353,9 @@ function addTag(container, lr) {
     tag.style.border = '2px solid ' + color;
   }
   tag.style.pointerEvents = 'none';  // 拖放時標籤透明，事件傳到格子
-  tag.title = isRest ? `${lr.name}：排休（整天）`
-                     : `${lr.name}：請假 ${lr.label}${lr.type ? '・' + lr.type : ''}`;
+  tag.title = isShift ? `${lr.name}：當日班別 ${lr.label}`
+            : isRest  ? `${lr.name}：排休（整天）`
+                      : `${lr.name}：請假 ${lr.label}${lr.type ? '・' + lr.type : ''}`;
   tag.dataset.leaveId = lr.id;
   tag.innerHTML = `
     <span class="truncate min-w-0 flex-1 leave-tag-name"
@@ -338,7 +370,8 @@ function addTag(container, lr) {
       cell: tag.closest('.day-cell'), existing: lr, tagEl: tag,
     });
   });
-  tag.querySelector('.leave-tag-del').addEventListener('click', () => removeTag(lr.id, tag));
+  tag.querySelector('.leave-tag-del')
+     .addEventListener('click', () => removeTag(lr.id, tag, lr.obj));
 
   container.appendChild(tag);
   return tag;
@@ -350,8 +383,11 @@ function tagDate(tagEl) {
 }
 
 // ── 刪除標籤 ──
-function removeTag(leaveId, tagEl) {
-  fetch(getDeleteUrl(leaveId), {
+function removeTag(leaveId, tagEl, obj) {
+  const url = obj === 'shift'
+    ? SHIFT_DELETE_URL.replace('/0/', `/${leaveId}/`)
+    : getDeleteUrl(leaveId);
+  fetch(url, {
     method: 'POST',
     headers: { 'X-CSRFToken': CSRF_TOKEN },
   })
@@ -361,7 +397,8 @@ function removeTag(leaveId, tagEl) {
 
 // ══ 排休／請假 Modal ══
 const LM = { empId: null, empName: null, date: null, cell: null, tagEl: null,
-             kind: 'rest', hours: 8, hourMode: 8, leaveType: '' };
+             kind: 'rest', hours: 8, hourMode: 8, leaveType: '',
+             shiftStart: '', shiftEnd: '' };
 
 const WEEKDAY_TXT = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -379,6 +416,10 @@ function lmOpen(opts) {
   LM.hours    = h;
   LM.hourMode = (h === 8 || h === 4) ? h : 'custom';
 
+  const def = EMP_SHIFTS[String(LM.empId)] || { start: '09:00', end: '18:00' };
+  LM.shiftStart = (ex && ex.start) || def.start;
+  LM.shiftEnd   = (ex && ex.end)   || def.end;
+
   const d = new Date(LM.date + 'T00:00:00');
   document.getElementById('lmTitle').textContent = LM.empName;
   document.getElementById('lmSubtitle').textContent =
@@ -395,6 +436,14 @@ function lmClose() {
 }
 
 function lmSetKind(kind) { LM.kind = kind; lmRender(); }
+
+// 上午班＝預設上班時間到中午；下午班＝中午到預設下班時間
+function lmShiftPreset(which) {
+  const def = EMP_SHIFTS[String(LM.empId)] || { start: '09:00', end: '18:00' };
+  if (which === 'am') { LM.shiftStart = def.start; LM.shiftEnd = '12:00'; }
+  else                { LM.shiftStart = '13:00';   LM.shiftEnd = def.end; }
+  lmRender();
+}
 
 function lmSetHours(mode) {
   LM.hourMode = mode;
@@ -424,6 +473,11 @@ function lmRender() {
 
   const detail = document.getElementById('lmLeaveDetail');
   detail.classList.toggle('hidden', LM.kind !== 'leave');
+
+  const shiftBox = document.getElementById('lmShiftDetail');
+  shiftBox.classList.toggle('hidden', LM.kind !== 'shift');
+  document.getElementById('lmShiftStart').value = LM.shiftStart;
+  document.getElementById('lmShiftEnd').value = LM.shiftEnd;
 
   document.querySelectorAll('.lm-hours').forEach(btn => {
     const on = String(btn.dataset.hours) === String(LM.hourMode);
@@ -457,6 +511,9 @@ function lmSave() {
   if (LM.kind === 'leave') {
     payload.hours = LM.hours;
     payload.leave_type = LM.leaveType;
+  } else if (LM.kind === 'shift') {
+    payload.start = document.getElementById('lmShiftStart').value;
+    payload.end = document.getElementById('lmShiftEnd').value;
   }
 
   fetch(ADD_URL, {
@@ -468,9 +525,10 @@ function lmSave() {
   .then(data => {
     if (!data.ok) { lmError(data.error || '儲存失敗'); return; }
     const lr = {
-      id: data.id, emp_id: LM.empId, name: data.name,
+      id: data.id, obj: data.obj || 'leave', emp_id: LM.empId, name: data.name,
       kind: data.kind, label: data.label,
       hours: data.hours, leave_type: data.leave_type, type: data.type,
+      start: data.start, end: data.end,
     };
     if (LM.tagEl) LM.tagEl.remove();
     const container = LM.cell.querySelector('.leave-tags');

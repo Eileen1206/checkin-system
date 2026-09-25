@@ -7,7 +7,10 @@ from django.urls import reverse
 from django.conf import settings
 from datetime import datetime, date
 import json
-from ..models import Employee, Holiday, LeaveRecord, LeaveRequest, LocationCorrectionRequest
+from ..models import (
+    Employee, Holiday, LeaveRecord, LeaveRequest,
+    LocationCorrectionRequest, ShiftOverride,
+)
 from ..utils import scheduling
 from .base import require_group
 
@@ -108,11 +111,26 @@ def leave_calendar(request):
             'id':     lr.pk,
             'emp_id': lr.employee_id,
             'name':   lr.employee.user.get_full_name() or lr.employee.user.username,
+            'obj':    'leave',
             'kind':   lr.kind,
             'label':  lr.short_label,
             'hours':  lr.hours,
             'leave_type': lr.leave_type,
             'type':   lr.get_leave_type_display() if lr.leave_type else '',
+        })
+
+    # 當日班別（例如只排半天）與休假一起顯示，但看得出差別
+    for so in ShiftOverride.objects.filter(
+            date__year=year, date__month=month).select_related('employee__user'):
+        leave_by_day.setdefault(so.date.day, []).append({
+            'id':     so.pk,
+            'obj':    'shift',
+            'emp_id': so.employee_id,
+            'name':   so.employee.user.get_full_name() or so.employee.user.username,
+            'kind':   'shift',
+            'label':  so.label,
+            'start':  so.start_time.strftime('%H:%M'),
+            'end':    so.end_time.strftime('%H:%M'),
         })
 
     # 上個月 / 下個月導覽
@@ -225,6 +243,38 @@ def _parse_leave_payload(data):
     return kind, leave_type, hours
 
 
+def _save_shift(emp, shift_date, data):
+    """建立／修改當日班別（例如只排下半天）。"""
+    try:
+        start = datetime.strptime(data['start'], '%H:%M').time()
+        end = datetime.strptime(data['end'], '%H:%M').time()
+    except (KeyError, TypeError, ValueError):
+        return JsonResponse({'ok': False, 'error': '請填寫上下班時間'}, status=400)
+    if start >= end:
+        return JsonResponse({'ok': False, 'error': '下班時間必須晚於上班時間'}, status=400)
+
+    so, created = ShiftOverride.objects.update_or_create(
+        employee=emp, date=shift_date,
+        defaults={'start_time': start, 'end_time': end},
+    )
+    return JsonResponse({
+        'ok': True, 'id': so.pk, 'created': created, 'obj': 'shift',
+        'name': emp.user.get_full_name() or emp.user.username,
+        'kind': 'shift', 'label': so.label,
+        'start': so.start_time.strftime('%H:%M'),
+        'end': so.end_time.strftime('%H:%M'),
+    })
+
+
+@login_required
+@require_group('admin')
+def shift_delete_api(request, pk):
+    """AJAX：刪除當日班別，回到員工預設的上下班時間"""
+    so = get_object_or_404(ShiftOverride, pk=pk)
+    so.delete()
+    return JsonResponse({'ok': True})
+
+
 @login_required
 @require_group('admin')
 def leave_add_api(request):
@@ -238,6 +288,11 @@ def leave_add_api(request):
     try:
         emp = Employee.objects.get(pk=data['employee_id'])
         leave_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+
+        # 當日班別是「那天排幾點到幾點」，跟休假是兩回事，走另一張表
+        if data.get('kind') == 'shift':
+            return _save_shift(emp, leave_date, data)
+
         kind, leave_type, hours = _parse_leave_payload(data)
         reason = (data.get('reason') or '').strip()[:100]
 

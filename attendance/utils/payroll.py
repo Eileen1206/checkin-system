@@ -209,6 +209,8 @@ def monthly_work_detail(emp, year, month):
 
         punches = punches_by_day.get(d, {})
         cls = classify_day(emp, d, holiday_set, leave_dates)
+        # 午休只打了一張 → 工時算不準，標出來請老闆補上正確時間
+        half_break = ('break_start' in punches) != ('break_end' in punches)
 
         if not minutes:
             # 打卡不完整（最常見是缺下班卡）→ 當天算不出工時，
@@ -218,7 +220,7 @@ def monthly_work_detail(emp, year, month):
                 'hm': '—', 'normal_hours': 0.0, 'ot_hours': 0.0,
                 'base_amount': 0, 'ot_amount': 0, 'amount': 0,
                 'late_minutes': late, 'worked': False, 'punches': punches,
-                'incomplete': True,
+                'incomplete': True, 'half_break': half_break,
             })
             continue
 
@@ -263,6 +265,7 @@ def monthly_work_detail(emp, year, month):
             'worked': True,
             'punches': punches,
             'incomplete': False,
+            'half_break': half_break,
         })
 
     return {
@@ -278,6 +281,7 @@ def monthly_work_detail(emp, year, month):
         'late_minutes': late_minutes_total,
         'late_hm': fmt_hm(late_minutes_total),
         'incomplete_days': [x['date'] for x in detail if x['incomplete']],
+        'half_break_days': [x['date'] for x in detail if x['half_break']],
     }
 
 

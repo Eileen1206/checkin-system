@@ -323,6 +323,34 @@ class LeaveRequest(models.Model):
         return records
 
 
+class ShiftOverride(models.Model):
+    """當日班別：某天排的上下班時間與員工預設不同（例如只排半天）。
+
+    只影響「幾點到幾點算正常班」——也就是遲到判定與計薪起訖，
+    不影響休假與一例一休，那是 LeaveRecord 的事。
+    """
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE,
+                                 related_name='shift_overrides', verbose_name='員工')
+    date = models.DateField('日期')
+    start_time = models.TimeField('上班時間')
+    end_time = models.TimeField('下班時間')
+    note = models.CharField('備註', max_length=50, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '當日班別'
+        verbose_name_plural = '當日班別'
+        unique_together = [['employee', 'date']]
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.employee} {self.date} {self.label}"
+
+    @property
+    def label(self):
+        return f"{self.start_time:%H:%M}–{self.end_time:%H:%M}"
+
+
 class LocationCheckLog(models.Model):
     """每次到站定位驗證的紀錄，成功與失敗都留。
 
@@ -425,9 +453,13 @@ class PayrollRecord(models.Model):
 
 
 class MissedPunch(models.Model):
-    """漏打卡：當天有出勤事實，但四張卡沒打齊（上班／下班／午休一對）。
+    """漏打卡：當天有出勤事實，但該有的卡沒打齊。
 
-    改用分鐘計薪後午休卡也會影響金額，因此同樣列入判定；
+    判定規則：
+    - 上班與下班：有其中一張、缺另一張 → 漏打。兩張都沒有是缺勤或休假，不算。
+    - 午休：只打了開始或只打了結束 → 漏打（改用分鐘計薪後午休會影響金額）。
+      兩張都沒打視為當天沒休息，不算漏打 —— 半天班中途本來就不會有午休卡。
+
     一天最多記一次，不會因為同時漏兩張就算兩次。
 
     由每日檢查產生，隔天早上通知員工。老闆事後補登打卡不會抹掉這筆

@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 
 from attendance.models import AttendanceRecord, AuditLog, Employee, Holiday, LeaveRecord
 from attendance.utils import punch_check
+from attendance.dashboard_views.base import scheduled_times
 
 
 def _holiday_map(year, month):
@@ -53,9 +54,10 @@ def _build_day(employee, d, holidays=None):
     today = timezone.localdate()
     if clock_in:
         is_late = False
-        if employee.work_start_time:
+        sched_start, _ = scheduled_times(employee, d)
+        if sched_start:
             ci_time   = localtime(clock_in.timestamp).time()
-            scheduled = datetime.combine(d, employee.work_start_time)
+            scheduled = datetime.combine(d, sched_start)
             actual    = datetime.combine(d, ci_time)
             is_late   = (actual - scheduled).total_seconds() > 600  # 超過10分鐘
 
