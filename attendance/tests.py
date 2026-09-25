@@ -1502,6 +1502,16 @@ class MissedPunchTest(TestCase):
         self._mk(d, 'clock_out', (18, 0))
         self.assertIsNone(punch_check.detect(self.emp, d))
 
+    def test_half_day_shift_is_not_missed_punch(self):
+        """只上半天、中午就下班 → 中途本來就不會有午休卡，不該算漏打"""
+        from attendance.dashboard_views.base import get_work_minutes
+        from attendance.utils import punch_check
+        d = self._past()
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'clock_out', (13, 0))
+        self.assertIsNone(punch_check.detect(self.emp, d))
+        self.assertEqual(get_work_minutes(self.emp, d), 240)   # 也不會被扣午休
+
     def test_today_is_not_judged(self):
         """今天還沒結束，不判定"""
         from attendance.utils import punch_check
