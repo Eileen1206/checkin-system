@@ -143,6 +143,12 @@
     請直接在下表補上缺的那張卡。
   </div>
   {% endif %}
+  {% if result.half_break_days %}
+  <div class="px-6 py-3 bg-[#F6E4E0] border-b border-[#E7C7C0] text-sm text-[#7A2A20]">
+    有 {{ result.half_break_days|length }} 天午休只打了一張卡，該扣多久無從判斷，
+    系統<strong>沒有扣</strong>午休。請在下表補上另一張的時間，工時才會正確。
+  </div>
+  {% endif %}
 
   <div class="overflow-x-auto">
   <table class="w-full text-sm whitespace-nowrap">
@@ -162,11 +168,15 @@
     </thead>
     <tbody class="divide-y divide-gray-50">
       {% for x in day_detail %}
-      <tr class="hover:bg-amber-50/30 {% if x.incomplete %}bg-[#FBF3D8]/40{% endif %}">
+      <tr class="hover:bg-amber-50/30
+        {% if x.incomplete %}bg-[#FBF3D8]/40{% elif x.half_break %}bg-[#F6E4E0]/40{% endif %}">
         <td class="px-5 py-2.5 text-gray-700">
           {{ x.date|date:"m/d" }}
           {% if x.late_minutes %}
           <span class="ml-1 text-[11px] text-[#B0382A]">遲 {{ x.late_minutes }} 分</span>
+          {% endif %}
+          {% if x.half_break %}
+          <span class="ml-1 text-[11px] text-[#7A2A20]">午休未打齊</span>
           {% endif %}
         </td>
         <td class="px-2 py-2.5 text-gray-400 text-xs">{{ x.cls }}</td>

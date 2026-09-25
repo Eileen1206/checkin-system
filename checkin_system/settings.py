@@ -162,9 +162,6 @@ SCHEDULE_MANPOWER_WARN_THRESHOLD = env.int('SCHEDULE_MANPOWER_WARN_THRESHOLD', d
 
 # 每月漏打卡次數上限，超過即在後台標紅
 MISSED_PUNCH_MONTHLY_LIMIT = env.int('MISSED_PUNCH_MONTHLY_LIMIT', default=5)
-# 午休只打了一張卡時改扣的預設長度（分鐘）
-DEFAULT_BREAK_MINUTES = env.int('DEFAULT_BREAK_MINUTES', default=60)
-
 # 送貨到站的允許範圍（公尺）
 DELIVERY_ARRIVAL_METERS = env.int('DELIVERY_ARRIVAL_METERS', default=500)
 # GPS 誤差超過這個數字就視為定位不可信，提示員工重新定位而非判定距離過遠

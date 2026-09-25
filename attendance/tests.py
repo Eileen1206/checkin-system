@@ -1709,20 +1709,40 @@ class BreakPunchTest(TestCase):
         self._mk(d, 'clock_out', (18, 0))
         self.assertEqual(self._minutes(d), 540 - 45)
 
-    def test_missing_break_end_deducts_default_not_whole_afternoon(self):
-        """12:00 打午休、忘記打回來 → 只扣 60 分，不是扣到下班"""
+    def test_missing_break_end_does_not_guess(self):
+        """12:00 打午休、忘記打回來 → 不猜長度也不扣，標記待校對"""
         d = date(2026, 11, 4)
         self._mk(d, 'clock_in', (9, 0))
         self._mk(d, 'break_start', (12, 0))
         self._mk(d, 'clock_out', (18, 0))
-        self.assertEqual(self._minutes(d), 540 - 60)
+        self.assertEqual(self._minutes(d), 540)
+        row = payroll.monthly_work_detail(self.emp, 2026, 11)['detail'][0]
+        self.assertTrue(row['half_break'])
 
-    def test_missing_break_start_also_deducts_default(self):
+    def test_missing_break_start_also_does_not_guess(self):
         d = date(2026, 11, 5)
         self._mk(d, 'clock_in', (9, 0))
         self._mk(d, 'break_end', (12, 45))
         self._mk(d, 'clock_out', (18, 0))
-        self.assertEqual(self._minutes(d), 540 - 60)
+        self.assertEqual(self._minutes(d), 540)
+
+    def test_complete_break_is_not_flagged(self):
+        d = date(2026, 11, 6)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'break_end', (12, 45))
+        self._mk(d, 'clock_out', (18, 0))
+        work = payroll.monthly_work_detail(self.emp, 2026, 11)
+        self.assertFalse(work['detail'][0]['half_break'])
+        self.assertEqual(work['half_break_days'], [])
+
+    def test_half_break_day_is_listed_for_review(self):
+        d = date(2026, 11, 4)
+        self._mk(d, 'clock_in', (9, 0))
+        self._mk(d, 'break_start', (12, 0))
+        self._mk(d, 'clock_out', (18, 0))
+        self.assertEqual(
+            payroll.monthly_work_detail(self.emp, 2026, 11)['half_break_days'], [d])
 
     def test_no_break_punch_deducts_nothing(self):
         d = date(2026, 11, 6)
@@ -2261,9 +2281,9 @@ class DeleteRecordTest(TestCase):
         resp = self.client.get(f'/reports/record/{self.rec.pk}/delete/')
         self.assertEqual(resp.status_code, 405)
 
-    def test_deleting_stray_break_fixes_the_hours(self):
-        """誤打的午休開始害當天被扣 60 分，刪掉就正常了"""
-        from attendance.dashboard_views.base import get_work_minutes
+    def test_deleting_stray_break_clears_the_review_flag(self):
+        """誤打的午休開始讓當天被標成待校對，刪掉就乾淨了"""
+        from attendance.utils import payroll as _pr
         d = date(2026, 11, 3)
         for kind, hm in (('clock_in', (9, 0)), ('clock_out', (18, 0))):
             AttendanceRecord.objects.create(
@@ -2271,10 +2291,10 @@ class DeleteRecordTest(TestCase):
                 timestamp=timezone.make_aware(datetime(d.year, d.month, d.day, *hm)),
                 latitude=0, longitude=0, is_valid=True, distance_meters=0)
 
-        self.assertEqual(get_work_minutes(self.emp, d), 540 - 60)   # 午休只打一張
+        self.assertEqual(_pr.monthly_work_detail(self.emp, 2026, 11)['half_break_days'], [d])
         self._login()
         self.client.post(f'/reports/record/{self.rec.pk}/delete/')
-        self.assertEqual(get_work_minutes(self.emp, d), 540)
+        self.assertEqual(_pr.monthly_work_detail(self.emp, 2026, 11)['half_break_days'], [])
 
     def test_delete_button_on_both_pages(self):
         self._login()

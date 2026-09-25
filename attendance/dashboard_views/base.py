@@ -49,11 +49,6 @@ LATE_GRACE_SECONDS = 600         # 遲到寬限 10 分鐘（寬限內從排班�
 OVERTIME_GRACE_SECONDS = 600     # 下班寬限 10 分鐘（寬限內算到排班下班時間，不算加班）
 
 
-def default_break_minutes():
-    """午休只打了一張卡時改扣的預設長度。"""
-    from django.conf import settings
-    return getattr(settings, 'DEFAULT_BREAK_MINUTES', 60)
-
 
 def get_work_minutes(employee, date=None):
     """回傳某天的計薪分鐘數（整數分鐘，不做任何半小時進位）。
@@ -63,7 +58,8 @@ def get_work_minutes(employee, date=None):
       早到不因此多算；遲到超過寬限則從實際打卡起算（沒做就沒錢，但不額外罰）。
     - 終點：實際下班打卡時間，但排班下班後 10 分鐘內算到排班時間（收個尾不算加班）；
       超過寬限才照實際打卡算。今天還沒下班用現在時間估；過去日期缺下班卡視為異常，不計。
-    - 中間扣掉落在計薪區間內的午休。
+    - 中間扣掉午休，但只在兩張午休卡都有時才扣；只打一張不猜長度，
+      改為標記待校對，由老闆補上正確時間。
     """
     date = date or timezone.localdate()
 
@@ -117,10 +113,8 @@ def get_work_minutes(employee, date=None):
         eff_end = min(break_end.timestamp, end_time)
         if eff_end > eff_start:
             total_seconds -= (eff_end - eff_start).total_seconds()
-    elif break_start or break_end:
-        # 午休只打了一張卡 → 不知道實際長度，扣預設值即可，
-        # 不會因為忘記打回來就整個下午都不計薪。當天會另記一筆漏打卡。
-        total_seconds -= default_break_minutes() * 60
+    # 午休只打了一張卡 → 不知道實際長度，不自作主張扣一個預設值。
+    # 當天會記一筆漏打卡並在薪資明細標出來，由老闆補上正確時間。
 
     total_seconds = max(total_seconds, 0)
 
@@ -195,6 +189,7 @@ def _settled_result(emp, settled, year, month):
             settings_module(), 'MISSED_PUNCH_MONTHLY_LIMIT', 5),
         'missed_punch_dates': [],
         'incomplete_days':    work['incomplete_days'],
+        'half_break_days':    work['half_break_days'],
         'settled': settled,
     }
 
@@ -276,5 +271,6 @@ def calculate_salary(emp, year, month, live=False):
         'missed_punch_over':   missed['over_limit'],
         'missed_punch_dates':  missed['dates'],
         'incomplete_days':     work['incomplete_days'],
+        'half_break_days':     work['half_break_days'],
         'settled': None,
     }
