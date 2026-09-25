@@ -244,7 +244,11 @@ def _parse_leave_payload(data):
 
 
 def _save_shift(emp, shift_date, data):
-    """建立／修改當日班別（例如只排下半天）。"""
+    """建立／修改當日班別（例如只排下半天）。
+
+    排休是「整天不來」，與班別互斥，所以排了班別就把當天的排休清掉；
+    請假則可以與班別並存（例如排下午班又請了其中 2 小時）。
+    """
     try:
         start = datetime.strptime(data['start'], '%H:%M').time()
         end = datetime.strptime(data['end'], '%H:%M').time()
@@ -252,6 +256,9 @@ def _save_shift(emp, shift_date, data):
         return JsonResponse({'ok': False, 'error': '請填寫上下班時間'}, status=400)
     if start >= end:
         return JsonResponse({'ok': False, 'error': '下班時間必須晚於上班時間'}, status=400)
+
+    LeaveRecord.objects.filter(
+        employee=emp, date=shift_date, kind=LeaveRecord.KIND_REST).delete()
 
     so, created = ShiftOverride.objects.update_or_create(
         employee=emp, date=shift_date,
@@ -295,6 +302,10 @@ def leave_add_api(request):
 
         kind, leave_type, hours = _parse_leave_payload(data)
         reason = (data.get('reason') or '').strip()[:100]
+
+        # 排休＝整天不來，當天排的班別就沒有意義了
+        if kind == LeaveRecord.KIND_REST:
+            ShiftOverride.objects.filter(employee=emp, date=leave_date).delete()
 
         lr, created = LeaveRecord.objects.get_or_create(
             employee=emp, date=leave_date,

@@ -2442,3 +2442,25 @@ class ShiftOverrideTest(TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]['kind'], 'shift')
         self.assertEqual(entries[0]['label'], '13:00–18:00')
+
+    def test_shift_clears_rest_on_same_day(self):
+        """排休是整天不來，與班別互斥"""
+        LeaveRecord.objects.create(employee=self.emp, date=self.d)
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'shift', 'start': '13:00', 'end': '18:00'})
+        self.assertFalse(LeaveRecord.objects.filter(date=self.d).exists())
+        self.assertTrue(self.ShiftOverride.objects.filter(date=self.d).exists())
+
+    def test_rest_clears_shift_on_same_day(self):
+        self._shift((13, 0), (18, 0))
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03', 'kind': 'rest'})
+        self.assertFalse(self.ShiftOverride.objects.filter(date=self.d).exists())
+        self.assertTrue(LeaveRecord.objects.filter(date=self.d).exists())
+
+    def test_leave_and_shift_can_coexist(self):
+        """排了下午班又請其中 2 小時，是合理的組合"""
+        self._shift((13, 0), (18, 0))
+        self._post({'employee_id': self.emp.pk, 'date': '2026-11-03',
+                    'kind': 'leave', 'hours': 2, 'leave_type': 'personal'})
+        self.assertTrue(self.ShiftOverride.objects.filter(date=self.d).exists())
+        self.assertTrue(LeaveRecord.objects.filter(date=self.d).exists())
